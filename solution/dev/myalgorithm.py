@@ -179,7 +179,7 @@ def algorithm(prob_info, timelimit=60):
             # (it solves small instances to optimum). Large bays: BRKGA-heavy (_bf=0.90, cpsat skipped).
             try:
                 import brkga2
-                brk_t = timelimit * 0.90 - (time.time() - t0) - 3.0
+                brk_t = timelimit * 0.85 - (time.time() - t0) - 3.0
                 # SMALL bays: skip BRKGA entirely -> the exact path (cpsat_polish + cpsat_z3) gets the whole
                 # budget (it solves them to/below best; BRKGA's beam base just wastes small-instance time).
                 if brk_t > 8.0 and seed_sols and not cpsat_useful:
@@ -202,7 +202,7 @@ def algorithm(prob_info, timelimit=60):
 
                 def _ck(s):
                     return utils.check_feasibility(prob_info, s)
-                if cpsat_useful and seed_sols and (timelimit * 0.88 - (time.time() - t0)) > 8.0:
+                if cpsat_useful and seed_sols and (timelimit * 0.82 - (time.time() - t0)) > 8.0:
                     construct_sigs = {tuple(sorted(_asg(cz).items())) for cz in construct_sols}
                     z10 = []                                          # (Z3, sol, is_construct) Z1=0 candidates
                     seen = set(); n_polished = 0
@@ -243,7 +243,7 @@ def algorithm(prob_info, timelimit=60):
                         # assignments (prob_24 3.1M->2.05M, prob_34 3.9M->2.58M). best-of -> can't regress.
                         try:
                             import brkga2
-                            bt = timelimit * 0.90 - (time.time() - t0) - 3.0
+                            bt = timelimit * 0.80 - (time.time() - t0) - 3.0
                             if bt > 8.0 and seeds_asg:
                                 bs = brkga2.solve_brkga2(prob_info, bt, seeds=seeds_asg, seed_sols=seed_sols,
                                                          workers=4, beam_final=True)
@@ -263,11 +263,11 @@ def algorithm(prob_info, timelimit=60):
                             bases = [min(_cz, key=lambda x: x[0])[1]]
                         else:
                             srt = [e[1] for e in sorted(z10, key=lambda x: x[0])]
-                            deep = (timelimit * 0.88 - (time.time() - t0)) > 60.0
+                            deep = (timelimit * 0.82 - (time.time() - t0)) > 60.0
                             bases = (srt[:2] if len(srt) >= 2 else srt * 2) if deep else srt[:1]
-                        per = (timelimit * 0.88 - (time.time() - t0)) / max(1, len(bases))
+                        per = (timelimit * 0.82 - (time.time() - t0)) / max(1, len(bases))
                         for zb in bases:
-                            if timelimit * 0.88 - (time.time() - t0) < 6.0:
+                            if timelimit * 0.82 - (time.time() - t0) < 6.0:
                                 break
                             zz = cpsat_z3.cpsat_z3(prob_info, zb, utils,
                                                    time_budget=per, per_bay_tl=min(20.0, per * 0.25))
@@ -282,26 +282,30 @@ def algorithm(prob_info, timelimit=60):
                         _tr("asls", prob_info, aa, utils, t0, best_obj)
             except Exception:
                 pass
-            # final polish (cheap best-of): placement-rule swap (contact-max anti-fragmentation, helps
-            # congested bays) then polygon density. Both per-bay, Z2/Z3 fixed, best-of -> can't regress.
-            try:
-                import assign_lns
-                pp = assign_lns.placement_polish(prob_info, best, utils,
-                                                 time_budget=max(2.0, timelimit * 0.93 - (time.time() - t0)))
-                r = utils.check_feasibility(prob_info, pp)
-                if r["feasible"] and r["objective"] < best_obj:
-                    best, best_obj = pp, r["objective"]
-            except Exception:
-                pass
-            try:
-                import polypack
-                pol = polypack.polish_solution(prob_info, best, utils,
-                                               time_budget=max(3.0, timelimit * 0.97 - (time.time() - t0)))
-                r = utils.check_feasibility(prob_info, pol)
-                if r["feasible"] and r["objective"] < best_obj:
-                    best, best_obj = pol, r["objective"]
-            except Exception:
-                pass
+            # final polish -- SMALL bays ONLY (cpsat_useful). For LARGE instances these were (a) low-value
+            # (per-bay Z2/Z3-fixed polish on already-brkga2-decoded bays) and (b) the dominant TIMEOUT risk:
+            # polypack runs Shapely per bay near the deadline (0.97T originally), an uninterruptible C path
+            # that can overrun the hard limit on a big bay -> process killed -> infeasible (the P3 mode). So on
+            # large we end at brkga2+beam_final (internally time-bounded) and give brkga2 that freed budget.
+            if cpsat_useful:
+                try:
+                    import assign_lns
+                    pp = assign_lns.placement_polish(prob_info, best, utils,
+                                                     time_budget=max(2.0, timelimit * 0.80 - (time.time() - t0)))
+                    r = utils.check_feasibility(prob_info, pp)
+                    if r["feasible"] and r["objective"] < best_obj:
+                        best, best_obj = pp, r["objective"]
+                except Exception:
+                    pass
+                try:
+                    import polypack
+                    pol = polypack.polish_solution(prob_info, best, utils,
+                                                   time_budget=max(3.0, timelimit * 0.83 - (time.time() - t0)))
+                    r = utils.check_feasibility(prob_info, pol)
+                    if r["feasible"] and r["objective"] < best_obj:
+                        best, best_obj = pol, r["objective"]
+                except Exception:
+                    pass
         except _Deadline:
             pass                                            # hard deadline hit -> stop, return best so far
         finally:
