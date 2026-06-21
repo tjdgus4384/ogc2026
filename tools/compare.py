@@ -17,8 +17,10 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "solution", "baseline", "baseline"))
 sys.path.insert(0, os.path.join(ROOT, "solution", "dev"))
 RES = os.path.join(ROOT, "results")
-# standard 10-instance overfit-guard spread: small/large, cpsat/brkga paths, varied weights
-SPREAD = [3, 4, 8, 15, 16, 18, 20, 24, 27, 38]
+# standard 10-instance overfit-guard spread, balanced 5/5 across the two regimes:
+#   1-20  (size-scaling, Z1/tardiness-heavy): 3,8,12,16,20  -> sizes 100..300, cpsat(3,12)+brkga(8,16,20)
+#   21-40 (weight-variety, Z2/Z3-heavy):      24,27,34,36,38 -> Z3-dom(34,24), congested(27,38), degenerate(36)
+SPREAD = [3, 8, 12, 16, 20, 24, 27, 34, 36, 38]
 
 
 def run_one(prob, tl):
