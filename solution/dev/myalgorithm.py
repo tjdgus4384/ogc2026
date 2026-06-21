@@ -118,16 +118,21 @@ def algorithm(prob_info, timelimit=60):
                 return a
             seeds_asg = []; seed_sols = []; construct_sols = []
 
-            # SEED 1 -- anytime (ALNS + CP repair): the congested workhorse.
+            # SEED 1 -- anytime (ALNS + CP repair): the congested workhorse. SMALL instances run it MULTI-SEED:
+            # whether an assignment is Z1=0-PACKABLE is a stochastic draw (per-bay packing is fast, ~5s, but
+            # a single seed can land on a Z1_min>0 split -- prob_4 single-seed stalled at Z1=2 while 4/5 seeds
+            # are Z1=0-packable). A few diverse seeds reliably yield a Z1=0-packable assignment to polish from.
             try:
                 import anytime
-                sol = anytime.solve_anytime(prob_info, any_t, seed=0, cp_workers=4)
-                r = utils.check_feasibility(prob_info, sol)
-                if r["feasible"]:
-                    seed_sols.append(sol); seeds_asg.append(_asg(sol))
-                    if r["objective"] < best_obj:
-                        best, best_obj = sol, r["objective"]
-                _tr("anytime", prob_info, sol, utils, t0, best_obj)
+                _nseed = 2 if cpsat_useful else 1
+                for _sd in range(_nseed):
+                    sol = anytime.solve_anytime(prob_info, any_t / _nseed, seed=_sd, cp_workers=4)
+                    r = utils.check_feasibility(prob_info, sol)
+                    if r["feasible"]:
+                        seed_sols.append(sol); seeds_asg.append(_asg(sol))
+                        if r["objective"] < best_obj:
+                            best, best_obj = sol, r["objective"]
+                    _tr(f"anytime[{_sd}]", prob_info, sol, utils, t0, best_obj)
             except Exception:
                 pass
             # SEED 2 -- construct_z3 under SEVERAL block-orderings (preference-first -> low Z3, different
@@ -182,53 +187,61 @@ def algorithm(prob_info, timelimit=60):
                         best, best_obj = bsol, r["objective"]
             except Exception:
                 pass
-            # SMALL-bay EXACT POLISH over DIVERSE basins. Root-caused 2026-06-21: polishing only the obj-min
-            # `best` is non-monotone -- more anytime time yields a lower-obj but worse-POLISHING basin (anytime
-            # Z3 descends to ~106 vs the construct basin's ~67), so longer budgets scored WORSE. Fix: polish
-            # BOTH the obj-min and the Z3-min seed and best-of. Per candidate chain: cpsat_polish (reach Z1=0)
-            # -> cpsat_z3 (CP-SAT-verified Z3 descent) -> asls (fast insertion Z2 descent). best-of, can't regress.
-            # EXACT per-bay re-pack (CP-SAT): reach Z1=0 on `best` (assignment fixed -> Z2/Z3 unchanged).
+            # SMALL-bay UNIFIED exact polish. Per-bay CP-SAT packing is FAST (~1-5s/bay even at 50 blocks), so
+            # whether Z1=0 is reached is about the ASSIGNMENT (which blocks share a bay), not packing speed. A
+            # single seed can draw a Z1_min>0 split (prob_4 stalled at Z1=2); other seeds are Z1=0-packable.
+            # So: take every distinct candidate assignment, cpsat_polish the Z1>0 ones to Z1=0 (cheap; the
+            # already-Z1=0 ones cost nothing), collect the Z1=0 set, then run cpsat_z3 (Z3 descent) from the
+            # LOWEST-Z3 Z1=0 candidate (construct basin for prob_3; a packable anytime split for prob_4), then
+            # asls (Z2). One rule, both instances. best-of throughout -> can't regress.
             try:
-                import cpsat_polish
-                cp_avail = timelimit * 0.66 - (time.time() - t0)
-                if cpsat_useful and cp_avail > 10.0:
-                    cpp = cpsat_polish.cpsat_polish(prob_info, best, utils,
-                                                    time_budget=cp_avail, per_bay_tl=min(30.0, cp_avail * 0.5))
-                    r = utils.check_feasibility(prob_info, cpp)
-                    if r["feasible"] and r["objective"] < best_obj:
-                        best, best_obj = cpp, r["objective"]
-                    _tr("cpsat_polish", prob_info, cpp, utils, t0, best_obj)
-            except Exception:
-                pass
-            # ASSIGNMENT levers on `best`: cpsat_z3 descends Z3 (move blocks to preferred bays, CP-SAT certifies
-            # Z1=0), then asls descends Z2 (workload balance by Z1-preserving insertion -- the piece cpsat_z3
-            # ignores; closes e.g. prob_3's Z2 gap). Both best-of -> can't regress. asls is fast (reserve ~4s).
-            try:
-                import cpsat_z3, asls as _asls
-                z3_avail = timelimit * 0.88 - (time.time() - t0)   # finish before the 0.90 hard deadline
-                if cpsat_useful and z3_avail > 10.0:
-                    # cpsat_z3 (Z3 descent) base = the lowest-Z3 Z1=0-PACKABLE seed. The construct seeds are
-                    # pref-sharp (purpose-built low-Z3) and descend cleanly when they ARE Z1=0 (prob_3: -> 43250).
-                    # When construct is NOT Z1=0-packable (prob_4: dense bays force tardiness), this falls back
-                    # to `best` (the cpsat_polish'd anytime basin) automatically -- a graceful unified rule, not
-                    # a per-instance hack. Full budget on the chosen base (no splitting/probe overhead).
-                    zbase = best
-                    if construct_sols:
-                        cand = min(construct_sols,
-                                   key=lambda s: utils.check_feasibility(prob_info, s).get("obj3", 1e18))
-                        if utils.check_feasibility(prob_info, cand).get("obj1", 1) == 0:
-                            zbase = cand          # construct basin descends better even if its start-Z3 is higher
-                    zz = cpsat_z3.cpsat_z3(prob_info, zbase, utils,
-                                           time_budget=z3_avail, per_bay_tl=min(20.0, z3_avail * 0.25))
-                    r = utils.check_feasibility(prob_info, zz)
-                    if r["feasible"] and r["objective"] < best_obj:
-                        best, best_obj = zz, r["objective"]
-                    _tr("cpsat_z3", prob_info, zz, utils, t0, best_obj)
-                    aa = _asls.asls(prob_info, best, utils, time_budget=3.0)   # Z2 balance (Z1-preserving)
-                    r = utils.check_feasibility(prob_info, aa)
-                    if r["feasible"] and r["objective"] < best_obj:
-                        best, best_obj = aa, r["objective"]
-                    _tr("asls", prob_info, aa, utils, t0, best_obj)
+                import cpsat_polish, cpsat_z3, asls as _asls
+
+                def _ck(s):
+                    return utils.check_feasibility(prob_info, s)
+                if cpsat_useful and seed_sols and (timelimit * 0.88 - (time.time() - t0)) > 8.0:
+                    z10 = []                                          # (Z3, sol) Z1=0-packable candidates
+                    seen = set(); n_polished = 0
+                    for cs in sorted(seed_sols, key=lambda s: _ck(s).get("objective", 1e18)):
+                        rc = _ck(cs)
+                        if not rc["feasible"]:
+                            continue
+                        sig = tuple(sorted(_asg(cs).items()))
+                        if sig in seen:
+                            continue
+                        seen.add(sig)
+                        if rc.get("obj1", 1) == 0:
+                            z10.append((rc.get("obj3", 0), cs))       # already Z1=0 -> free
+                        elif not z10 and n_polished < 3 and time.time() - t0 < timelimit * 0.62:
+                            # only spend packing time when NO Z1=0 base exists yet (don't waste it on the
+                            # unpackable ILP seed when construct already gave a Z1=0 base -- that cost prob_3).
+                            # per-bay packing is ~1-5s, so a tight per_bay_tl lets several candidates be tried
+                            # -> a Z1=0-packable assignment is found reliably (prob_4 is a stochastic draw).
+                            n_polished += 1
+                            cpp = cpsat_polish.cpsat_polish(prob_info, cs, utils,
+                                                            time_budget=min(14.0, timelimit * 0.62 - (time.time() - t0)),
+                                                            per_bay_tl=8.0)
+                            rp = _ck(cpp)
+                            if rp["feasible"]:
+                                if rp["objective"] < best_obj:
+                                    best, best_obj = cpp, rp["objective"]
+                                if rp.get("obj1", 1) == 0:
+                                    z10.append((rp.get("obj3", 0), cpp))
+                            _tr(f"polish[{sig and n_polished}]", prob_info, cpp, utils, t0, best_obj)
+                    zbase = min(z10, key=lambda x: x[0])[1] if z10 else best   # lowest-Z3 Z1=0 base
+                    z3_avail = timelimit * 0.88 - (time.time() - t0)
+                    if z3_avail > 6.0:
+                        zz = cpsat_z3.cpsat_z3(prob_info, zbase, utils,
+                                               time_budget=z3_avail, per_bay_tl=min(20.0, z3_avail * 0.25))
+                        r = _ck(zz)
+                        if r["feasible"] and r["objective"] < best_obj:
+                            best, best_obj = zz, r["objective"]
+                        _tr("cpsat_z3", prob_info, zz, utils, t0, best_obj)
+                        aa = _asls.asls(prob_info, best, utils, time_budget=3.0)
+                        r = _ck(aa)
+                        if r["feasible"] and r["objective"] < best_obj:
+                            best, best_obj = aa, r["objective"]
+                        _tr("asls", prob_info, aa, utils, t0, best_obj)
             except Exception:
                 pass
             # final polish (cheap best-of): placement-rule swap (contact-max anti-fragmentation, helps

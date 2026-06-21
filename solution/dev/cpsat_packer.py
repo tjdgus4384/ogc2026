@@ -27,7 +27,7 @@ def _cells(blk_orients, W, H):
     return out
 
 
-def pack_bay_cpsat(W, H, metas, prob_blocks, tl, workers=4, hint=None, fixed=None):
+def pack_bay_cpsat(W, H, metas, prob_blocks, tl, workers=4, hint=None, fixed=None, cumulative=True):
     """Return placements [(id,x,y,oi,e,f)] minimizing Σ tardiness for this bay, or None if no model.
     hint (optional) = {id:(x,y,oi,entry)} warm start (e.g. the improver's placement); falls back to the
     heuristic packer's placement when absent.
@@ -99,6 +99,20 @@ def pack_bay_cpsat(W, H, metas, prob_blocks, tl, workers=4, hint=None, fixed=Non
             cm.Add(V[i]["e"] <= gE).OnlyEnforceIf(bt)
             cm.Add(gS <= V[i]["s"]).OnlyEnforceIf(bt2)
             cm.AddBoolOr([lx, rx, dn, up, bt, bt2])
+    # REDUNDANT area-cumulative: the model separates integer CELLS (pairwise x/y/time), so at any instant the
+    # resident cells are disjoint within W*H => their areas sum to <= W*H. Adding this as a cumulative resource
+    # (interval [s,e), demand = min-orientation cell area, capacity = W*H) is a valid necessary condition that
+    # propagates strongly -> CP-SAT prunes over-packed time windows fast -> reaches Z1=0 quicker on dense bays.
+    if cumulative:
+        intervals = []; demands = []
+        for m in metas:
+            i = m["id"]
+            iv = cm.NewIntervalVar(V[i]["s"], m["proc"], V[i]["e"], f"iv{i}")
+            amin = min((c[2] - c[1]) * (c[4] - c[3]) for c in V[i]["cells"])   # min cell area (<= selected)
+            if amin > 0:
+                intervals.append(iv); demands.append(int(amin))
+        if intervals:
+            cm.AddCumulative(intervals, demands, int(W * H))
     cm.Minimize(sum(V[i]["t"] for i in ids))
 
     # warm start: external hint (e.g. improver placement) if given, else the heuristic packer
