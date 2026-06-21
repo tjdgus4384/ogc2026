@@ -17,6 +17,8 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "solution", "baseline", "baseline"))
 sys.path.insert(0, os.path.join(ROOT, "solution", "dev"))
 RES = os.path.join(ROOT, "results")
+# standard 10-instance overfit-guard spread: small/large, cpsat/brkga paths, varied weights
+SPREAD = [3, 4, 8, 15, 16, 18, 20, 24, 27, 38]
 
 
 def run_one(prob, tl):
@@ -32,7 +34,9 @@ def run_one(prob, tl):
 
 def cmd_run(args):
     os.makedirs(RES, exist_ok=True)
-    insts = list(range(1, 41)) if args.inst == "all" else [int(x) for x in args.inst.split(",")]
+    insts = (list(range(1, 41)) if args.inst == "all"
+             else SPREAD if args.inst == "spread"
+             else [int(x) for x in args.inst.split(",")])
     out = {"tag": args.tag, "tl": args.tl, "reps": args.reps, "results": {}}
     for pid in insts:
         prob = json.load(open(os.path.join(ROOT, "data", "train", f"prob_{pid}.json")))
@@ -128,7 +132,7 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--tag", required=True)
     ap.add_argument("--tl", type=float, default=120)
-    ap.add_argument("--inst", default="3,4,8,15,27,38")
+    ap.add_argument("--inst", default="spread", help="'spread' (10-instance guard), 'all' (1-40), or comma list")
     ap.add_argument("--reps", type=int, default=1)
     ap.add_argument("--vs", default="best", help="reference: 'best' (best_known) or a saved tag name")
     ap.add_argument("--diff-only", action="store_true", help="don't run; just re-diff a saved tag vs --vs")

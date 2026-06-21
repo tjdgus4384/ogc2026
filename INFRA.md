@@ -24,7 +24,7 @@ files. If a comparison needs a version we never froze, that's a process bug — 
 python3 tools/instances.py
 
 # evaluate engine, freeze results, auto-diff vs best_known
-python3 tools/compare.py --tag <name> --tl <sec> --inst 3,4,8,15,27,38   # spread
+python3 tools/compare.py --tag <name> --tl <sec> --inst spread            # 10-instance guard spread
 python3 tools/compare.py --tag <name> --tl <sec> --inst all              # full 40 (baseline freeze)
 python3 tools/compare.py --tag <name> --tl <sec> --inst 15 --reps 3      # average out variance
 
