@@ -236,20 +236,33 @@ def algorithm(prob_info, timelimit=60):
                     # (prob_3 -> Z3 67 vs the anytime basin's 191) even when its START Z3 is a touch higher.
                     # Among Z1=0 candidates, pick the lowest-Z3 CONSTRUCT one; else the lowest-Z3 overall.
                     _cz = [e for e in z10 if e[2]]
-                    zbase = min(_cz or z10, key=lambda x: x[0])[1] if z10 else best
-                    z3_avail = timelimit * 0.88 - (time.time() - t0)
-                    if z3_avail > 6.0:
-                        zz = cpsat_z3.cpsat_z3(prob_info, zbase, utils,
-                                               time_budget=z3_avail, per_bay_tl=min(20.0, z3_avail * 0.25))
+                    if _cz:
+                        # construct basin: deterministic deep descent -> ONE base, FULL budget (prob_3 -> 43250)
+                        bases = [min(_cz, key=lambda x: x[0])[1]]
+                    elif z10:
+                        # no construct (e.g. prob_4): cpsat_z3 descent from an anytime basin is VARIABLE
+                        # (same start-Z3 -> 118 or 302), so best-of two DEEP attempts when budget allows; the
+                        # 2nd uses a different low-Z3 base if one exists, else re-runs (CP-SAT is non-det).
+                        srt = [e[1] for e in sorted(z10, key=lambda x: x[0])]
+                        deep = (timelimit * 0.88 - (time.time() - t0)) > 60.0
+                        bases = (srt[:2] if len(srt) >= 2 else srt * 2) if deep else srt[:1]
+                    else:
+                        bases = [best]
+                    per = (timelimit * 0.88 - (time.time() - t0)) / max(1, len(bases))
+                    for zb in bases:
+                        if timelimit * 0.88 - (time.time() - t0) < 6.0:
+                            break
+                        zz = cpsat_z3.cpsat_z3(prob_info, zb, utils,
+                                               time_budget=per, per_bay_tl=min(20.0, per * 0.25))
                         r = _ck(zz)
                         if r["feasible"] and r["objective"] < best_obj:
                             best, best_obj = zz, r["objective"]
                         _tr("cpsat_z3", prob_info, zz, utils, t0, best_obj)
-                        aa = _asls.asls(prob_info, best, utils, time_budget=3.0)
-                        r = _ck(aa)
-                        if r["feasible"] and r["objective"] < best_obj:
-                            best, best_obj = aa, r["objective"]
-                        _tr("asls", prob_info, aa, utils, t0, best_obj)
+                    aa = _asls.asls(prob_info, best, utils, time_budget=3.0)
+                    r = _ck(aa)
+                    if r["feasible"] and r["objective"] < best_obj:
+                        best, best_obj = aa, r["objective"]
+                    _tr("asls", prob_info, aa, utils, t0, best_obj)
             except Exception:
                 pass
             # final polish (cheap best-of): placement-rule swap (contact-max anti-fragmentation, helps
