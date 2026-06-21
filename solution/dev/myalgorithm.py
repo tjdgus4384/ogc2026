@@ -124,9 +124,12 @@ def algorithm(prob_info, timelimit=60):
             # are Z1=0-packable). A few diverse seeds reliably yield a Z1=0-packable assignment to polish from.
             try:
                 import anytime
-                _nseed = 2 if cpsat_useful else 1
-                for _sd in range(_nseed):
-                    sol = anytime.solve_anytime(prob_info, any_t / _nseed, seed=_sd, cp_workers=4)
+                # seed 0 at FULL budget (strong single run -- instances that need a good anytime, e.g. prob_24);
+                # SMALL adds a half-budget seed 1 purely for assignment DIVERSITY (a second Z1=0-packable draw
+                # for dense instances like prob_4) without weakening seed 0.
+                _budgets = [any_t, any_t * 0.5] if cpsat_useful else [any_t]
+                for _sd, _b in enumerate(_budgets):
+                    sol = anytime.solve_anytime(prob_info, _b, seed=_sd, cp_workers=4)
                     r = utils.check_feasibility(prob_info, sol)
                     if r["feasible"]:
                         seed_sols.append(sol); seeds_asg.append(_asg(sol))

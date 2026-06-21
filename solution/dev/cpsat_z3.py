@@ -143,3 +143,4 @@ def cpsat_z3(prob, sol, utils, time_budget=120.0, per_bay_tl=15.0, verbose=False
     if verbose:
         print(f"  cpsat_z3 -> Z3={Z3sum} obj={r['objective'] if r['feasible'] else 'INF'} acc={acc}", flush=True)
     return ts if (r["feasible"] and r["objective"] < base["objective"] - 1e-9) else sol
+
