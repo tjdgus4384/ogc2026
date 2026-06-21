@@ -188,6 +188,20 @@ def algorithm(prob_info, timelimit=60):
                     r = utils.check_feasibility(prob_info, bsol)
                     if r["feasible"] and r["objective"] < best_obj:
                         best, best_obj = bsol, r["objective"]
+                    # ASSIGNMENT polish on the brkga2 result (LARGE path). brkga2 selects assignments by its
+                    # greedy decoder's Z1 -> it leaves Z2/Z3 noisy/high. asls descends Z2+Z3 by Z1-preserving
+                    # insertion; LARGE multi-bay instances have room for it to relocate blocks to preferred
+                    # bays, so it cuts a lot (prob_20 535k->257k, prob_17 98k->77k -- both beat best) and it
+                    # absorbs brkga2's assignment variance. Fast (~1s), best-of -> can't regress.
+                    try:
+                        import asls as _asls_l
+                        aa = _asls_l.asls(prob_info, best, utils, time_budget=max(2.0, timelimit * 0.88 - (time.time() - t0)))
+                        r = utils.check_feasibility(prob_info, aa)
+                        if r["feasible"] and r["objective"] < best_obj:
+                            best, best_obj = aa, r["objective"]
+                        _tr("asls-large", prob_info, aa, utils, t0, best_obj)
+                    except Exception:
+                        pass
             except Exception:
                 pass
             # SMALL-bay UNIFIED exact polish. Per-bay CP-SAT packing is FAST (~1-5s/bay even at 50 blocks), so

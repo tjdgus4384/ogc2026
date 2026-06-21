@@ -22,8 +22,11 @@ def asls(prob, sol, utils, time_budget=20.0, verbose=False):
     B = prob["blocks"]; bays = prob["bays"]; nb = len(bays)
     w = prob.get("weights", {}); w2, w3 = w.get("w2", 1), w.get("w3", 1)
     base = utils.check_feasibility(prob, sol)
-    if not base["feasible"] or base.get("obj1", 1) > 0:
-        return sol                                        # only operates on Z1=0 solutions
+    if not base["feasible"]:
+        return sol
+    # Works from ANY Z1: moves are Z1-PRESERVING (a relocate/swap is taken only when the block inserts with
+    # NO new tardiness), so existing tardiness is untouched while Z2/Z3 drop. Was gated to Z1=0; relaxing it
+    # lets this Z3/Z2 descent also polish large brkga2 results sitting at a small residual Z1 (e.g. prob_20).
     MB = {i: block_meta(B[i], i) for i in range(len(B))}
     for i in MB:
         MB[i]["proc"] = max(1, MB[i]["proc"])
