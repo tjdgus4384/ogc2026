@@ -32,7 +32,7 @@ def run_one(prob, tl):
 
 def cmd_run(args):
     os.makedirs(RES, exist_ok=True)
-    insts = [int(x) for x in args.inst.split(",")]
+    insts = list(range(1, 41)) if args.inst == "all" else [int(x) for x in args.inst.split(",")]
     out = {"tag": args.tag, "tl": args.tl, "reps": args.reps, "results": {}}
     for pid in insts:
         prob = json.load(open(os.path.join(ROOT, "data", "train", f"prob_{pid}.json")))
@@ -60,16 +60,50 @@ def load_ref(vs):
     return json.load(open(p))["results"] if os.path.exists(p) else {}
 
 
+def _variance_band(k):
+    p = os.path.join(RES, "variance_profile.json")
+    if os.path.exists(p):
+        v = json.load(open(p)).get(k, {}).get("spread_pct")
+        if v is not None:
+            return max(2.0, v)            # treat a delta within the instance's measured noise as a tie
+    return 2.0
+
+
 def diff(cur, ref, tag, vsname):
-    print(f"\n{'inst':<10}{tag:>14}{vsname:>14}{'delta%':>9}")
+    print(f"\n{'inst':<10}{tag:>14}{vsname:>14}{'delta%':>9}  flag")
+    deltas = []; win = tie = lose = 0
     for k in sorted(cur, key=lambda x: int(x.split("_")[1])):
         a = cur[k].get("obj"); b = ref.get(k, {}).get("obj")
-        d = f"{(a-b)/b*100:+.1f}%" if (a and b) else "-"
-        print(f"{k:<10}{str(a):>14}{str(b):>14}{d:>9}")
+        if not (a and b):
+            print(f"{k:<10}{str(a):>14}{str(b):>14}{'-':>9}"); continue
+        dpct = (a - b) / b * 100; deltas.append(dpct); band = _variance_band(k)
+        flag = "~tie" if abs(dpct) <= band else ("WIN" if dpct < 0 else "REGRESS")
+        if flag == "WIN": win += 1
+        elif flag == "REGRESS": lose += 1
+        else: tie += 1
+        print(f"{k:<10}{a:>14.0f}{b:>14.0f}{dpct:>+8.1f}%  {flag}")
+    if deltas:
+        mean = sum(deltas) / len(deltas)
+        print(f"\nAGG vs {vsname}: mean delta {mean:+.1f}%  |  WIN {win}  ~tie {tie}  REGRESS {lose}  "
+              f"(of {len(deltas)})")
 
 
 def cmd_vs(args):
     diff(json.load(open(os.path.join(RES, f"{args.tag}.json")))["results"], load_ref(args.vs), args.tag, args.vs)
+
+
+def cmd_breakdown(args):
+    """Classify each instance's bound from a results snapshot: w1*Z1 vs w2*Z2 vs w3*Z3 shares."""
+    res = json.load(open(os.path.join(RES, f"{args.tag}.json")))["results"]
+    meta = json.load(open(os.path.join(ROOT, "data", "instances.json")))
+    print(f"{'inst':<10}{'w1Z1':>12}{'w2Z2':>10}{'w3Z3':>10}  dominant")
+    for k in sorted(res, key=lambda x: int(x.split("_")[1])):
+        r = res[k]; w = meta.get(k, {})
+        if r.get("z1") is None:
+            continue
+        t1 = (w.get("w1", 1)) * r["z1"]; t2 = (w.get("w2", 1)) * r["z2"]; t3 = (w.get("w3", 1)) * r["z3"]
+        dom = max((t1, "Z1"), (t2, "Z2"), (t3, "Z3"))[1]
+        print(f"{k:<10}{t1:>12.0f}{t2:>10.0f}{t3:>10.0f}  {dom}")
 
 
 if __name__ == "__main__":
@@ -80,5 +114,6 @@ if __name__ == "__main__":
     ap.add_argument("--reps", type=int, default=1)
     ap.add_argument("--vs", default="best", help="reference: 'best' (best_known) or a saved tag name")
     ap.add_argument("--diff-only", action="store_true", help="don't run; just re-diff a saved tag vs --vs")
+    ap.add_argument("--breakdown", action="store_true", help="classify bound (Z1/Z2/Z3 shares) of a saved tag")
     a = ap.parse_args()
-    (cmd_vs if a.diff_only else cmd_run)(a)
+    (cmd_breakdown if a.breakdown else cmd_vs if a.diff_only else cmd_run)(a)
