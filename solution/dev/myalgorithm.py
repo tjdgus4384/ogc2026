@@ -13,6 +13,22 @@
 # replace `best` with FEASIBLE candidates; re-validate before returning. Budget = ~88% of the limit.
 
 import time
+import os as _os
+
+_TR = _os.environ.get("OGC_TRACE")
+
+
+def _tr(label, prob, sol, utils, t0, best_obj):
+    """env-guarded stage trace: each stage's produced obj + Z-breakdown + running best."""
+    if not _TR:
+        return
+    try:
+        r = utils.check_feasibility(prob, sol)
+        o = f"{r['objective']:.0f}" if r["feasible"] else "INF"
+        print(f"[trace] {label:14} obj={o:>10} Z1={r.get('obj1')} Z2={r.get('obj2')} Z3={r.get('obj3')} "
+              f"| best={best_obj:.0f} t={time.time()-t0:.0f}s", flush=True)
+    except Exception as e:
+        print(f"[trace] {label}: {e}", flush=True)
 
 
 def _sanitize(prob_info):
@@ -100,7 +116,7 @@ def algorithm(prob_info, timelimit=60):
                         if o["type"] == "ENTRY":
                             a[o["block_id"]] = o["bay_id"]
                 return a
-            seeds_asg = []; seed_sols = []
+            seeds_asg = []; seed_sols = []; construct_sols = []
 
             # SEED 1 -- anytime (ALNS + CP repair): the congested workhorse.
             try:
@@ -111,6 +127,7 @@ def algorithm(prob_info, timelimit=60):
                     seed_sols.append(sol); seeds_asg.append(_asg(sol))
                     if r["objective"] < best_obj:
                         best, best_obj = sol, r["objective"]
+                _tr("anytime", prob_info, sol, utils, t0, best_obj)
             except Exception:
                 pass
             # SEED 2 -- construct_z3 under SEVERAL block-orderings (preference-first -> low Z3, different
@@ -121,12 +138,13 @@ def algorithm(prob_info, timelimit=60):
                     prob_info, utils, time_budget=min(8.0, max(0.0, timelimit * 0.6 - (time.time() - t0))),
                     orders=("sharp", "due", "workload"))  # time-checks between orders: small gets all 3,
                 #                                            large gets fewer -> protects congested budget
-                for cz in cseeds:
+                for ci, cz in enumerate(cseeds):
                     r = utils.check_feasibility(prob_info, cz)
                     if r["feasible"]:
-                        seed_sols.append(cz); seeds_asg.append(_asg(cz))
+                        seed_sols.append(cz); seeds_asg.append(_asg(cz)); construct_sols.append(cz)
                         if r["objective"] < best_obj:
                             best, best_obj = cz, r["objective"]
+                    _tr(f"construct[{ci}]", prob_info, cz, utils, t0, best_obj)
             except Exception:
                 pass
             # SEED 3 -- exact ILP assignment (Z1=0 instances: pure Z2/Z3, CP-SAT optimal). Keeps small/low-
@@ -145,6 +163,7 @@ def algorithm(prob_info, timelimit=60):
                             seed_sols.append(isol); seeds_asg.append(_asg(isol))
                             if r["objective"] < best_obj:
                                 best, best_obj = isol, r["objective"]
+                            _tr("ilp", prob_info, isol, utils, t0, best_obj)
             except Exception:
                 pass
             # UNIFIER -- BRKGA over (assignment, per-bay order), seeded by all of the above, elite beam-polish.
@@ -163,9 +182,12 @@ def algorithm(prob_info, timelimit=60):
                         best, best_obj = bsol, r["objective"]
             except Exception:
                 pass
-            # EXACT per-bay re-pack (CP-SAT): beam under-packs (oracle gap); CP-SAT eliminates bay tardiness
-            # beam leaves (prob_4 bay 33->0, prob_24 -29% Z1). The dominant Z1 lever on the real long limits;
-            # scales with budget (~10-20s/bay), best-of, same assignment -> Z2/Z3 fixed, never regresses.
+            # SMALL-bay EXACT POLISH over DIVERSE basins. Root-caused 2026-06-21: polishing only the obj-min
+            # `best` is non-monotone -- more anytime time yields a lower-obj but worse-POLISHING basin (anytime
+            # Z3 descends to ~106 vs the construct basin's ~67), so longer budgets scored WORSE. Fix: polish
+            # BOTH the obj-min and the Z3-min seed and best-of. Per candidate chain: cpsat_polish (reach Z1=0)
+            # -> cpsat_z3 (CP-SAT-verified Z3 descent) -> asls (fast insertion Z2 descent). best-of, can't regress.
+            # EXACT per-bay re-pack (CP-SAT): reach Z1=0 on `best` (assignment fixed -> Z2/Z3 unchanged).
             try:
                 import cpsat_polish
                 cp_avail = timelimit * 0.66 - (time.time() - t0)
@@ -175,21 +197,37 @@ def algorithm(prob_info, timelimit=60):
                     r = utils.check_feasibility(prob_info, cpp)
                     if r["feasible"] and r["objective"] < best_obj:
                         best, best_obj = cpp, r["objective"]
+                    _tr("cpsat_polish", prob_info, cpp, utils, t0, best_obj)
             except Exception:
                 pass
-            # CP-SAT-oracle Z3 DESCENT (the integrated assignment<->per-bay lever): from the Z1=0 packing,
-            # move blocks toward preferred bays (relocate + SWAP) while CP-SAT certifies Z1 stays 0 -> finds
-            # the moderate-Z3 + packable sweet spot heuristics miss (prob_3 -> 0.80x, prob_24 -> 0.96x, BEATS
-            # overnight best-known). Same gate (CP-SAT-tractable bays); best-of -> can't regress.
+            # ASSIGNMENT levers on `best`: cpsat_z3 descends Z3 (move blocks to preferred bays, CP-SAT certifies
+            # Z1=0), then asls descends Z2 (workload balance by Z1-preserving insertion -- the piece cpsat_z3
+            # ignores; closes e.g. prob_3's Z2 gap). Both best-of -> can't regress. asls is fast (reserve ~4s).
             try:
-                import cpsat_z3
-                z3_avail = timelimit * 0.92 - (time.time() - t0)
-                if cpsat_useful and z3_avail > 12.0:
-                    zz = cpsat_z3.cpsat_z3(prob_info, best, utils,
+                import cpsat_z3, asls as _asls
+                z3_avail = timelimit * 0.88 - (time.time() - t0)   # finish before the 0.90 hard deadline
+                if cpsat_useful and z3_avail > 10.0:
+                    # cpsat_z3 (Z3 descent) runs from the LOWEST-Z3 Z1=0 seed. ROOT CAUSE of the small-instance
+                    # non-monotonicity: starting from the obj-min `best` means more anytime time -> anytime wins
+                    # `best` (low obj, HIGH Z3) -> cpsat_z3's descent stalls (Z3~191) vs the construct basin
+                    # (Z3~67). The construct seeds are pref-sharp + Z1=0, so descend cleanly. best-of -> safe.
+                    zbase = best
+                    if construct_sols:
+                        cand = min(construct_sols,
+                                   key=lambda s: utils.check_feasibility(prob_info, s).get("obj3", 1e18))
+                        if utils.check_feasibility(prob_info, cand).get("obj1", 1) == 0:
+                            zbase = cand
+                    zz = cpsat_z3.cpsat_z3(prob_info, zbase, utils,
                                            time_budget=z3_avail, per_bay_tl=min(20.0, z3_avail * 0.25))
                     r = utils.check_feasibility(prob_info, zz)
                     if r["feasible"] and r["objective"] < best_obj:
                         best, best_obj = zz, r["objective"]
+                    _tr("cpsat_z3", prob_info, zz, utils, t0, best_obj)
+                    aa = _asls.asls(prob_info, best, utils, time_budget=3.0)   # Z2 balance (Z1-preserving)
+                    r = utils.check_feasibility(prob_info, aa)
+                    if r["feasible"] and r["objective"] < best_obj:
+                        best, best_obj = aa, r["objective"]
+                    _tr("asls", prob_info, aa, utils, t0, best_obj)
             except Exception:
                 pass
             # final polish (cheap best-of): placement-rule swap (contact-max anti-fragmentation, helps
