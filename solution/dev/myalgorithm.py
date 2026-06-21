@@ -235,34 +235,51 @@ def algorithm(prob_info, timelimit=60):
                     # PREFER the construct basin: it is pref-sharp, so cpsat_z3 descends Z3 far deeper from it
                     # (prob_3 -> Z3 67 vs the anytime basin's 191) even when its START Z3 is a touch higher.
                     # Among Z1=0 candidates, pick the lowest-Z3 CONSTRUCT one; else the lowest-Z3 overall.
-                    _cz = [e for e in z10 if e[2]]
-                    if _cz:
-                        # construct basin: deterministic deep descent -> ONE base, FULL budget (prob_3 -> 43250)
-                        bases = [min(_cz, key=lambda x: x[0])[1]]
-                    elif z10:
-                        # no construct (e.g. prob_4): cpsat_z3 descent from an anytime basin is VARIABLE
-                        # (same start-Z3 -> 118 or 302), so best-of two DEEP attempts when budget allows; the
-                        # 2nd uses a different low-Z3 base if one exists, else re-runs (CP-SAT is non-det).
-                        srt = [e[1] for e in sorted(z10, key=lambda x: x[0])]
-                        deep = (timelimit * 0.88 - (time.time() - t0)) > 60.0
-                        bases = (srt[:2] if len(srt) >= 2 else srt * 2) if deep else srt[:1]
+                    # ROUTE by Z1=0-reachability (the z10 set). This is the key regime split, not a tuned param:
+                    if not z10:
+                        # Z1-BOUND (no Z1=0-packable assignment, e.g. prob_24/34): the cpsat path can't search
+                        # assignments well (cpsat_z3's per-move CP-SAT is too slow) so it stalls at the seed's
+                        # Z1. brkga2's POPULATION assignment search over a fast decoder finds far better
+                        # assignments (prob_24 3.1M->2.05M, prob_34 3.9M->2.58M). best-of -> can't regress.
+                        try:
+                            import brkga2
+                            bt = timelimit * 0.90 - (time.time() - t0) - 3.0
+                            if bt > 8.0 and seeds_asg:
+                                bs = brkga2.solve_brkga2(prob_info, bt, seeds=seeds_asg, seed_sols=seed_sols,
+                                                         workers=4, beam_final=True)
+                                r = _ck(bs)
+                                if r["feasible"] and r["objective"] < best_obj:
+                                    best, best_obj = bs, r["objective"]
+                                _tr("brkga2-bound", prob_info, bs, utils, t0, best_obj)
+                        except Exception:
+                            pass
                     else:
-                        bases = [best]
-                    per = (timelimit * 0.88 - (time.time() - t0)) / max(1, len(bases))
-                    for zb in bases:
-                        if timelimit * 0.88 - (time.time() - t0) < 6.0:
-                            break
-                        zz = cpsat_z3.cpsat_z3(prob_info, zb, utils,
-                                               time_budget=per, per_bay_tl=min(20.0, per * 0.25))
-                        r = _ck(zz)
+                        # Z1=0-REACHABLE: cpsat_z3 (Z3 descent) + asls (Z2). PREFER the construct basin (pref-
+                        # sharp -> descends to Z3~67 vs anytime's ~191; one deep deterministic run -> prob_3
+                        # stable 43250). No construct (prob_4): descent is variable, so best-of two deep
+                        # attempts when budget allows (different low-Z3 base if any, else re-run -- CP-SAT non-det).
+                        _cz = [e for e in z10 if e[2]]
+                        if _cz:
+                            bases = [min(_cz, key=lambda x: x[0])[1]]
+                        else:
+                            srt = [e[1] for e in sorted(z10, key=lambda x: x[0])]
+                            deep = (timelimit * 0.88 - (time.time() - t0)) > 60.0
+                            bases = (srt[:2] if len(srt) >= 2 else srt * 2) if deep else srt[:1]
+                        per = (timelimit * 0.88 - (time.time() - t0)) / max(1, len(bases))
+                        for zb in bases:
+                            if timelimit * 0.88 - (time.time() - t0) < 6.0:
+                                break
+                            zz = cpsat_z3.cpsat_z3(prob_info, zb, utils,
+                                                   time_budget=per, per_bay_tl=min(20.0, per * 0.25))
+                            r = _ck(zz)
+                            if r["feasible"] and r["objective"] < best_obj:
+                                best, best_obj = zz, r["objective"]
+                            _tr("cpsat_z3", prob_info, zz, utils, t0, best_obj)
+                        aa = _asls.asls(prob_info, best, utils, time_budget=3.0)
+                        r = _ck(aa)
                         if r["feasible"] and r["objective"] < best_obj:
-                            best, best_obj = zz, r["objective"]
-                        _tr("cpsat_z3", prob_info, zz, utils, t0, best_obj)
-                    aa = _asls.asls(prob_info, best, utils, time_budget=3.0)
-                    r = _ck(aa)
-                    if r["feasible"] and r["objective"] < best_obj:
-                        best, best_obj = aa, r["objective"]
-                    _tr("asls", prob_info, aa, utils, t0, best_obj)
+                            best, best_obj = aa, r["objective"]
+                        _tr("asls", prob_info, aa, utils, t0, best_obj)
             except Exception:
                 pass
             # final polish (cheap best-of): placement-rule swap (contact-max anti-fragmentation, helps
