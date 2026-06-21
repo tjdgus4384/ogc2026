@@ -15,9 +15,9 @@ DEV = os.path.join(ROOT, "solution", "dev")
 SUB = os.path.join(ROOT, "submissions")
 
 # production set (myalgorithm transitive) + the C placer + utils (competition-provided, bundled for safety)
-FILES = ["myalgorithm.py", "anytime.py", "assign_lns.py", "beam_polish.py", "brkga2.py", "cpsat_packer.py",
-         "cpsat_polish.py", "cpsat_z3.py", "improve.py", "master.py", "packer.py", "polypack.py", "solve.py",
-         "placer.c"]
+FILES = ["myalgorithm.py", "anytime.py", "asls.py", "assign_lns.py", "beam_polish.py", "brkga2.py",
+         "cpsat_packer.py", "cpsat_polish.py", "cpsat_z3.py", "improve.py", "master.py", "packer.py",
+         "polypack.py", "solve.py", "placer.c"]
 
 
 def main():
