@@ -44,12 +44,30 @@ def cmd_run(args):
             rec["spread_pct"] = round((max(objs) - min(objs)) / min(objs) * 100, 1)
         out["results"][f"prob_{pid}"] = rec
         sp = f" spread={rec.get('spread_pct')}%" if "spread_pct" in rec else ""
+        beat = update_best(f"prob_{pid}", rec)            # naturally raise best_known whenever beaten
         print(f"prob_{pid}: obj={rec['obj']} z1={rec.get('z1')} z2={rec.get('z2')} z3={rec.get('z3')} "
-              f"({rec['sec']}s){sp}", flush=True)
+              f"({rec['sec']}s){sp}{beat}", flush=True)
     path = os.path.join(RES, f"{args.tag}.json")
     json.dump(out, open(path, "w"), indent=2)
     print(f"saved {path}")
     diff(out["results"], load_ref(args.vs), args.tag, args.vs)
+
+
+_BK = os.path.join(ROOT, "data", "best_known.json")
+
+
+def update_best(inst, rec):
+    """If this result beats best_known[inst], raise it (best_known = live ceiling, auto-maintained).
+    Returns a ' NEW BEST ...' suffix for the log, else ''."""
+    if not rec.get("feas") or rec.get("obj") is None:
+        return ""
+    bk = json.load(open(_BK)) if os.path.exists(_BK) else {}
+    old = bk.get(inst)
+    if old is None or rec["obj"] < old - 1e-9:
+        bk[inst] = rec["obj"]
+        json.dump(bk, open(_BK, "w"), indent=0, sort_keys=True)
+        return f"  NEW BEST (was {old})"
+    return ""
 
 
 def load_ref(vs):
