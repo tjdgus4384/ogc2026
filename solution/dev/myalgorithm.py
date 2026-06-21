@@ -203,7 +203,8 @@ def algorithm(prob_info, timelimit=60):
                 def _ck(s):
                     return utils.check_feasibility(prob_info, s)
                 if cpsat_useful and seed_sols and (timelimit * 0.88 - (time.time() - t0)) > 8.0:
-                    z10 = []                                          # (Z3, sol) Z1=0-packable candidates
+                    construct_sigs = {tuple(sorted(_asg(cz).items())) for cz in construct_sols}
+                    z10 = []                                          # (Z3, sol, is_construct) Z1=0 candidates
                     seen = set(); n_polished = 0
                     for cs in sorted(seed_sols, key=lambda s: _ck(s).get("objective", 1e18)):
                         rc = _ck(cs)
@@ -214,7 +215,7 @@ def algorithm(prob_info, timelimit=60):
                             continue
                         seen.add(sig)
                         if rc.get("obj1", 1) == 0:
-                            z10.append((rc.get("obj3", 0), cs))       # already Z1=0 -> free
+                            z10.append((rc.get("obj3", 0), cs, sig in construct_sigs))   # already Z1=0 -> free
                         elif not z10 and n_polished < 3 and time.time() - t0 < timelimit * 0.62:
                             # only spend packing time when NO Z1=0 base exists yet (don't waste it on the
                             # unpackable ILP seed when construct already gave a Z1=0 base -- that cost prob_3).
@@ -229,9 +230,13 @@ def algorithm(prob_info, timelimit=60):
                                 if rp["objective"] < best_obj:
                                     best, best_obj = cpp, rp["objective"]
                                 if rp.get("obj1", 1) == 0:
-                                    z10.append((rp.get("obj3", 0), cpp))
+                                    z10.append((rp.get("obj3", 0), cpp, sig in construct_sigs))
                             _tr(f"polish[{sig and n_polished}]", prob_info, cpp, utils, t0, best_obj)
-                    zbase = min(z10, key=lambda x: x[0])[1] if z10 else best   # lowest-Z3 Z1=0 base
+                    # PREFER the construct basin: it is pref-sharp, so cpsat_z3 descends Z3 far deeper from it
+                    # (prob_3 -> Z3 67 vs the anytime basin's 191) even when its START Z3 is a touch higher.
+                    # Among Z1=0 candidates, pick the lowest-Z3 CONSTRUCT one; else the lowest-Z3 overall.
+                    _cz = [e for e in z10 if e[2]]
+                    zbase = min(_cz or z10, key=lambda x: x[0])[1] if z10 else best
                     z3_avail = timelimit * 0.88 - (time.time() - t0)
                     if z3_avail > 6.0:
                         zz = cpsat_z3.cpsat_z3(prob_info, zbase, utils,
