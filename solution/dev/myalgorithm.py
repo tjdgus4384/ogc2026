@@ -207,16 +207,17 @@ def algorithm(prob_info, timelimit=60):
                 import cpsat_z3, asls as _asls
                 z3_avail = timelimit * 0.88 - (time.time() - t0)   # finish before the 0.90 hard deadline
                 if cpsat_useful and z3_avail > 10.0:
-                    # cpsat_z3 (Z3 descent) runs from the LOWEST-Z3 Z1=0 seed. ROOT CAUSE of the small-instance
-                    # non-monotonicity: starting from the obj-min `best` means more anytime time -> anytime wins
-                    # `best` (low obj, HIGH Z3) -> cpsat_z3's descent stalls (Z3~191) vs the construct basin
-                    # (Z3~67). The construct seeds are pref-sharp + Z1=0, so descend cleanly. best-of -> safe.
+                    # cpsat_z3 (Z3 descent) base = the lowest-Z3 Z1=0-PACKABLE seed. The construct seeds are
+                    # pref-sharp (purpose-built low-Z3) and descend cleanly when they ARE Z1=0 (prob_3: -> 43250).
+                    # When construct is NOT Z1=0-packable (prob_4: dense bays force tardiness), this falls back
+                    # to `best` (the cpsat_polish'd anytime basin) automatically -- a graceful unified rule, not
+                    # a per-instance hack. Full budget on the chosen base (no splitting/probe overhead).
                     zbase = best
                     if construct_sols:
                         cand = min(construct_sols,
                                    key=lambda s: utils.check_feasibility(prob_info, s).get("obj3", 1e18))
                         if utils.check_feasibility(prob_info, cand).get("obj1", 1) == 0:
-                            zbase = cand
+                            zbase = cand          # construct basin descends better even if its start-Z3 is higher
                     zz = cpsat_z3.cpsat_z3(prob_info, zbase, utils,
                                            time_budget=z3_avail, per_bay_tl=min(20.0, z3_avail * 0.25))
                     r = utils.check_feasibility(prob_info, zz)
