@@ -68,7 +68,7 @@ def _py_place(active, orients, release, proc, W, H, max_ent=48):
     return (max(0, math.ceil(-o[1])), max(0, math.ceil(-o[2])), 0, max(release, mx))
 
 
-def beam_bay(W, H, ids, MB, ORS, ORA, K=8, C=3, tl=20.0):
+def beam_bay(W, H, ids, MB, ORS, ORA, K=48, C=4, tl=20.0):
     """Beam search a single bay's blocks (entry-order + placement) -> [(bid,x,y,oi,e,f)], min tardiness."""
     lib = _load_lib()
     t0 = time.time()
@@ -170,11 +170,10 @@ def beam_bay(W, H, ids, MB, ORS, ORA, K=8, C=3, tl=20.0):
     return beam[0][1], beam[0][0]
 
 
-def beam_polish(prob, sol, utils, time_budget=60.0, K=8, C=3):
+def beam_polish(prob, sol, utils, time_budget=60.0, K=48, C=4):
     """Re-schedule each bay's blocks via beam search; keep per-bay improvements. Returns improved sol.
-    K=8 (was 48): measured to reach the SAME per-bay Z1 as K=48 ~10x faster (prob_38 100-block bay: K=8
-    Z1=2184 in 2.3s vs K=48 2204 in 19s), so on large/congested instances every tardy bay gets fully beam-
-    re-scheduled within budget instead of the later bays timing out mid-search at K=48."""
+    K=48: a narrow K=8 reached the same Z1 ~10x faster on 100+ block bays, but on ~50-block bays the wider
+    K=48 beam packs better (and still finishes in ~19s < the per-bay budget), so it's the safer default."""
     from solve import build_ops
     t0 = time.time()
     braw = prob["blocks"]; bays = prob["bays"]

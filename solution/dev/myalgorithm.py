@@ -48,10 +48,52 @@ def _sanitize(prob_info):
 
 
 def algorithm(prob_info, timelimit=60):
+    # FUNDAMENTAL time-limit guarantee: the optimization runs in a DAEMON thread; this main thread returns
+    # the best-so-far at a hard wall-clock deadline regardless of what the worker is doing. A SIGALRM cannot
+    # interrupt an in-flight C call (CP-SAT, Shapely, mp.Pool), so it could overrun and the grader would kill
+    # the process before any output -> infeasible (the P3 mode). A thread join CANNOT overrun: we abandon the
+    # worker (daemon) and return whatever it has committed to the shared state, which is at worst the floor.
+    import utils, solve, threading
+    t0 = time.time()
+    san = _sanitize(prob_info)
+    S = {"best": {"operations": {}}, "obj": float("inf")}
+    lock = threading.Lock()
+    try:                                   # synchronous always-feasible floor BEFORE the worker starts
+        f = solve.serialize_floor(san)
+        r = utils.check_feasibility(san, f)
+        if r["feasible"]:
+            S["best"], S["obj"] = f, r["objective"]
+    except Exception:
+        pass
+    th = threading.Thread(target=_impl, args=(prob_info, timelimit, t0, S, lock), daemon=True)
+    th.start()
+    th.join(timeout=max(0.5, timelimit * 0.93 - (time.time() - t0)))   # hard return deadline
+    with lock:
+        best = S["best"]
+
+    def _ok(sol):                          # final GUARD: never return infeasible (validate vs ORIGINAL prob)
+        try:
+            return utils.check_feasibility(prob_info, sol)["feasible"]
+        except Exception:
+            return False
+    if not _ok(best):
+        try:
+            fl = solve.serialize_floor(san)
+            best = fl if _ok(fl) else best
+        except Exception:
+            pass
+        if not _ok(best):
+            try:
+                best = solve.serialize_floor(prob_info)
+            except Exception:
+                pass
+    return best
+
+
+def _impl(prob_info, timelimit, t0, S, lock):
     import utils
     import solve
 
-    t0 = time.time()
     work = timelimit * 0.80
     orig = prob_info                       # the server validates against THIS (original P, incl P=0)
     prob_info = _sanitize(prob_info)       # internal copy with P>=1 (EXIT strictly after ENTRY)
@@ -64,6 +106,12 @@ def algorithm(prob_info, timelimit=60):
     except Exception:
         best, best_obj = {"operations": {}}, float("inf")
 
+    def _sync():                           # publish best-so-far to the shared state the main thread returns
+        with lock:
+            if best_obj < S["obj"]:
+                S["best"], S["obj"] = best, best_obj
+    _sync()
+
     # -- footprint-disjoint greedy (better start), adopt only if feasible -------
     try:
         c = solve.solve(prob_info, "pref")
@@ -72,17 +120,11 @@ def algorithm(prob_info, timelimit=60):
             best, best_obj = c, r["objective"]
     except Exception:
         pass
+    _sync()
 
-    # -- HARD DEADLINE: a fast feasible `best` (the floor) is already in hand. Guard the EXPENSIVE stages
-    # with a SIGALRM so that NO slow stage (large bay, huge n, congested combo) can run past the limit and
-    # get the process KILLED before we return -- the reproduced P3 failure mode. _Deadline subclasses
-    # BaseException so the inner `except Exception` blocks can't swallow it. -----------------------------
-    class _Deadline(BaseException):
-        pass
-
-    def _on_alarm(signum, frame):
-        raise _Deadline()
-
+    # The expensive stages below run inside this daemon worker; the main thread enforces the wall-clock
+    # deadline by abandoning us, so no SIGALRM is needed (and signals don't work off the main thread anyway).
+    # Each stage calls _sync() so the main thread always has the latest committed best when it returns.
     remaining = work - (time.time() - t0)
     if remaining > 8:
         # SIZE-ADAPTIVE budgeting. Small bays (CP-SAT-tractable) -> the EXACT path (anytime seed ->
@@ -94,14 +136,6 @@ def algorithm(prob_info, timelimit=60):
         # anytime is now ADAPTIVE: it internally detects improve-favored (low-congestion) instances after
         # its construct and continues a CP-free improve there (capturing the wins a parallel improve member
         # would, but WITHOUT stealing cores -> no congested regression). So no separate improve child.
-        armed = False; _old = None
-        try:
-            import signal
-            _old = signal.signal(signal.SIGALRM, _on_alarm)
-            signal.setitimer(signal.ITIMER_REAL, max(1.0, timelimit * 0.90 - (time.time() - t0)))
-            armed = True
-        except Exception:
-            armed = False
         try:
             # ============================ UNIFIED ENGINE: seeded BRKGA ============================
             # The problem = set-partitioning (assignment fixes Z2/Z3 & bounds Z1; per-bay packing fixes Z1).
@@ -183,27 +217,36 @@ def algorithm(prob_info, timelimit=60):
                 # SMALL bays: skip BRKGA entirely -> the exact path (cpsat_polish + cpsat_z3) gets the whole
                 # budget (it solves them to/below best; BRKGA's beam base just wastes small-instance time).
                 if brk_t > 8.0 and seed_sols and not cpsat_useful:
-                    bsol = brkga2.solve_brkga2(prob_info, brk_t, seeds=seeds_asg, seed_sols=seed_sols,
-                                               workers=4, beam_final=True)
-                    r = utils.check_feasibility(prob_info, bsol)
-                    if r["feasible"] and r["objective"] < best_obj:
-                        best, best_obj = bsol, r["objective"]
-                    # ASSIGNMENT polish on the brkga2 result (LARGE path). brkga2 selects assignments by its
-                    # greedy decoder's Z1 -> it leaves Z2/Z3 noisy/high. asls descends Z2+Z3 by Z1-preserving
-                    # insertion; LARGE multi-bay instances have room for it to relocate blocks to preferred
-                    # bays, so it cuts a lot (prob_20 535k->257k, prob_17 98k->77k -- both beat best) and it
-                    # absorbs brkga2's assignment variance. Fast (~1s), best-of -> can't regress.
-                    try:
-                        import asls as _asls_l
-                        aa = _asls_l.asls(prob_info, best, utils, time_budget=max(2.0, timelimit * 0.88 - (time.time() - t0)))
-                        r = utils.check_feasibility(prob_info, aa)
+                    # MULTI-START brkga2 + asls polish, best-of. brkga2's per-instance ASSIGNMENT draw is high-
+                    # variance (prob_20: a Z1=0 draw -> 254k, a Z1=10 draw -> 410k; prob_37 single even regressed
+                    # past best). A single long run gambles on one draw; best-of N independent starts reliably
+                    # avoids the bad draw AND scales with budget (more time -> more starts -> better). After each
+                    # start, asls descends Z2+Z3 (Z1-preserving insertion -- large multi-bay has the room;
+                    # prob_20 535k->257k, prob_17 98k->77k). N ~ brk_t/80 (120s->1, 300s->~3).
+                    import asls as _asls_l
+                    N = max(1, int(brk_t / 80.0))
+                    per = brk_t / N
+                    for _k in range(N):
+                        if timelimit * 0.85 - (time.time() - t0) < 8.0:
+                            break
+                        bsol = brkga2.solve_brkga2(prob_info, per, seeds=seeds_asg, seed_sols=seed_sols,
+                                                   workers=4, seed=_k, beam_final=True)
+                        r = utils.check_feasibility(prob_info, bsol)
                         if r["feasible"] and r["objective"] < best_obj:
-                            best, best_obj = aa, r["objective"]
-                        _tr("asls-large", prob_info, aa, utils, t0, best_obj)
-                    except Exception:
-                        pass
+                            best, best_obj = bsol, r["objective"]
+                        try:
+                            aa = _asls_l.asls(prob_info, best, utils,
+                                              time_budget=max(2.0, timelimit * 0.88 - (time.time() - t0)))
+                            r = utils.check_feasibility(prob_info, aa)
+                            if r["feasible"] and r["objective"] < best_obj:
+                                best, best_obj = aa, r["objective"]
+                        except Exception:
+                            pass
+                        _tr(f"brkga2+asls[{_k}]", prob_info, best, utils, t0, best_obj)
+                        _sync()                            # publish after each start (abandon-safe)
             except Exception:
                 pass
+            _sync()
             # SMALL-bay UNIFIED exact polish. Per-bay CP-SAT packing is FAST (~1-5s/bay even at 50 blocks), so
             # whether Z1=0 is reached is about the ASSIGNMENT (which blocks share a bay), not packing speed. A
             # single seed can draw a Z1_min>0 split (prob_4 stalled at Z1=2); other seeds are Z1=0-packable.
@@ -296,56 +339,30 @@ def algorithm(prob_info, timelimit=60):
                         _tr("asls", prob_info, aa, utils, t0, best_obj)
             except Exception:
                 pass
-            # final polish -- SMALL bays ONLY (cpsat_useful). For LARGE instances these were (a) low-value
-            # (per-bay Z2/Z3-fixed polish on already-brkga2-decoded bays) and (b) the dominant TIMEOUT risk:
-            # polypack runs Shapely per bay near the deadline (0.97T originally), an uninterruptible C path
-            # that can overrun the hard limit on a big bay -> process killed -> infeasible (the P3 mode). So on
-            # large we end at brkga2+beam_final (internally time-bounded) and give brkga2 that freed budget.
-            if cpsat_useful:
-                try:
-                    import assign_lns
-                    pp = assign_lns.placement_polish(prob_info, best, utils,
-                                                     time_budget=max(2.0, timelimit * 0.80 - (time.time() - t0)))
-                    r = utils.check_feasibility(prob_info, pp)
-                    if r["feasible"] and r["objective"] < best_obj:
-                        best, best_obj = pp, r["objective"]
-                except Exception:
-                    pass
-                try:
-                    import polypack
-                    pol = polypack.polish_solution(prob_info, best, utils,
-                                                   time_budget=max(3.0, timelimit * 0.83 - (time.time() - t0)))
-                    r = utils.check_feasibility(prob_info, pol)
-                    if r["feasible"] and r["objective"] < best_obj:
-                        best, best_obj = pol, r["objective"]
-                except Exception:
-                    pass
-        except _Deadline:
-            pass                                            # hard deadline hit -> stop, return best so far
-        finally:
-            if armed:
-                try:
-                    signal.setitimer(signal.ITIMER_REAL, 0)
-                    signal.signal(signal.SIGALRM, _old)
-                except Exception:
-                    pass
-
-    # -- final GUARD: never return an infeasible/empty solution. Validate against the ORIGINAL prob
-    # (what the server checks), not the sanitized copy -- this is the P3 -1 insurance. The sanitized
-    # serialize_floor (EXIT=ENTRY+max(1,P)) is feasible under the original P (incl P=0). ----------
-    def _ok(sol):
-        try:
-            return utils.check_feasibility(orig, sol)["feasible"]
-        except Exception:
-            return False
-    if not _ok(best):
-        try:
-            best = solve.serialize_floor(prob_info)        # sanitized floor: EXIT strictly after ENTRY
-        except Exception:
-            best = {"operations": {}}
-        if not _ok(best):                                  # last resort: floor on original
+            _sync()
+            # final polish (ALL instances). polypack (polygon density) tightens congested packing -> helps
+            # large congested too (skipping it regressed prob_23/26/33), so it runs for large as well, but now
+            # bounded to 0.83T (was 0.97T -- the late-Shapely overrun that risked the P3 timeout). The tighter
+            # deadline, not skipping, is the timeout guard (0.17T margin); the SIGALRM (0.90T) backstops.
             try:
-                best = solve.serialize_floor(orig)
+                import assign_lns
+                pp = assign_lns.placement_polish(prob_info, best, utils,
+                                                 time_budget=max(2.0, timelimit * 0.80 - (time.time() - t0)))
+                r = utils.check_feasibility(prob_info, pp)
+                if r["feasible"] and r["objective"] < best_obj:
+                    best, best_obj = pp, r["objective"]
             except Exception:
                 pass
-    return best
+            try:
+                import polypack
+                pol = polypack.polish_solution(prob_info, best, utils,
+                                               time_budget=max(3.0, timelimit * 0.83 - (time.time() - t0)))
+                r = utils.check_feasibility(prob_info, pol)
+                if r["feasible"] and r["objective"] < best_obj:
+                    best, best_obj = pol, r["objective"]
+            except Exception:
+                pass
+            _sync()
+        except Exception:
+            pass
+    _sync()                                                # final publish to the shared state
