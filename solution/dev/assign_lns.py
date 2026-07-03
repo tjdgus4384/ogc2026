@@ -181,6 +181,12 @@ def placement_polish(prob, sol, utils, time_budget=8.0):
         for j, lst in byb.items():
             if _t.time() - t0 > time_budget:
                 break
+            # LARGE-BAY GUARD (P3 timeout safety). pack_bay's extreme-point "best" placement scans
+            # candidate corners per block with a per-bay-only time-check -> a single huge bay's pack is an
+            # un-interruptible call that can blow the wall budget (the P3 -1 mode). Skip oversized bays
+            # (keep their current placement); the contact-max win is on normal-sized congested bays anyway.
+            if int(bays[j]["width"]) * int(bays[j]["height"]) > 60000:
+                continue
             order = [i for _, i in sorted(lst)]            # current entry order
             cur_td = sum(max(0, cur[i][5] - due[i]) for i in order)
             metas = [MB[i] for i in order]

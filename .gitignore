@@ -3,3 +3,4 @@ __pycache__/
 *.so
 .claude/scheduled_tasks.lock
 solution/*.zip
+scratchpad/

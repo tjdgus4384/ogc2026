@@ -214,7 +214,12 @@ def beam_polish(prob, sol, utils, time_budget=60.0, K=48, C=4):
         if bay_tard(ids) <= 0 or len(ids) < 2:
             continue
         bl = min(25.0, time_budget - (time.time() - t0))
-        packed, _ = beam_bay(int(bays[j]["width"]), int(bays[j]["height"]), ids, MB, ORS, ORA, K=K, C=C, tl=bl)
+        # ADAPTIVE beam width by bay size: a wide K explores better but is O(K) slower per block. Medium bays
+        # (<=60) afford the full K; large bays need a narrower K to finish within bl (K=8 reaches ~the same Z1
+        # 10x faster at 100+ blocks, while K=48 on a 50-block bay packs better). Root cause of the K=8-vs-48
+        # tradeoff: width should scale inversely with block count, not be a single constant.
+        K_bay = max(6, min(K, int(K * 60.0 / max(1, len(ids)))))
+        packed, _ = beam_bay(int(bays[j]["width"]), int(bays[j]["height"]), ids, MB, ORS, ORA, K=K_bay, C=C, tl=bl)
         trial = {i: list(cur[i]) for i in cur}
         for (bid, x, y, oi, e, f) in packed:
             trial[bid] = [j, x, y, OI[bid][oi], e, f]   # oi is a list-position -> map to real orient_idx

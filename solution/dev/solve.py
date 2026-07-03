@@ -11,7 +11,7 @@ import math
 from packer import block_meta
 
 
-def ilp_assign(prob, tl=15.0):
+def ilp_assign(prob, tl=15.0, relax_energetic=False, forbid=None, set_forbid=None):
     """Exact CP-SAT block->bay assignment minimizing w2*Z2 + w3*Z3 (these depend ONLY on the assignment,
     not on positions/timing -- utils:1411-1426). Returns {block_id: bay_id} or None. Packing this to Z1=0
     (improve with fix_assign=True) is near-optimal on small/low-congestion instances: the improver's greedy
@@ -56,8 +56,13 @@ def ilp_assign(prob, tl=15.0):
                 cm.Add(D >= WLj[j1] - WLj[j2])
     o3 = cm.NewIntVar(0, max(1, sum(smax)), "")
     cm.Add(o3 == sum(x[i][j] * (smax[i] - pref[i][j]) for i in range(n) for j in range(m)))
-    for j in range(m):                                    # energetic area-over-time -> bias to Z1=0-packable
-        cm.Add(sum(x[i][j] * aabb_proc(i) for i in range(n)) <= int(areas[j] * MAXT))
+    if not relax_energetic:                               # energetic area-over-time -> bias to Z1=0-packable
+        for j in range(m):
+            cm.Add(sum(x[i][j] * aabb_proc(i) for i in range(n)) <= int(areas[j] * MAXT))
+    for A in (forbid or []):                              # NO-GOOD CUTS (combinatorial Benders): forbid exact
+        cm.Add(sum(x[i][A[i]] for i in range(n) if i in A) <= len(A) - 1)   # assignments geompolish proved un-packable
+    for (j, S) in (set_forbid or []):                     # SET CUTS: the over-packed bay's block-set can't ALL be
+        cm.Add(sum(x[i][j] for i in S) <= len(S) - 1)     # in bay j together (prunes the whole un-packable cluster)
     cm.Minimize(w2 * D + w3 * SCALE * o3)
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = float(tl); solver.parameters.num_search_workers = 4
@@ -73,41 +78,56 @@ def serialize_floor(prob):
     spatial overlap => crane+collision trivially satisfied; containment holds because each block is placed
     in a bay+orientation it fits. This is the -1 insurance and the final GUARD fallback. Robust to any
     valid instance; never raises (degenerate block -> placed in largest bay, orient 0, clamped)."""
+    import utils as _u
     bays = prob["bays"]; nb = len(bays)
     bay_last = [0] * nb
     placements = {}
-    def safe_meta(i):
+    blocks = prob["blocks"]
+
+    def _verified(i, oi, j):
+        """INTEGER min-corner placement of block i, orient INDEX oi, in bay j, computed from utils' OWN
+        Block.bounding_rect (so the frame matches the validator) and VERIFIED with bay.contains_block.
+        Returns (X, Y) ints or None. Integer X so the validator's int(round(x)) is identity -> consistent."""
         try:
-            return block_meta(prob["blocks"][i], i)
+            bb = _u.Block(block_id=i, block_data=blocks[i], x=0.0, y=0.0, orient_idx=oi).bounding_rect()
+            mnx, mny, mxx, mxy = bb
+            W = int(bays[j]["width"]); H = int(bays[j]["height"])
+            if (mxx - mnx) > W + 1e-9 or (mxy - mny) > H + 1e-9:
+                return None
+            # integer min-corner: X+mnx>=0 -> X=ceil(-mnx). Then VERIFY against utils (catches any frame edge).
+            X = max(0, math.ceil(-mnx)); Y = max(0, math.ceil(-mny))
+            bay = _u.Bay.from_dict(bays[j], j)
+            blk = _u.Block(block_id=i, block_data=blocks[i], x=X, y=Y, orient_idx=oi)
+            return (X, Y) if bay.contains_block(blk) else None
         except Exception:
-            return {"id": i, "release": prob["blocks"][i].get("release_time", 0),
-                    "proc": prob["blocks"][i].get("processing_time", 1),
-                    "due": prob["blocks"][i].get("due_date", 0), "orients": [(0, 0.0, 0.0, 1.0, 1.0)]}
-    metas = [safe_meta(i) for i in range(len(prob["blocks"]))]
-    order = sorted(range(len(metas)), key=lambda i: (metas[i]["due"], metas[i]["proc"]))
+            return None
+
+    def _norients(i):
+        try:
+            return max(1, len(blocks[i].get("shape", []) or []))
+        except Exception:
+            return 1
+
+    order = sorted(range(len(blocks)),
+                   key=lambda i: (blocks[i].get("due_date", 0), blocks[i].get("processing_time", 1)))
     for i in order:
-        mt = metas[i]; b = prob["blocks"][i]
-        chosen = None
-        try:
-            for j, bay in enumerate(bays):
-                for (oi, lx0, ly0, lx1, ly1) in mt["orients"]:
-                    if math.ceil(-lx0) <= math.floor(bay["width"] - lx1) and \
-                       math.ceil(-ly0) <= math.floor(bay["height"] - ly1):
-                        chosen = (j, oi, lx0, ly0); break
-                if chosen:
-                    break
-        except Exception:
-            chosen = None
-        if chosen is None:                       # degenerate / fits no bay -> largest bay, orient 0
-            j = max(range(nb), key=lambda j: bays[j]["width"] * bays[j]["height"]) if nb else 0
-            ors = mt.get("orients") or [(0, 0.0, 0.0, 1.0, 1.0)]   # never index an empty orient list
-            oi, lx0, ly0 = ors[0][0], ors[0][1], ors[0][2]
-            chosen = (j, oi, lx0, ly0)
-        j, oi, lx0, ly0 = chosen
-        # f > e always (P>=1 internally; max(1,P) guards a stray P=0 so EXIT != ENTRY)
+        b = blocks[i]
+        chosen = None                            # (j, oi, X, Y) -- utils-VERIFIED contained integer placement
+        for j in range(nb):
+            for oi in range(_norients(i)):
+                pos = _verified(i, oi, j)
+                if pos is not None:
+                    chosen = (j, oi, pos[0], pos[1]); break
+            if chosen:
+                break
+        if chosen is None:                       # genuinely unplaceable in NO bay/orient -> best effort (0,0)
+            j = max(range(nb), key=lambda jj: bays[jj]["width"] * bays[jj]["height"]) if nb else 0
+            chosen = (j, 0, 0, 0)
+        j, oi, X, Y = chosen
+        # f > e always (max(1,P) guards a stray P=0 so EXIT strictly after ENTRY); single occupancy per bay
         e = max(b.get("release_time", 0), bay_last[j]); f = e + max(1, b.get("processing_time", 1))
         bay_last[j] = f
-        placements[i] = (j, max(0, math.ceil(-lx0)), max(0, math.ceil(-ly0)), oi, e, f)
+        placements[i] = (j, X, Y, oi, e, f)
     return build_ops(placements)
 
 
@@ -153,8 +173,18 @@ def _pack_all(prob, metas, assign):
     placements = {}  # id -> (bay, x, y, oi, e, f)
     for j, bay in enumerate(bays):
         grp = sorted(by_bay[j], key=lambda mt: (mt["due"], mt["proc"]))
-        for (bid, x, y, oi, e, f) in pack_bay(bay["width"], bay["height"], grp):
-            placements[bid] = (j, x, y, oi, e, f)
+        try:
+            for (bid, x, y, oi, e, f) in pack_bay(bay["width"], bay["height"], grp):
+                placements[bid] = (j, x, y, oi, e, f)
+        except Exception:
+            # CRASH-PROOF: one bay's pack_bay raising must NOT lose the WHOLE instance to the single-occupancy
+            # floor (the P3 near-floor mode). Serialize ONLY this bay (single occupancy, EDD order) so the
+            # other bays keep their good parallel packing.
+            t = 0
+            for mt in grp:
+                e = max(mt["release"], t); f = e + max(1, mt["proc"]); t = f
+                oi0 = mt["orients"][0][0] if mt.get("orients") else 0
+                placements[mt["id"]] = (j, 0, 0, oi0, e, f)
     return placements
 
 
@@ -163,8 +193,12 @@ def build_ops(placements):
     for bid, (j, x, y, oi, e, f) in placements.items():
         ops.setdefault(str(int(f)), []).append({"type": "EXIT", "block_id": bid, "bay_id": j})
     for bid, (j, x, y, oi, e, f) in placements.items():
+        # The validator rounds positions: it builds blocks with x=int(round(a["x"])) (utils.py ~1154). Emit
+        # the SAME int(round(...)) so our local check matches the grader exactly (truncating int() could read
+        # a feasible 4.6 as 4 -> a spurious local pass the grader rounds to 5). Fractional placement is moot.
         ops.setdefault(str(int(e)), []).append({"type": "ENTRY", "block_id": bid, "bay_id": j,
-                                                 "x": int(x), "y": int(y), "orient_idx": oi})
+                                                 "x": int(round(float(x))), "y": int(round(float(y))),
+                                                 "orient_idx": oi})
     for t in ops:
         ops[t].sort(key=lambda o: (0 if o["type"] == "EXIT" else 1, o["block_id"]))
     return {"operations": {t: ops[t] for t in sorted(ops, key=int)}}

@@ -69,6 +69,10 @@ def _submit(prob, tl):
     import myalgorithm
     return myalgorithm.algorithm(prob, tl)
 
+def _geomexp(prob, tl):
+    import geom_experiment
+    return geom_experiment.algorithm(prob, tl)
+
 SOLVERS = {
     "baseline": _baseline,
     "serialize": _floor_serialize,
@@ -79,6 +83,7 @@ SOLVERS = {
     "v1": _v1,
     "v2": _v2,
     "submit": _submit,
+    "geomexp": _geomexp,
 }
 
 

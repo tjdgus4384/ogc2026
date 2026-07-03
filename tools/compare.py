@@ -50,7 +50,7 @@ def cmd_run(args):
             rec["spread_pct"] = round((max(objs) - min(objs)) / min(objs) * 100, 1)
         out["results"][f"prob_{pid}"] = rec
         sp = f" spread={rec.get('spread_pct')}%" if "spread_pct" in rec else ""
-        beat = update_best(f"prob_{pid}", rec)            # naturally raise best_known whenever beaten
+        beat = "" if args.no_update_best else update_best(f"prob_{pid}", rec)
         print(f"prob_{pid}: obj={rec['obj']} z1={rec.get('z1')} z2={rec.get('z2')} z3={rec.get('z3')} "
               f"({rec['sec']}s){sp}{beat}", flush=True)
     path = os.path.join(RES, f"{args.tag}.json")
@@ -139,5 +139,7 @@ if __name__ == "__main__":
     ap.add_argument("--vs", default="best", help="reference: 'best' (best_known) or a saved tag name")
     ap.add_argument("--diff-only", action="store_true", help="don't run; just re-diff a saved tag vs --vs")
     ap.add_argument("--breakdown", action="store_true", help="classify bound (Z1/Z2/Z3 shares) of a saved tag")
+    ap.add_argument("--no-update-best", action="store_true",
+                    help="do not mutate data/best_known.json while running an experiment")
     a = ap.parse_args()
     (cmd_breakdown if a.breakdown else cmd_vs if a.diff_only else cmd_run)(a)

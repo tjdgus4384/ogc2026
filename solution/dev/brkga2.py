@@ -110,13 +110,18 @@ def _seed_chrom(assign, rng_vals, n):
     return c
 
 
-def solve_brkga2(prob, budget, seeds=None, seed_sols=None, workers=4, seed=0, verbose=False, beam_final=True):
+def solve_brkga2(prob, budget, seeds=None, seed_sols=None, workers=4, seed=0, verbose=False, beam_final=True,
+                 rho=0.70, pm_frac=0.15):
+    # rho (elite-gene inheritance prob) and pm_frac (mutant fraction) shape the explore<->exploit balance.
+    # The 4 PARALLEL islands pass DISTINCT (rho, pm_frac) so they converge to COMPLEMENTARY assignment basins
+    # (sharing only RNG seed made them correlated -> all 4 could miss the good basin in a given run, the
+    # prob_20 inter-run variance). Diverse lenses make best-of-4 reliably cover the good basin.
     import random as _r
     rng = _r.Random(seed); t0 = time.time()
     _init_worker(prob)
     n = _G["n"]; L = 2 * n
     pop = max(16, min(48, 2000 // max(1, n) * 4))
-    pe = max(1, int(0.20 * pop)); pm = max(1, int(0.15 * pop)); rho = 0.70
+    pe = max(1, int(0.20 * pop)); pm = max(1, int(pm_frac * pop))
 
     def rand_chrom():
         return [rng.random() for _ in range(L)]

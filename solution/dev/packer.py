@@ -28,13 +28,31 @@ def precompute_orients(blk):
     footprints fit more places first). Cuts the per-block orientation loop ~8 -> ~2-4."""
     seen = {}
     for oi, o in enumerate(blk["shape"]):
-        xs = [v[0] for l in o["layers"] for v in l]
-        ys = [v[1] for l in o["layers"] for v in l]
-        lx0, ly0, lx1, ly1 = min(xs), min(ys), max(xs), max(ys)
-        key = (round(lx0, 3), round(ly0, 3), round(lx1, 3), round(ly1, 3))
-        if key not in seen:
-            seen[key] = (oi, lx0, ly0, lx1, ly1)
+        # FRAME: utils.Block anchors the orientation by the FIRST VERTEX of layer 0 (world_v = v - ref + (x,y)),
+        # so the AABB must be expressed RELATIVE TO THAT REFERENCE -- otherwise a placement x=ceil(-lx0) lands
+        # the block's true footprint at world-min -ref (out of bounds when ref != 0). Train orients all have
+        # ref=(0,0) so this is a no-op there; rotated orients in other instances (P3) carry ref!=0 -> the raw
+        # frame placed them OOB -> infeasible. Subtracting ref makes our output x utils-correct for ALL orients.
+        # CRASH-PROOF: a malformed orientation (empty/degenerate layers, non-2D vertex) must NOT raise -- one
+        # bad orientation crashing precompute_orients propagates up through _pack_all -> solve.solve raises ->
+        # the engine falls back to the single-occupancy FLOOR for the WHOLE instance (the P3 near-floor mode).
+        # Skip a bad orientation; keep the rest.
+        try:
+            layers = o["layers"]
+            refx, refy = (layers[0][0][0], layers[0][0][1]) if (layers and layers[0]) else (0.0, 0.0)
+            xs = [v[0] - refx for l in layers for v in l]
+            ys = [v[1] - refy for l in layers for v in l]
+            if not xs or not ys:
+                continue
+            lx0, ly0, lx1, ly1 = min(xs), min(ys), max(xs), max(ys)
+            key = (round(lx0, 3), round(ly0, 3), round(lx1, 3), round(ly1, 3))
+            if key not in seen:
+                seen[key] = (oi, lx0, ly0, lx1, ly1)
+        except Exception:
+            continue
     out = list(seen.values())
+    if not out:                                  # no parseable orientation -> a safe unit footprint at oi 0
+        out = [(0, 0.0, 0.0, 1.0, 1.0)]
     out.sort(key=lambda t: (t[3] - t[1]) * (t[4] - t[2]))
     return out
 
@@ -68,17 +86,23 @@ def _contact(X0, Y0, X1, Y1, W, H, present):
     return c
 
 
-def _best_pos(W, H, lx0, ly0, lx1, ly1, present):
+def _best_pos(W, H, lx0, ly0, lx1, ly1, present, cap=None):
     """Extreme-point / best-fit placement: among all feasible corner candidates (bay corner + right/top
     edges of present items = the candidate set for no-gravity packing), pick the one MAXIMIZING contact
     (snuggest nestle), tie-break lowest-then-leftmost. Placement rule is the dominant lever for packing
-    quality (Crainic-Perboli-Tadei). Returns (px,py,X0,Y0,X1,Y1) or None."""
+    quality (Crainic-Perboli-Tadei). Returns (px,py,X0,Y0,X1,Y1) or None.
+    `cap` (set on LARGE bays) bounds the candidate set per axis to the `cap` LOWEST positions -- the cost is
+    O(cap^2) per call instead of O(|present|^2); for bottom-left placement the lowest candidates are exactly
+    the ones that matter, so on huge bays this is a big speedup at negligible quality cost (the P3 large-bay
+    slowness: |present| grows with bay area -> O(|present|^2) per probe blew up to ~30s/pack)."""
     base_x = max(0, math.ceil(-lx0)); base_y = max(0, math.ceil(-ly0))
     xs = {base_x}; ys = {base_y}
     for (a0, b0, a1, b1, _) in present:
         xs.add(math.ceil(a1 - lx0)); ys.add(math.ceil(b1 - ly0))
     xs = sorted(x for x in xs if -1e-9 <= x + lx0 and x + lx1 <= W + 1e-9)
     ys = sorted(y for y in ys if -1e-9 <= y + ly0 and y + ly1 <= H + 1e-9)
+    if cap is not None and (len(xs) > cap or len(ys) > cap):
+        xs = xs[:cap]; ys = ys[:cap]
     best = None  # (merit, px, py, X0,Y0,X1,Y1)
     for py in ys:
         Y0 = py + ly0; Y1 = py + ly1
@@ -106,6 +130,15 @@ def pack_bay(W, H, metas, max_ent=64):
     max_ent caps how many distinct entry-times are probed per block (the dominant cost on congested
     bays); if none of the first max_ent fit, the block enters when the bay fully empties (local
     serialize) -- a rare, cheap fallback that keeps the packer fast without losing feasibility."""
+    # LARGE-BAY SPEED CAPS (P3 large-bay slowness fix). On big bays many blocks coexist -> |present| grows ->
+    # _best_pos O(|present|^2) per probe x max_ent entries x N blocks blew up (~30s/pack at 15M cells). Cap the
+    # per-axis candidates and the entry-time probes on large bays only; train bays are tiny (caps never bind)
+    # so quality there is UNCHANGED. Keeps pack_bay fast enough that solve.solve + the polish stages actually
+    # run within budget on a large bay instead of being cut -> a good parallel pack, not the near-floor result.
+    _big = (W * H) > 150000
+    _cap = 48 if _big else None
+    if _big:
+        max_ent = min(max_ent, 20)
     active = []   # (X0,Y0,X1,Y1,entry,exit) currently-present world AABBs
     out = []
     for mt in metas:
@@ -121,7 +154,7 @@ def pack_bay(W, H, metas, max_ent=64):
             for (oi, lx0, ly0, lx1, ly1) in mt["orients"]:
                 if math.ceil(-lx0) > math.floor(W - lx1) or math.ceil(-ly0) > math.floor(H - ly1):
                     continue  # orientation cannot fit the bay at all
-                pos = _best_pos(W, H, lx0, ly0, lx1, ly1, present)
+                pos = _best_pos(W, H, lx0, ly0, lx1, ly1, present, cap=_cap)
                 if pos is None:
                     continue
                 px, py, X0, Y0, X1, Y1 = pos
