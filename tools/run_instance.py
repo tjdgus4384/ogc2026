@@ -15,7 +15,12 @@ import sys
 import time
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT / "solver"))
+
+# Which build to measure. Defaults to the live solver/; experiments set
+# OGC_SOLVER to an exp/<name>/ directory holding its own myalgorithm.py + .so,
+# so a candidate is never compared against a mutated baseline.
+SOLVER = pathlib.Path(os.environ.get("OGC_SOLVER", ROOT / "solver")).resolve()
+sys.path.insert(0, str(SOLVER))
 
 import utils          # noqa: E402  -- competition checker, never edited
 import myalgorithm    # noqa: E402
@@ -38,6 +43,7 @@ def main():
 
     rec = {
         "inst": f"prob_{pid}",
+        "solver": SOLVER.name,
         "tl": tl,
         "wall": round(wall, 2),
         "overrun": wall > tl,

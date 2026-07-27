@@ -26,6 +26,7 @@ mkdir -p "$OUT"
 
 # Pin thread count to the allocation. os.cpu_count() reports the whole node
 # (40), not the cgroup, so anything reading it would oversubscribe 10x.
+export OGC_SOLVER="${SOLVER:-$ROOT/solver}"
 export OMP_NUM_THREADS=4
 export OPENBLAS_NUM_THREADS=1
 export MKL_NUM_THREADS=1

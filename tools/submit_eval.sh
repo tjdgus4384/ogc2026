@@ -20,6 +20,7 @@ TAG="${1:?usage: submit_eval.sh <tag> <timelimit_sec> [partition] [instances]}"
 TL="${2:?usage: submit_eval.sh <tag> <timelimit_sec> [partition] [instances]}"
 PART="${3:-dept}"
 ARRAY="${4:-1-40}"
+SOLVER="${SOLVER:-$ROOT/solver}"
 
 if [[ -e "$ROOT/results/$TAG.json" ]]; then
     echo "results/$TAG.json already exists -- pick a new tag." >&2
@@ -33,12 +34,12 @@ mkdir -p "$ROOT/runs/$TAG"
 
 cat > "$ROOT/runs/$TAG/META.json" <<EOF
 {"tag": "$TAG", "timelimit": $TL, "partition": "$PART", "array": "$ARRAY",
- "solver_commit": "$(cd "$ROOT" && git rev-parse --short HEAD)",
+ "solver_dir": "'$(basename "$SOLVER")'", "solver_commit": "$(cd "$ROOT" && git rev-parse --short HEAD)",
  "solver_dirty": $(cd "$ROOT" && git diff --quiet HEAD -- solver && echo false || echo true),
  "submitted": "$(date -Iseconds)"}
 EOF
 
-JID=$(TAG="$TAG" TL="$TL" sbatch --parsable \
+JID=$(TAG="$TAG" TL="$TL" SOLVER="$SOLVER" sbatch --parsable \
         --partition="$PART" --array="$ARRAY" --time="${WALL}" \
         "$ROOT/tools/eval.sbatch")
 

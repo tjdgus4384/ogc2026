@@ -14,3 +14,6 @@ runs/
 # NOTE: *.so is deliberately TRACKED. The compiled kernel is the shipped
 # artifact and is only ~700KB. Losing a kernel binary once already cost a whole
 # generation of work -- see archive/notes-2026-06/SOURCE_RECOVERY_NOTE.md.
+
+# experiment builds: source is tracked, binaries are not
+exp/*/sscore*.so
