@@ -139,14 +139,25 @@ struct Engine {
                 (double)st.badKind, (double)st.badPhase};
     }
 
-    // the production search: N threads anneal in parallel from the current
-    // solution; per-thread parameters split exploit/explore (removal size,
-    // start temperature, pure-SA vs hill-climb tail, op subset); global best
-    // wins. rounds>1 restarts every thread from the round's global best.
+    // the production search: N threads anneal in parallel; per-thread
+    // parameters split exploit/explore (removal size, start temperature,
+    // pure-SA vs hill-climb tail, op subset); global best wins. rounds>1
+    // restarts every thread from the round's global best.
+    //
+    // `starts` (optional): per-thread round-0 starting solutions, a BASIN
+    // HEDGE. Measured: which basin a run lands in swings an instance ~10%
+    // (max 80%) between draws, and a better-objective seed can anneal WORSE
+    // (p30 cross-seed: -13% seed -> +9.8% final, 6/6 arms). Betting all
+    // threads on the single best seed maximises that lottery's variance;
+    // starting them from DISTINCT seeds takes a max over basins instead.
+    // starts[tid % k]: a flat n*7 solution, or an empty vector meaning
+    // "construct fresh" (noisy-EDD). Empty `starts` = legacy behavior
+    // (all from the engine's solution, odd threads construct).
     std::vector<double> runPortfolio(int threads, double seconds, int rounds,
                                      double qlo, double qhi, double T0mul,
                                      double cooling, uint64_t seed,
-                                     int multiStart = 1) {
+                                     int multiStart = 1,
+                                     std::vector<std::vector<int>> starts = {}) {
         core::Sol globalBest = sol;
         double bestObj = core::evaluate(pb, sol).total;
         long totIters = 0;
@@ -167,10 +178,25 @@ struct Engine {
                 repair::Ctx c2; c2.pb = &pb; c2.s = &s2; c2.oc = &oc2;
                 c2.horizon = horizon_;
                 c2.forcedBay = ctx.forcedBay;   // assignment lock -> threads
-                // odd threads restart from a fresh noisy-EDD construction in
-                // round 0: seed diversity across the portfolio.
                 bool constructed = false;
-                if (r == 0 && multiStart && (tid % 2 == 1)) {
+                if (r == 0 && !starts.empty()) {
+                    const auto& st0 = starts[tid % (int)starts.size()];
+                    if (st0.size() == (size_t)pb.n * 7) {
+                        for (int i = 0; i < pb.n; i++) {
+                            const int* b = &st0[i*7];
+                            s2.bay[i]=b[0]; s2.ori[i]=b[1]; s2.x[i]=b[2];
+                            s2.y[i]=b[3];  s2.e[i]=b[4];   s2.f[i]=b[5];
+                            s2.placed[i]=(uint8_t)b[6];
+                        }
+                        s2.rebuildIdx(pb.m);
+                    } else {              // empty slot = construct fresh
+                        constructed = alns::constructInitial(
+                            c2, seed + 77ULL * (tid + 1));
+                        if (!constructed) { s2 = roundStart; oc2.clearBits(); }
+                    }
+                } else if (r == 0 && multiStart && (tid % 2 == 1)) {
+                    // legacy: odd threads restart from a fresh noisy-EDD
+                    // construction in round 0
                     constructed = alns::constructInitial(
                         c2, seed + 77ULL * (tid + 1));
                     if (!constructed) {
@@ -365,7 +391,8 @@ PYBIND11_MODULE(sscore, m) {
         .def("run_portfolio", &Engine::runPortfolio,
              py::arg("threads"), py::arg("seconds"), py::arg("rounds"),
              py::arg("qlo"), py::arg("qhi"), py::arg("T0mul"),
-             py::arg("cooling"), py::arg("seed"), py::arg("multiStart") = 1)
+             py::arg("cooling"), py::arg("seed"), py::arg("multiStart") = 1,
+             py::arg("starts") = std::vector<std::vector<int>>{})
         .def("get_block", &Engine::getBlock)
         .def("objective", &Engine::objective)
         .def("nudge_block", &Engine::nudgeBlock)

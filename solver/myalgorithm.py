@@ -18,15 +18,15 @@
   archive. Formerly: assign.py keeps the
   windowed-energetic capability for re-enable on its habitat.
 """
-import json as _json
+import json
 import math
+import os
+import random
 import re
-import sys as _sys
+import sys
 import time
 
-import os as _os
-
-_DIAG = _os.environ.get("OGC_DIAG")
+_DIAG = os.environ.get("OGC_DIAG")
 
 
 def _diag(tag, **kw):
@@ -34,7 +34,7 @@ def _diag(tag, **kw):
     server (no OGC_DIAG) stays silent. Never allowed to raise."""
     if _DIAG:
         try:
-            print(_json.dumps({"diag": tag, **kw}), file=_sys.stderr, flush=True)
+            print(json.dumps({"diag": tag, **kw}), file=sys.stderr, flush=True)
         except Exception:
             pass
 
@@ -52,13 +52,13 @@ try:
 except Exception:                                     # pragma: no cover
     utils = None
 
-_THR = min(4, _os.cpu_count() or 1)   # the server grants 4 cores (sec 100)
+_THR = min(4, os.cpu_count() or 1)   # the server grants 4 cores (sec 100)
 
 # portfolio seed: env-overridable for DISTRIBUTIONAL testing (an engine change
 # reshuffles the RNG stream = one frozen lottery redraw; single-draw A/Bs
 # compare tickets, not engines). Absent env (the grading server) => 7, the
 # historical value.
-_PSEED = int(_os.environ.get("OGC_SEED", "7"))
+_PSEED = int(os.environ.get("OGC_SEED", "7"))
 
 
 # ---------------------------------------------------------------- engine io
@@ -137,8 +137,7 @@ def _seed_free(p, diversify=True):
     A = [b["workload"] for b in B]
     orders = [sorted(range(n), key=lambda i: D[i])]
     if diversify:
-        import random as _rnd
-        _rnd.seed(5)
+        random.seed(5)
         orders += [
             sorted(range(n), key=lambda i: (D[i] - P[i] - R[i], -A[i])),
             sorted(range(n), key=lambda i: (-A[i], D[i])),
@@ -150,27 +149,40 @@ def _seed_free(p, diversify=True):
             # (-12%). Pure P-desc (ignoring due) is catastrophic (10960),
             # so the due ordering must lead.
             sorted(range(n), key=lambda i: (D[i], -P[i])),
-            sorted(range(n), key=lambda i: D[i] + _rnd.uniform(-8, 8)),
-            sorted(range(n), key=lambda i: D[i] + _rnd.uniform(-8, 8)),
+            sorted(range(n), key=lambda i: D[i] + random.uniform(-8, 8)),
+            sorted(range(n), key=lambda i: D[i] + random.uniform(-8, 8)),
         ]
     # adaptive-horizon ladder (sec 103): on congested giants the loose
     # insert overflows the base occupancy horizon (P6 board: total seed
     # failure -> _trivial's 4.2e9). Doubling the horizon is sound (a
     # superset of feasible times) and bounded (two retries).
-    eng = None
     for hmul in (1, 2, 4):
         eng, _, _ = _fresh(p, hmul)
+        cands = []                       # (objective, flat solution)
         best = None
         for od in orders:
             if eng.reconstruct_ordered([-1] * n, od, False, 7) == -1:
                 ob = eng.objective()[3]      # [z1,z2,z3,total] -> total
+                cands.append((ob, eng.get_solution()))
                 if best is None or ob < best[0]:
                     best = (ob, od)
         if best is not None:
             if best[1] is not orders[-1]:
                 eng.reconstruct_ordered([-1] * n, best[1], False, 7)
-            return eng
-    return None
+            # top DISTINCT seeds, best first: the portfolio's basin hedge
+            # (different insertion orders often collapse to the same layout;
+            # duplicates would waste a thread on the same basin).
+            cands.sort(key=lambda t: t[0])
+            starts, seen = [], set()
+            for ob, flat in cands:
+                key = tuple(flat)
+                if key not in seen:
+                    seen.add(key)
+                    starts.append(flat)
+                if len(starts) >= 3:
+                    break
+            return eng, starts
+    return None, []
 
 
 def _check(p, sol):
@@ -302,11 +314,16 @@ def _gate(p, eng, n, deadline=None):
 
 
 def _arm_free(p, deadline, seed=7):
-    """diversified seed -> one continuous portfolio -> checker gate."""
+    """diversified seeds -> one continuous portfolio (threads hedged across
+    distinct seed basins) -> checker gate."""
     n = len(p["blocks"])
-    eng = _seed_free(p)
+    eng, seeds = _seed_free(p)
     if eng is None:
         return None, None
+    # thread map (4 threads): best seed / fresh construction / 2nd / 3rd.
+    # With fewer distinct seeds the pattern cycles, which keeps at least one
+    # construction slot and never duplicates a basin needlessly.
+    starts = [seeds[0], []] + seeds[1:3] if seeds else []
     # The gate reserve scales with n: its rescue ladder is up to ~6 checker
     # calls, and a checker call grows with instance size. Without the reserve
     # the gate ran in the last ~2.5s before the hard deadline -- on the
@@ -316,7 +333,8 @@ def _arm_free(p, deadline, seed=7):
     reserve = min(15.0, 3.0 + 0.03 * n)
     sec = max(2.0, deadline - time.time() - reserve)
     rounds = 1 if sec > 110 else 2
-    eng.run_portfolio(_THR, sec, rounds, 0.05, 0.15, 0.002, 0.9995, seed, 1)
+    eng.run_portfolio(_THR, sec, rounds, 0.05, 0.15, 0.002, 0.9995, seed, 1,
+                      starts)
     # sec 156: checker-gated improvement tails were measured unproductive
     # vs annealing the same seconds and stay removed.
     return _gate(p, eng, n, deadline)
@@ -385,7 +403,7 @@ def _algorithm(prob_info, timelimit=60):
     # sparse packing, so exact-touch checker artifacts are rare there, and
     # its objective is ~1000x better than _trivial's serialization
     # (prob_29: seed 1.16M vs trivial 1.53e9).
-    eng = _seed_free(prob_info, diversify=False)
+    eng, _ = _seed_free(prob_info, diversify=False)
     if eng is not None:
         seed_sol = _recs_to_sol(_extract(eng, n))
         eng.run_portfolio(_THR, max(2.0, deadline - time.time() - 4.0), 1,
