@@ -77,7 +77,6 @@ def _fresh(p, hmul=1):
     P = [max(1, int(math.ceil(b["processing_time"] - 1e-9))) for b in B]
     eng = _build_engine(p)
     eng.build_occ((max(D) + max(P) + 40) * hmul)
-    eng.set_event_local(True)
     return eng, D, P
 
 

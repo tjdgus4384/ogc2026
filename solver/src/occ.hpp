@@ -1,7 +1,10 @@
 // occ.hpp -- bit-packed occupancy grid per (bay, layer, time) with
-// under-approximate block masks (cell-center strictly inside polygon).
-// Mask AND-hit  =>  both polygons contain that cell center  =>  positive-area
-// overlap is CERTAIN, so prefilter rejects are always sound.
+// under-approximate block masks (cell strictly inside the polygon).
+//
+// Mask AND-hit => both polygons strictly contain that cell centre => certain
+// positive-area SAME-LAYER overlap => the placement is certainly infeasible
+// (checker rule 1). So the prefilter's rejections are always sound; anything
+// it admits still goes through vpConservative. One prefilter, one semantic.
 #pragma once
 #include "core.hpp"
 #include <vector>
@@ -55,7 +58,7 @@ struct Grid {
 struct OccIndex {
     std::vector<Grid> bay;                       // per bay
     std::vector<std::vector<double>> areaUsed;   // [bay][t] bbox-area sum
-    std::vector<std::vector<Mask>> masks;        // [block][orient*Lmax + l]  flattened
+    std::vector<std::vector<Mask>> masks;        // [block][orient*Lmax + l]
     std::vector<int> nOri, nLay;                 // per block
     int Lmax = 0, T = 0;
 
@@ -87,9 +90,8 @@ struct OccIndex {
     }
 
     // time-collapsed window snapshot: OR of the grid over t in [e,f), per
-    // layer. hitsSnap == (exists t in [e,f) where hits(t)) — same verdict as
-    // hits(), with the time loop paid ONCE per (bay,e,f) instead of per
-    // candidate. For scans testing many candidates at a fixed window.
+    // layer. hitsSnap(sn,...) == "exists t in [e,f) with a same-layer AND-hit"
+    // -- the time loop is paid ONCE per (bay,e,f) instead of per candidate.
     struct Snap {
         int H = 0, wpr = 0, L = 0;
         std::vector<uint64_t> rows;                // [l][y][w]
@@ -177,38 +179,6 @@ struct OccIndex {
         double a = (g.bb.x1 - g.bb.x0) * (g.bb.y1 - g.bb.y0) * (on ? 1.0 : -1.0);
         auto& au = areaUsed[s.bay[i]];
         for (int t = s.e[i]; t < s.f[i] && t < T; t++) au[t] += a;
-    }
-
-    // conservative quick reject with CRANE awareness: new layer l must not
-    // overlap any occupied cell on layer j >= l (mask AND-hit => both polygons
-    // strictly contain that cell centre => positive-area overlap => the
-    // checker's entry rule (new k vs exist j>=k) certainly fires). Sound.
-    bool hits(int i, int oi, int jT, int x, int y, int e, int f) {
-        Grid& g = bay[jT];
-        for (int l = 0; l < nLay[i]; l++) {
-            const Mask& mk = masks[i][(size_t)oi * Lmax + l];
-            if (!mk.any) continue;
-            int bx = x + mk.ox, by = y + mk.oy;
-            int sh = bx & 63, w0 = bx >> 6;
-            for (int t = e; t < f && t < g.T; t++) {
-                for (int my = 0; my < mk.h; my++) {
-                    int gy = by + my;
-                    if (gy < 0 || gy >= g.H) continue;
-                    const uint64_t* src = &mk.rows[(size_t)my * mk.wpr];
-                    for (int j = l; j < g.L; j++) {
-                        const uint64_t* dst = g.row(j, t, gy);
-                        for (int wd = 0; wd < mk.wpr; wd++) {
-                            uint64_t v = src[wd];
-                            if (!v) continue;
-                            if (dst[w0 + wd] & (v << sh)) return true;
-                            if (sh && w0 + wd + 1 < g.wpr &&
-                                (dst[w0+wd+1] & (v >> (64 - sh)))) return true;
-                        }
-                    }
-                }
-            }
-        }
-        return false;
     }
 };
 

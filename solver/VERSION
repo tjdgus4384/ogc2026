@@ -1,12 +1,22 @@
-v0
+v1 (candidate -- full-40 validation pending)
 
-Lineage: this is the engine formerly called "smax78-v82", the end point of the
-v57-v82 kernel campaign that ran in an offline session (documented in
-docs/KERNEL_SPEC.md, sections 1-196). Version numbering restarts here: the
-work done on this server is v0, v1, v2, ... and each version is a git tag, not
-a directory. Historical "vNN" references inside docs/KERNEL_SPEC.md and
-docs/KNOBS_AUDIT.md refer to the OLD numbering and all predate v0.
+v1 = v0 rewritten for legibility: one insertion algorithm, one prefilter
+semantic, zero dead knobs. Kernel 2199 -> 1567 lines, API 29 -> 19 methods.
 
-Verified on this machine (2026-07-27, conda py3.12, 4 threads):
-  prob_1 @T20  -> 1499   (canary, matches KERNEL_SPEC)
-  prob_2 @T20  -> 3690   (canary, matches KERNEL_SPEC)
+Deliberate behavior changes vs v0 (everything else is deletion):
+  1. The seeder now uses the same insertion path as the anneal. v0's seeder
+     ran a second, older algorithm because reconstructOrdered never inherited
+     the eventLocal flag -- measured an accident, not a design (seed A/B over
+     all 40: 18W/11T/11L, mean -2.16% in favour of the unified path).
+  2. Area prefilter uses min-over-orientations bbox area (v0 used orient 0's,
+     the largest for 8% of blocks -> could reject a bay a slimmer orientation
+     fits).
+  3. The dense fallback uses the same sound same-layer prefilter as every
+     other scan (v0 used a j>=l variant there that over-rejects legal layered
+     placements; measured near-noise when swapped, KERNEL_SPEC sec 179).
+  4. Phase-3 fallback gained the area screen; portfolio threads re-evaluate
+     their post-compaction solution before the global-best merge (v0 compared
+     pre-compaction bests).
+
+Lineage: v0 = offline campaign end point ("smax78-v82"), tagged v0 in git.
+Old-numbering (v57-v85) references live in docs/KERNEL_SPEC.md.

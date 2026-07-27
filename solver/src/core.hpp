@@ -1,5 +1,5 @@
-// core.hpp -- problem data, solution state, conservative feasibility (exact
-// port of move_fast._vp_conservative), objective evaluation.
+// core.hpp -- problem data, solution state, feasibility (the checker's five
+// rules, evaluated for one block against its bay), objective.
 #pragma once
 #include "crane.hpp"
 #include <vector>
@@ -24,7 +24,7 @@ struct Sol {
     // per block; placed[i]==false => not in solution (mid-destroy)
     std::vector<uint8_t> placed;
     std::vector<int> bay, ori, x, y, e, f;
-    std::vector<std::vector<int>> byBay;      // neighbor index (placed only)
+    std::vector<std::vector<int>> byBay;      // resident index (placed only)
     void init(int n, int m = 0) {
         placed.assign(n, 0);
         bay.assign(n, -1); ori.assign(n, 0);
@@ -51,38 +51,40 @@ inline bool restOverlap(const Problem& pb, const Sol& s, int a, int b) {
     if (!crane::bboxOverlapOff(ga.bb, s.x[a], s.y[a], gb.bb, s.x[b], s.y[b]))
         return false;
     int L = std::min(ga.layers.size(), gb.layers.size());
-    for (int l = 0; l < L; l++) {
+    for (int l = 0; l < L; l++)
         if (crane::overlapsLay(ga, l, s.x[a], s.y[a],
                                gb, l, s.x[b], s.y[b])) return true;
-    }
     return false;
 }
 
-// Exact port of move_fast._vp_conservative(prob, rx, A).
-// Assumes s.placed[A]==1 with candidate values already written into s.
-// DIAGNOSTIC ONLY: when true, skip crane entry/exit rules (rule 1 resting
-// overlap stays). Never ship enabled; used to attribute the density ceiling
-// (rules-bound vs search-bound). Guarded by env at engine build time.
-inline bool& diagNoCrane() { static bool v = false; return v; }
-
+// Feasibility of block A at its current (bay, ori, x, y, e, f) against every
+// resident of its bay -- the five checker rules from A's point of view:
+//   1  resting collision: same-layer overlap with any time-overlapping resident
+//   2  A's own entry at e: crane rule vs blocks present at e
+//   3  A's own exit at f: crane rule vs blocks still present at f
+//      (same-day LIFO: an earlier entrant leaving the same day stays "present")
+//   4  A must not block the entry of any resident entering during [e, f)
+//   5  A must not block the exit of any resident exiting during (e, f]
+// Rules 4/5 skip residents whose bbox does not even touch A: A cannot be a
+// blocker without positive-area overlap, and every prior insertion was
+// verified here, so any remaining failure would be A-independent and thus
+// pre-existing -- impossible. Exact, not a heuristic (sec 171). The early-out
+// is only valid while every placement passes through this function; an
+// operator writing placements directly must re-verify them (sec 176).
 inline bool vpConservative(const Problem& pb, const Sol& s, int A) {
     int jT = s.bay[A], eN = s.e[A], fN = s.f[A];
     const OrientGeom& gA = pb.geo[A].orients[s.ori[A]];
     double W = pb.bayW[jT], H = pb.bayH[jT];
 
     const std::vector<int>& nb = s.byBay[jT];
-    // rule 1: time-overlapping same-bay neighbours must not overlap on the
-    // SAME layer (resting collision)
+    // rule 1
     for (int k : nb) {
         if (k == A || !s.placed[k]) continue;
         if (!(s.e[k] < fN && eN < s.f[k])) continue;
         if (restOverlap(pb, s, A, k)) return false;
     }
-    if (diagNoCrane()) return true;   // DIAGNOSTIC: rules 2/3 skipped
-    // sec 166: pres buffers are thread_local -- vpConservative runs millions
-    // of times per anneal and rules 2-5 used to heap-allocate a fresh vector
-    // per call (rules 4/5: per neighbour event). Reuse is safe: entryOK /
-    // exitOK only read the buffer within the call.
+    // pres is reused across calls: vpConservative runs millions of times per
+    // anneal and entryOK/exitOK only read the buffer within the call.
     thread_local std::vector<Placement> pres;
     // rule 2: A's entry at eN
     {
@@ -95,7 +97,7 @@ inline bool vpConservative(const Problem& pb, const Sol& s, int A) {
         }
         if (!crane::entryOK(W, H, pres, gA, s.x[A], s.y[A])) return false;
     }
-    // rule 3: A's exit at fN (same-day LIFO: earlier entrants remain)
+    // rule 3: A's exit at fN
     {
         pres.clear();
         pres.push_back({&gA, (double)s.x[A], (double)s.y[A]});  // target at [0]
@@ -108,11 +110,6 @@ inline bool vpConservative(const Problem& pb, const Sol& s, int A) {
         if (!crane::exitOK(pres, 0)) return false;
     }
     // rule 4: A must not block entry of any k entering during [eN, fN)
-    // sec 171: if A's footprint does not even bbox-overlap k, A cannot be a
-    // blocker of k (the j>=kk rule needs positive-area overlap with A). Any
-    // remaining entryOK failure would then be independent of A -- impossible,
-    // because the state was vp-verified at every previous insertion. So the
-    // whole O(nb) pres rebuild for this k is skippable. Exact, not heuristic.
     for (int k : nb) {
         if (k == A || !s.placed[k]) continue;
         int t = s.e[k];
@@ -132,9 +129,6 @@ inline bool vpConservative(const Problem& pb, const Sol& s, int A) {
         if (!crane::entryOK(W, H, pres, gk, s.x[k], s.y[k])) return false;
     }
     // rule 5: A must not block exit of any k exiting during (eN, fN]
-    // sec 171: same exactness argument as rule 4 (no A-k overlap => A is not
-    // a blocker => a failure here would be A-independent => pre-existing =>
-    // impossible).
     for (int k : nb) {
         if (k == A || !s.placed[k]) continue;
         int t = s.f[k], ek = s.e[k];
@@ -177,9 +171,9 @@ inline Objective evaluate(const Problem& pb, const Sol& s) {
     return {z1, z2, z3, pb.w1*z1 + pb.w2*z2 + pb.w3*z3};
 }
 
-
 // blockers of A entering at time tgt at its CURRENT (x,y,ori): placed k in
 // same bay, present at tgt, with any (kLayer, j>=kLayer) positive overlap.
+// Used by the crane-exact destroy operator.
 inline void collectEntryBlockers(const Problem& pb, const Sol& s, int A,
                                  int tgt, std::vector<int>& out) {
     int jT = s.bay[A];

@@ -1,5 +1,10 @@
-// alns.hpp -- adaptive LNS v2: 8 destroy operators, fractional removal size
-// (DMS 5-15% rule), SA -> hill-climb phase switch, reheating, adaptive weights.
+// alns.hpp -- adaptive LNS: 8 destroy operators, adaptive weights, SA
+// acceptance with reheating and a late hill-climb phase, plus the two
+// deterministic helpers (left compaction, noisy-EDD construction).
+//
+// One iteration: pick a destroyer by adaptive weight -> remove q blocks ->
+// reinsert them in due order with insertGreedy -> accept by SA on the exact
+// objective; rejected or failed iterations roll back from the backup.
 #pragma once
 #include "repair.hpp"
 #include <chrono>
@@ -14,8 +19,9 @@ struct Backup { int A, bay, ori, x, y, e, f; };
 struct RunStats { long iters=0, accepted=0, improved=0, failed=0; double best;
                   long badIter=-1; int badKind=-1; int badPhase=-1; };
 
-// full-state audit. 0 ok; 1 byBay bounds; 2 stale member; 3 dup/missing;
-// 4 vp violation. badBlock gets the offending block id.
+// Full-state audit -- the development assertion tool. Run it (auditEvery) when
+// a new operator misbehaves and it tells you WHERE the state broke:
+// 0 ok; 1 byBay out of bounds; 2 stale member; 3 dup/missing; 4 vp violation.
 inline int audit(const core::Problem& pb, core::Sol& s, int* badBlock = nullptr) {
     std::vector<int> cnt(pb.n, 0);
     for (int j = 0; j < pb.m; j++)
@@ -56,6 +62,11 @@ struct Destroyers {
     }
 };
 
+// The 8 destroy operators. opMask selects a subset (portfolio: even threads
+// run 0x1F = ops 0-4, odd threads 0xFF = all 8).
+//   0 random          1 worst-tardy (noisy)     2 related (bay+time+space)
+//   3 crane-bbox nbrs 4 crane-exact blocker BFS 5 bay x time-slice
+//   6 semi-worst      7 least-recently-touched
 inline std::vector<int> pickRemoval(repair::Ctx& c, int kind, int q,
                                     const std::vector<long>& lastTouch) {
     const Problem& pb = *c.pb; Sol& s = *c.s;
@@ -151,67 +162,6 @@ inline std::vector<int> pickRemoval(repair::Ctx& c, int kind, int q,
         std::shuffle(pool.begin(), pool.end(), c.rng);
         pool.resize(std::min((size_t)q, pool.size()));
         out = pool;
-    } else if (kind == 8) {                           // suffix reconstruction (FAST)
-        // pick a pivot time biased to the tardy region of a random bay;
-        // remove everything entering at/after it in that bay (capped).
-        int seed = placedIds[c.rng() % placedIds.size()];
-        std::vector<int> tardy;
-        for (int i : placedIds) if (s.f[i] > pb.D[i]) tardy.push_back(i);
-        if (!tardy.empty()) seed = tardy[c.rng() % tardy.size()];
-        int j = s.bay[seed];
-        int t0 = std::max(0, s.e[seed] - (int)(c.rng() % 5));
-        std::vector<int> cand;
-        for (int i : s.byBay[j])
-            if (s.placed[i] && s.e[i] >= t0) cand.push_back(i);
-        std::sort(cand.begin(), cand.end(),
-                  [&](int a, int b){ return s.e[a] < s.e[b]; });
-        int cap = std::max(q, 2 * q);
-        if ((int)cand.size() > cap) cand.resize(cap);
-        out = cand;
-    } else if (kind == 9) {                           // overloaded-bay relief (Z2)
-        std::vector<double> load(pb.m, 0.0);
-        for (int i : placedIds) load[s.bay[i]] += pb.workload[i];
-        int jmax = 0;
-        for (int j = 1; j < pb.m; j++)
-            if (pb.u[j] * load[j] > pb.u[jmax] * load[jmax]) jmax = j;
-        std::vector<int> cand;
-        for (int i : s.byBay[jmax]) if (s.placed[i]) cand.push_back(i);
-        std::shuffle(cand.begin(), cand.end(), c.rng);
-        if ((int)cand.size() > q) cand.resize(q);
-        out = cand;
-    } else if (kind == 10) {                          // worst preference-loss (Z3)
-        std::vector<std::pair<double,int>> t;
-        for (int i : placedIds)
-            t.push_back({-(pb.Smax[i] - pb.pref[i][s.bay[i]])
-                         * (0.75 + 0.5 * U01()), i});
-        std::sort(t.begin(), t.end());
-        for (int k = 0; k < q && k < (int)t.size(); k++) out.push_back(t[k].second);
-    } else if (kind == 11) {                          // era defrag (complete)
-        // Tardy-seeded window in the seed's bay; remove EVERYTHING that
-        // intersects [t0, t0+win). Subset removals (kind 5) keep the jam's
-        // skeleton -- measured era density stalls at ~0.42 with ~0.57 peaks
-        // while the interval bound at that same density leaves ~1000
-        // block-days on prob_27. Complete removal lets the repair re-lay
-        // the era; reinsertion is largest-first (defrag semantics).
-        std::vector<int> tardy;
-        for (int i : placedIds) if (s.f[i] > pb.D[i]) tardy.push_back(i);
-        int seed = tardy.empty() ? placedIds[c.rng() % placedIds.size()]
-                                 : tardy[c.rng() % tardy.size()];
-        int j = s.bay[seed];
-        int win = 6 + (int)(c.rng() % 10);
-        int t0 = std::max(0, s.e[seed] - (int)(c.rng() % win));
-        std::vector<int> cand;
-        for (int i : s.byBay[j])
-            if (s.placed[i] && s.e[i] < t0 + win && t0 < s.f[i])
-                cand.push_back(i);
-        int cap = 3 * q + 8;                          // safety valve
-        if ((int)cand.size() > cap) {
-            std::sort(cand.begin(), cand.end(),
-                      [&](int a, int b){ return std::abs(s.e[a] - t0)
-                                              < std::abs(s.e[b] - t0); });
-            cand.resize(cap);
-        }
-        out = cand;
     } else {                                          // 7: least-recently-touched
         std::vector<std::pair<double,int>> t;
         for (int i : placedIds)
@@ -227,32 +177,30 @@ struct RunParams {
     double T0mul = 0.002, cooling = 0.9997;
     double hcFrac = 0.75;        // fraction of budget after which hill-climb
     double bigQProb = 0.04;      // probability of a large removal
-    uint32_t opMask = 0x7FF;     // destroyer enable bits (12 ops; bit 11 = era defrag)
+    uint32_t opMask = 0xFF;      // destroyer enable bits (8 ops)
 };
 
 inline RunStats run(repair::Ctx& c, double seconds, const RunParams& rp,
                     uint64_t seedv, int auditEvery = 0) {
-    const double qloF = rp.qloF, qhiF = rp.qhiF;
-    const double T0mul = rp.T0mul, cooling = rp.cooling;
     const Problem& pb = *c.pb; Sol& s = *c.s;
     c.rng.seed(seedv);
-    Destroyers ds(12); ds.rng = &c.rng;
+    Destroyers ds(8); ds.rng = &c.rng;
     auto t0 = std::chrono::steady_clock::now();
     auto now = [&]{ return std::chrono::duration<double>(
         std::chrono::steady_clock::now() - t0).count(); };
 
     auto obj = [&]{
         core::Objective ob = core::evaluate(pb, s);
-        // v58: regime flag -- once tardiness is gone, the objective is
+        // regime flag (sec 148): once tardiness is gone the objective is
         // preference-dominated, so insertion should chase preferred bays.
         c.prefStrong = (ob.z1 <= 0.0 && ob.z3 < (double)pb.n);
         return ob.total;
     };
     double cur = obj(), best = cur;
     Sol bestSol = s;
-    int qlo = std::max(2, (int)(qloF * pb.n));
-    int qhi = std::max(qlo + 1, (int)(qhiF * pb.n));
-    double T0 = std::max(1.0, cur * T0mul), T = T0;
+    int qlo = std::max(2, (int)(rp.qloF * pb.n));
+    int qhi = std::max(qlo + 1, (int)(rp.qhiF * pb.n));
+    double T0 = std::max(1.0, cur * rp.T0mul), T = T0;
     RunStats st; st.best = best;
     std::uniform_real_distribution<double> U(0, 1);
     int sinceUpdate = 0;
@@ -287,16 +235,6 @@ inline RunStats run(repair::Ctx& c, double seconds, const RunParams& rp,
         }
         std::sort(rem.begin(), rem.end(),
                   [&](int a, int b){ return pb.D[a] < pb.D[b]; });
-        if (kind == 11) {                              // defrag: big rocks first
-            std::sort(rem.begin(), rem.end(), [&](int a, int b){
-                const auto& ga = pb.geo[a].orients[0].bb;
-                const auto& gb = pb.geo[b].orients[0].bb;
-                double aa = (ga.x1 - ga.x0) * (ga.y1 - ga.y0);
-                double ab = (gb.x1 - gb.x0) * (gb.y1 - gb.y0);
-                if (aa != ab) return aa > ab;
-                return pb.D[a] < pb.D[b];
-            });
-        }
         bool ok = true;
         for (int A : rem) if (!repair::insertGreedy(c, A, -1)) { ok = false; break; }
         if (auditEvery > 0 && ok) {
@@ -339,7 +277,7 @@ inline RunStats run(repair::Ctx& c, double seconds, const RunParams& rp,
             }
         }
         if (!hc) {
-            T *= cooling;
+            T *= rp.cooling;
             if (sinceBest > 1200) { T = T0 * 0.3; sinceBest = 0; }   // reheat
         }
         if (++sinceUpdate >= 60) { ds.update(); sinceUpdate = 0; }
@@ -354,52 +292,9 @@ inline RunStats run(repair::Ctx& c, double seconds, const RunParams& rp,
     return st;
 }
 
-// left time-compaction on the current solution: for each placed block
-// (ascending e), try earlier entries at the SAME (bay,x,y,ori); take the
-// earliest vp-feasible. Strictly non-regressing on Z1; Z2 unchanged
-// (assignment fixed); Z3 unchanged.
-// compactLeft only re-times blocks at a FIXED (x,y,ori): in packed early
-// eras the same spot is taken, so pure slides stall (measured: early-era
-// mean density stays 0.42 while tardiness piles up late). This variant
-// RE-PLACES: remove + insertGreedy capped at the current e, accepting any
-// strictly-earlier placement (position/orientation free, same bay -> Z2/Z3
-// invariant, Z1 monotone non-increasing).
-inline int compactLeftReplace(repair::Ctx& c, int maxPasses) {
-    const Problem& pb = *c.pb; Sol& s = *c.s;
-    int total = 0;
-    std::vector<int> asg(pb.n, -1);
-    for (int pass = 0; pass < maxPasses; pass++) {
-        int moved = 0;
-        std::vector<int> ids;
-        for (int i = 0; i < pb.n; i++) if (s.placed[i]) ids.push_back(i);
-        std::sort(ids.begin(), ids.end(),
-                  [&](int a, int b){ return s.e[a] < s.e[b]; });
-        for (int i : ids) {
-            if (s.e[i] <= pb.R[i]) continue;
-            int oldBay=s.bay[i], oldOri=s.ori[i], oldX=s.x[i], oldY=s.y[i],
-                oldE=s.e[i], oldF=s.f[i];
-            repair::removeBlock(c, i);
-            asg[i] = oldBay;
-            c.forcedBay = asg.data();
-            bool ok = repair::insertGreedy(c, i, oldE);
-            c.forcedBay = nullptr;
-            asg[i] = -1;
-            if (!ok || s.e[i] >= oldE) {
-                if (ok) repair::removeBlock(c, i);
-                s.bay[i]=oldBay; s.ori[i]=oldOri; s.x[i]=oldX; s.y[i]=oldY;
-                s.e[i]=oldE; s.f[i]=oldF; s.placed[i]=1;
-                s.addIdx(i);
-                c.oc->stamp(pb, s, i, true);
-            } else {
-                moved++;
-            }
-        }
-        total += moved;
-        if (!moved) break;
-    }
-    return total;
-}
-
+// Left time-compaction: for each placed block (ascending e), try earlier
+// entries at the SAME (bay,x,y,ori); take the earliest vp-feasible one.
+// Strictly non-regressing on Z1; Z2/Z3 unchanged (assignment fixed).
 inline int compactLeft(repair::Ctx& c, int maxPasses) {
     const Problem& pb = *c.pb; Sol& s = *c.s;
     int totalMoved = 0;
@@ -438,7 +333,7 @@ inline int compactLeft(repair::Ctx& c, int maxPasses) {
     return totalMoved;
 }
 
-// due-order (noisy) construction from an empty canvas. Returns false if any
+// Noisy due-order construction from an empty canvas. Returns false if any
 // block cannot be placed; caller falls back to its previous solution.
 inline bool constructInitial(repair::Ctx& c, uint64_t seedv) {
     const Problem& pb = *c.pb; Sol& s = *c.s;
