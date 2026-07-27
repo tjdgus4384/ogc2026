@@ -245,12 +245,29 @@ inline bool insertGreedy(Ctx& c, int A, int eCap = -1) {
         if (scanLocal(c, A, pr.second, e, areaA)) return true;
     }
     // phase 3: sparse dense sweep -- the completeness net. Unconditional by
-    // design: the screen is a heuristic (see areaRoom) and must not gate the
-    // last resort.
+    // design: the area screen is a heuristic (see areaRoom) and must not gate
+    // the last resort. The candidate test here is the crane-aware occ::hits
+    // (a placement policy: avoid sticky interlocks at crowded moments -- see
+    // its comment), NOT the same-layer snapshot the fast phases use.
     int stride = (eTop - eBot <= 24) ? 1 : 6;
     for (int e = eBot; e <= eTop; e += stride) {
-        for (int j : bays)
-            if (scanBayAt(c, A, j, e, oris, xs, ys)) return true;
+        int f = e + pb.P[A];
+        for (int j : bays) {
+            for (int oi : oris) {
+                cornerSets(c, A, oi, j, e, f, xs, ys);
+                for (int y : ys) for (int x : xs) {
+                    if (c.oc->hits(A, oi, j, x, y, e, f)) continue;
+                    s.bay[A]=j; s.ori[A]=oi; s.x[A]=x; s.y[A]=y;
+                    s.e[A]=e; s.f[A]=f; s.placed[A]=1;
+                    if (core::vpConservative(pb, s, A)) {
+                        s.addIdx(A);
+                        c.oc->stamp(pb, s, A, true);
+                        return true;
+                    }
+                    s.placed[A]=0;
+                }
+            }
+        }
     }
     return false;
 }

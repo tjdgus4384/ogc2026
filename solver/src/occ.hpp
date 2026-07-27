@@ -136,6 +136,43 @@ struct OccIndex {
         return false;
     }
 
+    // Crane-aware candidate test for the DENSE FALLBACK only: layer l of the
+    // candidate vs every occupied cell on layer j >= l, over the whole stay.
+    // This deliberately rejects MORE than rule 1 -- including some legal
+    // nested/interlocked placements -- and that is its role: it is a
+    // placement POLICY, not just a prefilter. Interlocked residents are legal
+    // but sticky (rules 4/5 make them constrain every later entry/exit), and
+    // a fallback placement is by definition a crowded-moment placement.
+    // Removing this in favour of the same-layer test caused a consistent
+    // multi-instance regression at both budgets (v1c/v1d: prob_11/34/23/...).
+    bool hits(int i, int oi, int jT, int x, int y, int e, int f) {
+        Grid& g = bay[jT];
+        for (int l = 0; l < nLay[i]; l++) {
+            const Mask& mk = masks[i][(size_t)oi * Lmax + l];
+            if (!mk.any) continue;
+            int bx = x + mk.ox, by = y + mk.oy;
+            int sh = bx & 63, w0 = bx >> 6;
+            for (int t = e; t < f && t < g.T; t++) {
+                for (int my = 0; my < mk.h; my++) {
+                    int gy = by + my;
+                    if (gy < 0 || gy >= g.H) continue;
+                    const uint64_t* src = &mk.rows[(size_t)my * mk.wpr];
+                    for (int j = l; j < g.L; j++) {
+                        const uint64_t* dst = g.row(j, t, gy);
+                        for (int wd = 0; wd < mk.wpr; wd++) {
+                            uint64_t v = src[wd];
+                            if (!v) continue;
+                            if (dst[w0 + wd] & (v << sh)) return true;
+                            if (sh && w0 + wd + 1 < g.wpr &&
+                                (dst[w0+wd+1] & (v >> (64 - sh)))) return true;
+                        }
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
     void clearBits() {
         for (auto& g : bay) std::fill(g.bits.begin(), g.bits.end(), 0ULL);
         for (auto& v : areaUsed) std::fill(v.begin(), v.end(), 0.0);
