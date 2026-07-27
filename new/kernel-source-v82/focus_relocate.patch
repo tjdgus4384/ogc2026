@@ -1,0 +1,174 @@
+--- /tmp/al.pre175	2026-07-26 05:16:01.330563600 +0000
++++ alns.hpp	2026-07-26 11:21:32.277807035 +0000
+@@ -59,6 +59,7 @@
+ inline std::vector<int> pickRemoval(repair::Ctx& c, int kind, int q,
+                                     const std::vector<long>& lastTouch) {
+     const Problem& pb = *c.pb; Sol& s = *c.s;
++    c.tsECap = -1; c.tsEMin = -1;      // sec 175: valid only when kind 12 sets them
+     std::vector<int> placedIds;
+     for (int i = 0; i < pb.n; i++) if (s.placed[i]) placedIds.push_back(i);
+     if ((int)placedIds.size() <= q) return placedIds;
+@@ -91,6 +92,24 @@
+         out.push_back(seed);
+         for (int k = 0; k + 1 < q && k < (int)rel.size(); k++)
+             out.push_back(rel[k].second);
++    } else if (kind == 12) {                      // sec 177: FOCUS relocate
++        // The op-12 window repack failed board-conditionally because DENSE
++        // MULTI-BLOCK structures are hostile terrain here (sec 176). This is
++        // its surgical remnant: take THE worst-tardiness block and exhaustive-
++        // BL reinsert it with entry capped STRICTLY BEFORE its current entry.
++        // Success means that block enters earlier and nobody else moves, so
++        // Z1 strictly decreases -- a monotone improving move whose only cost
++        // is the scan. It exists to cover exactly the corner-generator
++        // coverage gaps sec 162 proved and secs 165/169 measured (437 -> 233).
++        int worst = -1; double wt = 0;
++        for (int i : placedIds) {
++            double td = s.f[i] - pb.D[i];
++            if (td > wt) { wt = td; worst = i; }
++        }
++        if (worst < 0) return {};                 // nobody tardy: no-fire
++        out.push_back(worst);
++        c.tsECap = s.e[worst] - 1;                // strictly earlier or fail
++        c.tsEMin = -1;
+     } else if (kind == 3) {                           // crane-bbox neighbours
+         std::vector<int> tardy;
+         for (int i : placedIds) if (s.f[i] > pb.D[i]) tardy.push_back(i);
+@@ -237,6 +256,22 @@
+     const Problem& pb = *c.pb; Sol& s = *c.s;
+     c.rng.seed(seedv);
+     Destroyers ds(12); ds.rng = &c.rng;
++    // sec 175: op-12 rides OUTSIDE ds. A dead 13th ds slot alone (ds(13),
++    // masked) broke the p2 canary 3690 -> 5440 at T15 AND T30 while a 5-seed
++    // pristine sweep stayed 3690/3690/3690/3690/3690 -- the operator ecology
++    // is tuned and a permanently-1.0 dead weight + forced-kind-0 retries
++    // distort the mix. So op-12 gets its own adaptive weight and its own rng
++    // stream (derived from seedv, drawn ONLY when bit 12 is enabled), which
++    // makes bit-12-off builds trajectory-identical to v82 by construction.
++    std::mt19937 rng2((uint32_t)(seedv ^ 0x9E3779B9u));
++    std::uniform_real_distribution<double> U2(0, 1);
++    double w12 = 1.0, sc12 = 0.0; int us12 = 0;
++    double sec12 = 0.0;            // sec 176: op-12 wall time, for cost-aware
++                                   // weighting (dedicated locals -- the shared
++                                   // Prof timers are used by other paths)
++    const bool tsOn  = ((rp.opMask >> 12) & 1) != 0;
++    const bool tsExh = ((rp.opMask >> 13) & 1) != 0;   // sec 176 A/B: op12
++                                 // rebuilds with exhaustive BL vs normal repair
+     auto t0 = std::chrono::steady_clock::now();
+     auto now = [&]{ return std::chrono::duration<double>(
+         std::chrono::steady_clock::now() - t0).count(); };
+@@ -262,10 +297,28 @@
+     while (now() < seconds) {
+         st.iters++;
+         bool hc = now() > rp.hcFrac * seconds;        // late phase: hill climbing
+-        int kind = ds.pick();
+-        for (int tries = 0; tries < 8 && !((rp.opMask >> kind) & 1); tries++)
++        int kind;
++        // sec 176: op-12 rides on EVERY arm at a low base rate and lets its
++        // own adaptive weight decide. Swapping a whole arm to op-12 cost a
++        // plain DRAW (Set A s14 +0.069%); this keeps every arm intact. The
++        // denominator is large so the initial rate is ~2.4%, and because a
++        // useless op-12 sinks to the 0.05 floor its cost collapses to ~0.1%
++        // of iterations on boards that dislike it (measured: p38).
++        // sec 176: STALL trigger. op-12 is a quality investment, and this SA
++        // converts iterations into quality (secs 126/169), so paying for a big
++        // move is only rational once the cheap moves have run dry. Gate it on
++        // the search having gone without a new best for longer than a tenth of
++        // its own history -- scale-free, no instance knob: p28-family stalls
++        // early and gets the operator, p38-family keeps improving and never
++        // pays for it.
++        bool stalled = sinceBest > st.iters / 10;
++        if (tsOn && stalled && U2(rng2) < w12 / (w12 + 40.0)) kind = 12;
++        else {
+             kind = ds.pick();
+-        if (!((rp.opMask >> kind) & 1)) kind = 0;
++            for (int tries = 0; tries < 8 && !((rp.opMask >> kind) & 1); tries++)
++                kind = ds.pick();
++            if (!((rp.opMask >> kind) & 1)) kind = 0;
++        }
+         int q;
+         if (U(c.rng) < rp.bigQProb) {                 // rare large jolt
+             q = qlo + (int)(c.rng() % (uint32_t)(qhi - qlo + 1));
+@@ -273,6 +326,7 @@
+             int lo = 2, hi = std::max(8, (int)(0.03 * pb.n));
+             q = lo + (int)(c.rng() % (uint32_t)(hi - lo + 1));
+         }
++        double _ts0 = (kind == 12) ? repair::pclk() : 0.0;
+         auto rem = pickRemoval(c, kind, q, lastTouch);
+         if (rem.empty()) continue;
+         std::vector<Backup> bk;
+@@ -298,7 +352,19 @@
+             });
+         }
+         bool ok = true;
+-        for (int A : rem) if (!repair::insertGreedy(c, A, -1)) { ok = false; break; }
++        bool ts = (kind == 12 && c.tsECap > 0);
++        if (ts) {
++            // single block through insertGreedy => vp-verified => the sec-171
++            // invariant holds; no post-install re-verification needed (unlike
++            // the multi-block direct-write op-12 needed, sec 176).
++            c.exhaustive = true;
++            ok = repair::insertGreedy(c, rem[0], c.tsECap);
++            c.exhaustive = false;
++        } else {
++            for (int A : rem) {
++                if (!repair::insertGreedy(c, A, -1)) { ok = false; break; }
++            }
++        }
+         if (auditEvery > 0 && ok) {
+             int bb = -1; int code = audit(pb, s, &bb);
+             if (code) { st.badIter = st.iters; st.badKind = kind;
+@@ -313,21 +379,24 @@
+                 s.addIdx(b.A);
+                 c.oc->stamp(pb, s, b.A, true);
+             }
+-            ds.used[kind]++;
++            if (kind == 12) us12++; else ds.used[kind]++;
+             continue;
+         }
+         double nv = obj();
+         double dlt = nv - cur;
+         bool acc = dlt < -1e-9 ||
+                    (!hc && U(c.rng) < std::exp(-dlt / std::max(1e-9, T)));
+-        ds.used[kind]++;
++        if (kind == 12) us12++; else ds.used[kind]++;
++        if (kind == 12) sec12 += repair::pclk() - _ts0;
+         if (acc) {
+             cur = nv; st.accepted++;
+             for (int A : rem) lastTouch[A] = st.iters;
+             if (nv < best - 1e-9) {
+                 best = nv; bestSol = s; st.improved++; sinceBest = 0;
+-                ds.score[kind] += 3.0;
+-            } else { ds.score[kind] += (dlt < -1e-9 ? 1.0 : 0.3); sinceBest++; }
++                if (kind == 12) sc12 += 3.0; else ds.score[kind] += 3.0;
++            } else { double gs = (dlt < -1e-9 ? 1.0 : 0.3);
++                     if (kind == 12) sc12 += gs; else ds.score[kind] += gs;
++                     sinceBest++; }
+         } else {
+             sinceBest++;
+             for (int A : rem) if (s.placed[A]) repair::removeBlock(c, A);
+@@ -342,7 +411,24 @@
+             T *= cooling;
+             if (sinceBest > 1200) { T = T0 * 0.3; sinceBest = 0; }   // reheat
+         }
+-        if (++sinceUpdate >= 60) { ds.update(); sinceUpdate = 0; }
++        if (++sinceUpdate >= 60) {
++            ds.update();
++            if (us12) {
++                // sec 176: COST-AWARE weight. The base scheme rewards score
++                // per USE, which is blind to an operator that eats the clock:
++                // op-12 is accepted ~33% of the time yet consumed 25% of the
++                // budget, so it kept a healthy weight while starving the
++                // search (measured: p38 +4.1% with per-use weighting). Divide
++                // by its cost relative to an average iteration, so an operator
++                // that costs 40 normal iterations must earn 40x the score.
++                double avgIter = now() / std::max<long>(st.iters, 1);
++                double relCost = (sec12 / us12) / std::max(avgIter, 1e-9);
++                w12 = 0.85 * w12 + 0.15 * (sc12 / us12 / std::max(relCost, 1.0));
++                w12 = std::max(w12, 0.05);
++                sc12 = 0; us12 = 0; sec12 = 0;
++            }
++            sinceUpdate = 0;
++        }
+         if (auditEvery > 0 && (st.iters % auditEvery) == 0) {
+             int bb = -1; int code = audit(pb, s, &bb);
+             if (code) { st.badIter = st.iters; st.badKind = kind;

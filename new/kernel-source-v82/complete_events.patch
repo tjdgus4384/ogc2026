@@ -1,0 +1,20 @@
+--- /tmp/rp.pre167	2026-07-26 02:12:21.024753948 +0000
++++ /tmp/rp167.patched	2026-07-26 02:16:12.802181575 +0000
+@@ -356,6 +356,8 @@
+                 if (!s.placed[k]) continue;
+                 if (s.f[k] > eBot && s.f[k] <= eTop)
+                     fev.push_back({s.f[k], k});
++                int er = s.e[k] + 1;                    // rule-4 release
++                if (er > eBot && er <= eTop) fev.push_back({er, k});
+             }
+         }
+         std::sort(fev.begin(), fev.end());
+@@ -465,6 +467,8 @@
+                 if (s.f[k] >= pb.R[A] && s.f[k] <= eTop) ev.push_back(s.f[k]);
+                 int cand = s.e[k] - pb.P[A];
+                 if (cand >= pb.R[A] && cand <= eTop) ev.push_back(cand);
++                int er = s.e[k] + 1;                    // rule-4 release
++                if (er >= pb.R[A] && er <= eTop) ev.push_back(er);
+             }
+         std::sort(ev.begin(), ev.end());
+         ev.erase(std::unique(ev.begin(), ev.end()), ev.end());

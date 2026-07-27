@@ -1,0 +1,68 @@
+--- /tmp/al.pre175	2026-07-26 05:16:01.330563600 +0000
++++ alns.hpp	2026-07-26 11:31:16.485722432 +0000
+@@ -227,6 +227,7 @@
+     double T0mul = 0.002, cooling = 0.9997;
+     double hcFrac = 0.75;        // fraction of budget after which hill-climb
+     double bigQProb = 0.04;      // probability of a large removal
++    bool lahc = false;           // sec 177: LAHC acceptance family
+     uint32_t opMask = 0x7FF;     // destroyer enable bits (12 ops; bit 11 = era defrag)
+ };
+ 
+@@ -258,6 +259,8 @@
+     int sinceUpdate = 0;
+     long sinceBest = 0;
+     std::vector<long> lastTouch(pb.n, 0);
++    std::vector<double> lahcHist;
++    if (rp.lahc) lahcHist.assign((size_t)pb.n * 20, cur);  // sec 177: Lh = 20n probe
+ 
+     while (now() < seconds) {
+         st.iters++;
+@@ -318,8 +321,20 @@
+         }
+         double nv = obj();
+         double dlt = nv - cur;
+-        bool acc = dlt < -1e-9 ||
+-                   (!hc && U(c.rng) < std::exp(-dlt / std::max(1e-9, T)));
++        bool acc;
++        if (rp.lahc) {
++            // sec 177: Late-Acceptance Hill Climbing arm. sec 153 swept
++            // temperature schedules WITHIN Metropolis; the acceptance FAMILY
++            // itself was never varied. LAHC accepts a candidate if it beats
++            // the incumbent OR the incumbent from Lh steps ago -- one memory
++            // slot per block keeps it scale-free (no tuned constant).
++            size_t li = (size_t)(st.iters % (long)lahcHist.size());
++            acc = (nv <= cur + 1e-9) || (nv <= lahcHist[li] + 1e-9);
++            lahcHist[li] = cur;
++        } else {
++            acc = dlt < -1e-9 ||
++                  (!hc && U(c.rng) < std::exp(-dlt / std::max(1e-9, T)));
++        }
+         ds.used[kind]++;
+         if (acc) {
+             cur = nv; st.accepted++;
+--- /tmp/api.pre175	2026-07-26 05:16:01.332274288 +0000
++++ api.cpp	2026-07-26 11:26:56.653961504 +0000
+@@ -110,11 +110,13 @@
+     std::vector<double> runALNS(double seconds, double qlo, double qhi,
+                                 double T0mul, double cooling, uint64_t seed,
+                                 int auditEvery = 0, double hcFrac = 0.75,
+-                                double bigQProb = 0.04, int opMask = 0xFF) {
++                                double bigQProb = 0.04, int opMask = 0xFF,
++                                bool lahc = false) {
+         alns::RunParams rp;
+         rp.qloF = qlo; rp.qhiF = qhi; rp.T0mul = T0mul; rp.cooling = cooling;
+         rp.hcFrac = hcFrac; rp.bigQProb = bigQProb;
+         rp.opMask = (uint32_t)opMask;
++        rp.lahc = lahc;
+         auto st = alns::run(ctx, seconds, rp, seed, auditEvery);
+         return {(double)st.iters, (double)st.accepted, (double)st.improved,
+                 (double)st.failed, st.best, (double)st.badIter,
+@@ -471,7 +473,7 @@
+         .def("set_wave_grid", &Engine::setWaveGrid)
+         .def("set_assignment_lock", &Engine::setAssignmentLock)
+         .def("set_score_local", &Engine::setScoreLocal)
+-        .def("run_alns", &Engine::runALNS, pybind11::arg("seconds"), pybind11::arg("qlo"), pybind11::arg("qhi"), pybind11::arg("T0mul"), pybind11::arg("cooling"), pybind11::arg("seed"), pybind11::arg("auditEvery") = 0, pybind11::arg("hcFrac") = 0.75, pybind11::arg("bigQProb") = 0.04, pybind11::arg("opMask") = 255)
++        .def("run_alns", &Engine::runALNS, pybind11::arg("seconds"), pybind11::arg("qlo"), pybind11::arg("qhi"), pybind11::arg("T0mul"), pybind11::arg("cooling"), pybind11::arg("seed"), pybind11::arg("auditEvery") = 0, pybind11::arg("hcFrac") = 0.75, pybind11::arg("bigQProb") = 0.04, pybind11::arg("opMask") = 255, pybind11::arg("lahc") = false)
+         .def("run_portfolio", &Engine::runPortfolio, pybind11::arg("threads"), pybind11::arg("seconds"), pybind11::arg("rounds"), pybind11::arg("qlo"), pybind11::arg("qhi"), pybind11::arg("T0mul"), pybind11::arg("cooling"), pybind11::arg("seed"), pybind11::arg("multiStart") = 1)
+         .def("reconstruct_assigned", &Engine::reconstructAssigned)
+         .def("move_block", &Engine::moveBlock)

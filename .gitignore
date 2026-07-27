@@ -1,6 +1,16 @@
+# local conda environment (rebuildable -- see README.md)
+.miniforge/
+
+# python bytecode
 __pycache__/
 *.pyc
-*.so
-.claude/scheduled_tasks.lock
-solution/*.zip
+
+# scratch / transient
 scratchpad/
+.claude/scheduled_tasks.lock
+slurm-*.out
+runs/
+
+# NOTE: *.so is deliberately TRACKED. The compiled kernel is the shipped
+# artifact and is only ~700KB. Losing a kernel binary once already cost a whole
+# generation of work -- see archive/notes-2026-06/SOURCE_RECOVERY_NOTE.md.

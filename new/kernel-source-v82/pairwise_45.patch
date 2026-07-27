@@ -1,0 +1,44 @@
+--- /tmp/core.pre173	2026-07-26 04:46:30.291116866 +0000
++++ core.hpp	2026-07-26 04:47:45.631687575 +0000
+@@ -132,28 +132,24 @@
+         if (!crane::entryOK(W, H, pres, gk, s.x[k], s.y[k])) return false;
+     }
+     // rule 5: A must not block exit of any k exiting during (eN, fN]
+-    // sec 171: same exactness argument as rule 4 (no A-k overlap => A is not
+-    // a blocker => a failure here would be A-independent => pre-existing =>
+-    // impossible).
++    // sec 173: pairwise reduction (k's own rule 3 plus every later resident's
++    // rule 5 already cover all non-A blockers; removals only delete blockers).
++    // A is present at k's exit under the original same-day LIFO predicate;
++    // if absent there is nothing to test. Exact given the incremental-vp
++    // invariant, which tryWaveAlign preserves by re-verifying movers.
+     for (int k : nb) {
+         if (k == A || !s.placed[k]) continue;
+         int t = s.f[k], ek = s.e[k];
+         if (!(eN < t && t <= fN)) continue;
++        if (!(fN > t || (fN == t && eN < ek))) continue;   // A absent at exit
++        const OrientGeom& gk = pb.geo[k].orients[s.ori[k]];
+         if (!crane::bboxOverlapOff(gA.bb, s.x[A], s.y[A],
+-                                   pb.geo[k].orients[s.ori[k]].bb,
+-                                   s.x[k], s.y[k])) continue;
+-        pres.clear();
+-        pres.push_back({&pb.geo[k].orients[s.ori[k]],
+-                        (double)s.x[k], (double)s.y[k]});   // target k at [0]
+-        if (fN > t || (fN == t && eN < ek))
+-            pres.push_back({&gA, (double)s.x[A], (double)s.y[A]});
+-        for (int k2 : nb) {
+-            if (k2 == A || k2 == k || !s.placed[k2]) continue;
+-            if (s.e[k2] < t && (s.f[k2] > t || (s.f[k2] == t && s.e[k2] < ek)))
+-                pres.push_back({&pb.geo[k2].orients[s.ori[k2]],
+-                                (double)s.x[k2], (double)s.y[k2]});
+-        }
+-        if (pres.size() > 1 && !crane::exitOK(pres, 0)) return false;
++                                   gk.bb, s.x[k], s.y[k])) continue;
++        int nK = (int)gk.layers.size(), nA = (int)gA.layers.size();
++        for (int kk = 0; kk < nK; kk++)
++            for (int j = kk; j < nA; j++)
++                if (crane::overlapsLay(gk, kk, s.x[k], s.y[k],
++                                       gA, j, s.x[A], s.y[A])) return false;
+     }
+     return true;
+ }
