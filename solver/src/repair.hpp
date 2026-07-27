@@ -43,20 +43,17 @@ struct Ctx {
                                       // regime gap, not a tuned constant.
 };
 
-// Smallest orientation bbox area: a true lower bound on the footprint
-// whichever orientation gets chosen, so the area screen can never reject a
-// bay that a slimmer orientation would fit. (v0 used orient 0's area, which
-// is the LARGEST one for 8% of training blocks -> over-pruning.)
-inline double minArea(const Problem& pb, int A) {
-    double a = 1e18;
-    for (const auto& g : pb.geo[A].orients)
-        a = std::min(a, (g.bb.x1 - g.bb.x0) * (g.bb.y1 - g.bb.y0));
-    return a;
-}
-
-// Free-area screen for bay j over [e,f). areaUsed is a bbox-area sum (itself
-// an over-estimate of true occupancy), so the 1.02 slack keeps this a screen,
-// not a verdict.
+// Area screen for bay j over [e,f) -- a SPEED HEURISTIC, never a verdict.
+// It compares bbox-area sums (areaUsed) against bay area with 2% slack, and
+// interlocking non-convex shapes can legally exceed that sum, so it may
+// reject a feasible (bay, day). That is accepted by design: the screen's job
+// is to skip crowded bays cheaply, and only a heuristic can be tight here --
+// the exact per-layer area condition never binds at real densities (measured
+// peaks 0.45-0.53, KERNEL_SPEC sec 191), so an exact screen would prune
+// nothing. Two roles, two rules:
+//   phases 1-2: screen aggressively (speed; misses are re-caught below)
+//   phase 3:    NO screen -- the completeness net must stay unconditional.
+// Screening phase 3 collapsed dense boards (v1 candidate: prob_16 +308%).
 inline bool areaRoom(const Ctx& c, int j, double areaA, int e, int f) {
     double cap = c.pb->bayW[j] * c.pb->bayH[j] * 1.02;
     const auto& au = c.oc->areaUsed[j];
@@ -210,7 +207,11 @@ inline bool insertGreedy(Ctx& c, int A, int eCap = -1) {
         std::shuffle(bays.begin(), bays.end(), c.rng);
     std::shuffle(oris.begin(), oris.end(), c.rng);
 
-    double areaA = minArea(pb, A);
+    // orient-0 bbox area: the same currency areaUsed accumulates (occ::stamp
+    // stamps the chosen orientation's bbox). Heuristic either way -- see
+    // areaRoom.
+    const auto& g0 = pb.geo[A].orients[0];
+    double areaA = (g0.bb.x1 - g0.bb.x0) * (g0.bb.y1 - g0.bb.y0);
     thread_local std::vector<int> xs, ys;
 
     // phase 1: full scan at the release day
@@ -243,12 +244,9 @@ inline bool insertGreedy(Ctx& c, int A, int eCap = -1) {
         }
         if (scanLocal(c, A, pr.second, e, areaA)) return true;
     }
-    // phase 3: sparse dense sweep -- the completeness net. Deliberately NO
-    // area screen here: areaRoom compares a bbox-area SUM against bay area,
-    // and interlocking non-convex shapes can exceed that sum while remaining
-    // feasible, so the screen is a speed heuristic (phases 1-2), never a
-    // verdict. Screening this phase collapsed dense boards (v1 candidate:
-    // prob_16 +308%).
+    // phase 3: sparse dense sweep -- the completeness net. Unconditional by
+    // design: the screen is a heuristic (see areaRoom) and must not gate the
+    // last resort.
     int stride = (eTop - eBot <= 24) ? 1 : 6;
     for (int e = eBot; e <= eTop; e += stride) {
         for (int j : bays)
