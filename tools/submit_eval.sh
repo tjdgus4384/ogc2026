@@ -44,4 +44,4 @@ JID=$(TAG="$TAG" TL="$TL" sbatch --parsable \
 
 echo "submitted array job $JID  tag=$TAG  tl=${TL}s  partition=$PART  array=$ARRAY"
 echo "  watch:   squeue -j $JID"
-echo "  collect: python tools/collect.py $TAG"
+echo "  collect: python3 tools/collect.py $TAG"

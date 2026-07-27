@@ -79,7 +79,7 @@ solver/build.sh                              # rebuild sscore from solver/src/
 tools/submit_eval.sh <tag> <timelimit_sec>   # full 40 on dept, 4 cores each
 tools/submit_eval.sh probe 120 dept 1,2,22,28,38      # quick subset
 squeue -u $USER
-python tools/collect.py <tag> --vs <older_tag>
+python3 tools/collect.py <tag> --vs <older_tag>
 ```
 
 `dept` is 8×40 cores and `titan` 15×~48, both with `OverSubscribe=NO`, so a
