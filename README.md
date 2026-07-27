@@ -49,13 +49,18 @@ archive/      superseded June work: the python engine, its tools, its ledger.
 
 1. **Never run the solver on the gateway.** It is a shared login node. Every
    measurement goes through Slurm: `tools/submit_eval.sh`.
-2. **Never overwrite a frozen `results/<tag>.json`.** Comparisons read frozen
+2. **At most 2 of our tasks run at once.** This is a shared cluster. Arrays are
+   throttled with `%1`, `submit_eval.sh` refuses to submit when 2 are already
+   running, and a full-40 @T300 therefore takes ~3.4 h. Budget experiments
+   accordingly: prefer a targeted probe that answers the question in minutes
+   over a full end-to-end run that answers it in hours.
+3. **Never overwrite a frozen `results/<tag>.json`.** Comparisons read frozen
    files; re-running a prior version to compare it is how you end up comparing
    noise.
-3. **Versions are git tags, not directories.** `v0` is the imported engine.
+4. **Versions are git tags, not directories.** `v0` is the imported engine.
    The previous campaign produced 37 loose `smaxNN-vNN.zip` artifacts and all
    of them were lost; that is what this rule exists to prevent.
-4. **`utils.py` is not ours.** The server overwrites it. Any behaviour we rely
+5. **`utils.py` is not ours.** The server overwrites it. Any behaviour we rely
    on must hold against the version in `solver/utils.py` verbatim.
 
 ## Environment
@@ -76,7 +81,7 @@ and will not import on 3.10.
 ```bash
 solver/build.sh                              # rebuild sscore from solver/src/
 
-tools/submit_eval.sh <tag> <timelimit_sec>   # full 40 on dept, 4 cores each
+tools/submit_eval.sh <tag> <timelimit_sec>   # full 40, 4 cores, 1 at a time
 tools/submit_eval.sh probe 120 dept 1,2,22,28,38      # quick subset
 squeue -u $USER
 python3 tools/collect.py <tag> --vs <older_tag>

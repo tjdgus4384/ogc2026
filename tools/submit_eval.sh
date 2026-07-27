@@ -11,6 +11,13 @@
 #   partition  dept (default) or titan. Both are CPU nodes with no oversubscribe.
 #   instances  sbatch array spec, default 1-40. e.g. "1,2,22,28,38" for a probe.
 #
+# SHARED-CLUSTER RULE: at most 2 of our tasks may run at once. The array is
+# throttled with %MAXPAR (default 1), so one submission occupies one running
+# task and you may have at most two submissions in flight. Set MAXPAR only if
+# you are running a single submission and know the cluster is free.
+#
+#   full-40 @T300 at MAXPAR=1 takes ~3.4 h; @T900 ~10 h. Plan overnight.
+#
 # The Slurm wall limit is set to the algorithm limit + 10 min of slack, so a
 # hung instance is killed by Slurm rather than sitting on a node forever.
 set -euo pipefail
@@ -21,6 +28,15 @@ TL="${2:?usage: submit_eval.sh <tag> <timelimit_sec> [partition] [instances]}"
 PART="${3:-dept}"
 ARRAY="${4:-1-40}"
 SOLVER="${SOLVER:-$ROOT/solver}"
+MAXPAR="${MAXPAR:-1}"       # concurrent array tasks -- see the rule above
+
+RUNNING=$(squeue -h -u "$USER" -t RUNNING,CONFIGURING 2>/dev/null | wc -l)
+if (( RUNNING >= 2 )); then
+    echo "refusing to submit: $RUNNING of our tasks are already running." >&2
+    echo "The shared-cluster budget is 2. Wait, or scancel something." >&2
+    squeue -u "$USER" >&2
+    exit 1
+fi
 
 if [[ -e "$ROOT/results/$TAG.json" ]]; then
     echo "results/$TAG.json already exists -- pick a new tag." >&2
@@ -40,9 +56,9 @@ cat > "$ROOT/runs/$TAG/META.json" <<EOF
 EOF
 
 JID=$(TAG="$TAG" TL="$TL" SOLVER="$SOLVER" sbatch --parsable \
-        --partition="$PART" --array="$ARRAY" --time="${WALL}" \
+        --partition="$PART" --array="${ARRAY}%${MAXPAR}" --time="${WALL}" \
         "$ROOT/tools/eval.sbatch")
 
-echo "submitted array job $JID  tag=$TAG  tl=${TL}s  partition=$PART  array=$ARRAY"
+echo "submitted array job $JID  tag=$TAG  tl=${TL}s  partition=$PART  array=$ARRAY%$MAXPAR"
 echo "  watch:   squeue -j $JID"
 echo "  collect: python3 tools/collect.py $TAG"

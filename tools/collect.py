@@ -50,11 +50,21 @@ def main():
     ap.add_argument("--vs", default=None, help="frozen tag to compare against")
     ap.add_argument("--tol", type=float, default=0.5,
                     help="percent band counted as a tie (default 0.5)")
+    ap.add_argument("--expect", type=int, default=40,
+                    help="instances required before freezing (default 40)")
+    ap.add_argument("--partial", action="store_true",
+                    help="inspect an unfinished run without freezing it")
     a = ap.parse_args()
 
     meta, recs = load_run(a.tag)
     if not recs:
         sys.exit(f"runs/{a.tag}/ has no completed instances yet.")
+
+    expected = a.expect
+    if len(recs) < expected and not a.partial:
+        sys.exit(f"runs/{a.tag}/ has {len(recs)}/{expected} instances -- refusing "
+                 f"to freeze a partial run (it would later read as a complete "
+                 f"one). Wait for the array, or pass --partial to inspect.")
 
     infeas = sorted(k for k, r in recs.items() if not r.get("feasible"))
     overrun = sorted(k for k, r in recs.items() if r.get("overrun"))
@@ -70,7 +80,8 @@ def main():
         mm = max(r.get("maxrss_mb") or 0 for r in recs.values())
         print(f"max wall {mw:.1f}s   max rss {mm:.0f} MB")
 
-    freeze(a.tag, meta, recs)
+    if not a.partial:
+        freeze(a.tag, meta, recs)
 
     if not a.vs:
         return
