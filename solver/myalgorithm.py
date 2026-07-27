@@ -52,14 +52,13 @@ try:
 except Exception:                                     # pragma: no cover
     utils = None
 
-_THR = min(4, _os.cpu_count() or 1)
+_THR = min(4, _os.cpu_count() or 1)   # the server grants 4 cores (sec 100)
+
 # portfolio seed: env-overridable for DISTRIBUTIONAL testing (an engine change
 # reshuffles the RNG stream = one frozen lottery redraw; single-draw A/Bs
 # compare tickets, not engines). Absent env (the grading server) => 7, the
 # historical value.
-_PSEED = int(_os.environ.get("OGC_SEED", "7"))   # sec 100: hard-coded 4 on a 1-core
-                                      # sandbox oversubscribed every local
-                                      # bench; the server has 4 cores.
+_PSEED = int(_os.environ.get("OGC_SEED", "7"))
 
 
 # ---------------------------------------------------------------- engine io
