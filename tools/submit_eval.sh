@@ -14,9 +14,10 @@
 # pinned to 4 cores + 16 GB = the grading envelope. A full 40 is 4 jobs /
 # 4 nodes and finishes in ~one instance-runtime (T300 -> ~6 min).
 #
-# CLUSTER BUDGET: at most 4 of our node-jobs running at once. To queue another
-# eval behind a running one, pass DEPEND="<jobid> <jobid> ..." -- it submits
-# with --dependency=afterany and waits its turn instead of stacking nodes.
+# CLUSTER BUDGET: at most 4 of our node-jobs running at once, and NO slurm
+# dependency queuing -- pending dependency jobs sit in everyone's squeue.
+# Run evals back to back by waiting for the previous one to finish, then
+# submitting the next (the session orchestrates; the queue stays clean).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -34,14 +35,11 @@ if [[ -e "$ROOT/results/$TAG.json" ]]; then
     exit 1
 fi
 
-if [[ -z "${DEPEND:-}" ]]; then
-    RUNNING=$(squeue -h -u "$USER" -t RUNNING,CONFIGURING 2>/dev/null | wc -l)
-    if (( RUNNING >= 4 )); then
-        echo "refusing: $RUNNING of our jobs already running (budget 4)." >&2
-        echo "Pass DEPEND=\"<jobids>\" to chain behind them, or wait." >&2
-        squeue -u "$USER" >&2
-        exit 1
-    fi
+RUNNING=$(squeue -h -u "$USER" 2>/dev/null | wc -l)
+if (( RUNNING > 0 )); then
+    echo "refusing: $RUNNING of our jobs are in the queue -- wait for them." >&2
+    squeue -u "$USER" >&2
+    exit 1
 fi
 
 # expand "1-40" / "3,7,22" into a list
@@ -69,21 +67,15 @@ cat > "$ROOT/runs/$TAG/META.json" <<EOF
  "submitted": "$(date -Iseconds)"}
 EOF
 
-DEP_FLAG=()
-if [[ -n "${DEPEND:-}" ]]; then
-    DEP_FLAG=(--dependency="afterany:$(echo "$DEPEND" | tr ' ' ':')")
-fi
-
 JIDS=()
 for ((o = 0; o < ${#ALL[@]}; o += PERNODE)); do
     CHUNK="${ALL[@]:o:PERNODE}"
     JID=$(sbatch --parsable --partition="$PART" --time="$WALL" \
-          --job-name="ogc-$TAG" "${DEP_FLAG[@]}" \
+          --job-name="ogc-$TAG" \
           "$ROOT/tools/eval.sbatch" "$TAG" "$TL" "$SOLVER" "$CHUNK" "$PSEED")
     JIDS+=("$JID")
 done
 
 echo "submitted ${#JIDS[@]} node-jobs (${JIDS[*]})  tag=$TAG  tl=${TL}s  partition=$PART"
 echo "  watch:   squeue -u \$USER"
-echo "  chain:   DEPEND=\"${JIDS[*]}\" tools/submit_eval.sh <next> ..."
 echo "  collect: python3 tools/collect.py $TAG"

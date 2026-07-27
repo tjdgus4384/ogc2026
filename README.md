@@ -49,11 +49,10 @@ archive/      superseded June work: the python engine, its tools, its ledger.
 
 1. **Never run the solver on the gateway.** It is a shared login node. Every
    measurement goes through Slurm: `tools/submit_eval.sh`.
-2. **At most 2 of our tasks run at once.** This is a shared cluster. Arrays are
-   throttled with `%1`, `submit_eval.sh` refuses to submit when 2 are already
-   running, and a full-40 @T300 therefore takes ~3.4 h. Budget experiments
-   accordingly: prefer a targeted probe that answers the question in minutes
-   over a full end-to-end run that answers it in hours.
+2. **At most 4 of our node-jobs at once, and no Slurm dependency queuing.**
+   This is a shared cluster: pending `(Dependency)` jobs clutter everyone's
+   queue, so `submit_eval.sh` refuses to submit while any of our jobs are
+   queued. Run evals back to back by waiting, then submitting the next.
 3. **Never overwrite a frozen `results/<tag>.json`.** Comparisons read frozen
    files; re-running a prior version to compare it is how you end up comparing
    noise.
