@@ -93,29 +93,15 @@ A full-40 array is 160 cores and fits on `dept` alone.
 
 ## State
 
-`solver/` is **v0**, imported from the offline campaign's end point (formerly
-"smax78-v82"). Canary reproduced here: `prob_1 @T20 → 1499`, `prob_2 @T20 → 3690`.
+`solver/` is **v1** (tag `v1`): the offline campaign's end point (`v0`,
+ex-"smax78-v82") rewritten for full inspectability and hardened at the
+checker gate. Distributional verdict vs a same-toolchain v0 rebuild:
+quality parity (3-seed means −0.71%), same draw variance (~10%/instance),
+and the v0 pipeline's collapse mode (prob_29 → `_trivial`, a ~4000× loss,
+2 of 5 draws) eliminated. `solver/VERSION` carries the full evidence trail;
+`docs/KERNEL_SPEC.md` the 196-section history behind v0.
 
-That campaign's own conclusion (`docs/KERNEL_SPEC.md` §196) is that its three
-objective layers are closed under the knobs it explored: scheduling is provably
-optimal for its layouts (CP-SAT), assignment is capacity-saturated and the
-capacity is assignment-invariant, and placement matches an exhaustive nester on
-the same block sets. It reached roughly 20th–30th on the board and attributed
-the residual −18%/−35%/−36% gaps to an engine-class difference.
-
-Two caveats on inheriting that conclusion, both structural rather than
-disagreements with the measurements:
-
-- **It was measured on a 1-core sandbox.** `KERNEL_SPEC` §160 records
-  `nproc = 1`, with the 4-thread portfolio time-slicing a single core, and
-  names this as a root cause of local→server transfer failures. Every
-  portfolio-, thread-, and budget-shaped judgement was made under that
-  distortion. Here, a 4-core Slurm task is the real thing.
-- **It was measured on 1–2 instances at a time.** Adoption gates used a
-  20-instance synthetic suite that did not survive; the full 40 training
-  instances were never run per change. `tools/` now makes full-40 the default
-  unit of measurement.
-
-So the exhaustion claims are trustworthy *as statements about that setup*, and
-the ones that depend on parallelism or on breadth deserve one re-test each
-before being treated as settled.
+Baselines frozen in `results/`: `v1e-t300` (seeds 7/8/9), `v1e-t900`,
+`v0rb-*` controls. Judge engine changes distributionally (`SEED=` on
+`tools/submit_eval.sh`); single draws differ by ~10% per instance on
+unconverged boards.

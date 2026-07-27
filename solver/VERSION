@@ -1,33 +1,30 @@
-v1d (candidate -- gate hardened; full-40 x2-budget validation pending)
+v1 (final -- distributional verdict passed 2026-07-28)
 
-v1 = v0 rewritten for legibility: one insertion algorithm, one prefilter
-semantic, zero dead knobs. Kernel 2199 -> 1567 lines, API 29 -> 19 methods.
+The engine formerly "smax78-v82" (tagged v0), rewritten so the whole solver
+is inspectable: one insertion algorithm, one prefilter semantic per role,
+zero dead knobs, kernel 1594 lines, every line reachable. Validated
+DISTRIBUTIONALLY against a same-toolchain v0 rebuild (3 portfolio seeds x
+full-40 @T300 each, plus T900):
 
-Deliberate behavior changes vs v0 (everything else is deletion):
-  1. The seeder now uses the same insertion path as the anneal. v0's seeder
-     ran a second, older algorithm because reconstructOrdered never inherited
-     the eventLocal flag -- measured an accident, not a design (seed A/B over
-     all 40: 18W/11T/11L, mean -2.16% in favour of the unified path).
-  2. Area prefilter uses min-over-orientations bbox area (v0 used orient 0's,
-     the largest for 8% of blocks -> could reject a bay a slimmer orientation
-     fits).
-  3. The dense fallback uses the same sound same-layer prefilter as every
-     other scan (v0 used a j>=l variant there that over-rejects legal layered
-     placements; measured near-noise when swapped, KERNEL_SPEC sec 179).
-  4. Phase-3 fallback gained the area screen; portfolio threads re-evaluate
-     their post-compaction solution before the global-best merge (v0 compared
-     pre-compaction bests).
+  quality    3-seed means: v1 -0.71% (parity; medians ~0)
+  variance   seed-to-seed per-instance spread ~9-10% both engines
+  tail       v0 collapsed prob_29 to _trivial (1.53e9, ~4000x) in 2 of 5
+             draws; v1: zero collapses in 5 draws -- the hardened gate
+             (nudge -> retime -> tight/loose move, deadline-aware, seed
+             floor) removed the failure mode
+  canary     prob_1 1499 / prob_2 3690 preserved
+  anneal     +32% iterations, -2.9% quality from identical seeds (controlled)
 
-Lineage: v0 = offline campaign end point ("smax78-v82"), tagged v0 in git.
-Old-numbering (v57-v85) references live in docs/KERNEL_SPEC.md.
+Single-draw A/Bs between engine families compare lottery tickets, not
+engines: a kernel change reshuffles the RNG stream once, and the fixed
+portfolio seed then freezes that redraw (v1c/v1d/v1e produced byte-identical
+objectives on the same instances). Judge engine changes on multi-seed
+distributions (OGC_SEED) or accept only differences far outside the ~10%
+per-instance draw band.
 
-v1d adds the gate repair program (the two-budget T900 verdict exposed it):
-  - retime_block kernel primitive: shift/extend a stay in time, vp-gated.
-  - gate ladder reordered least-destructive first: nudges -> retimes
-    (entry +1 / exit +1: time sidesteps exact-touch artifacts at <= a few
-    tardy days) -> relocations (tight before loose).
-  - deadline-aware: every rescue stage checks that another checker call fits.
-  - portfolio reserves gate budget (3 + 0.03n s, cap 15).
-  - fallback ladder gains a SEED FLOOR before _trivial (~1000x better floor).
-  - OGC_DIAG=1 emits stderr gate/fallback events (harness logs them; the
-    grading server never sets it).
+Deliberate deviations from v0, each measured: unified seeder path (seed A/B
+40/40: parity), post-compaction portfolio merge (strictly better-informed),
+8 destroyer slots (mixture drift real but quality-neutral), crane-aware
+hits() kept in the dense fallback as placement policy, gate ladder +
+reserve + seed floor (the robustness win), OGC_DIAG/OGC_SEED env hooks
+(inert on the grading server).
