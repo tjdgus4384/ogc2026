@@ -297,6 +297,35 @@ struct Engine {
         return false;
     }
 
+    // shift block i's stay in time: entry += de, exit += df (de<=df keeps
+    // duration >= P legal -- a block MAY remain past its processing time).
+    // vp-gated for i and every neighbour overlapping the old or new stay.
+    // The gate's cheapest structural rescue: an entry/exit obstructed at an
+    // exact-touch instant usually clears one day later at zero geometric
+    // cost, where a relocation could park the block arbitrarily late.
+    bool retimeBlock(int i, int de, int df) {
+        if (i < 0 || i >= pb.n || !sol.placed[i] || (de == 0 && df == 0))
+            return false;
+        int oe = sol.e[i], of = sol.f[i];
+        int ne = oe + de, nf = of + df;
+        if (ne < pb.R[i] || nf - ne < pb.P[i] || nf > horizon_) return false;
+        oc.stamp(pb, sol, i, false);
+        sol.e[i] = ne; sol.f[i] = nf;
+        bool ok = core::vpConservative(pb, sol, i);
+        if (ok) {
+            int lo = std::min(oe, ne), hi = std::max(of, nf);
+            for (int k : sol.byBay[sol.bay[i]]) {
+                if (k == i || !sol.placed[k]) continue;
+                if (!(sol.e[k] < hi && lo < sol.f[k])) continue;
+                if (!core::vpConservative(pb, sol, k)) { ok = false; break; }
+            }
+        }
+        if (ok) { oc.stamp(pb, sol, i, true); return true; }
+        sol.e[i] = oe; sol.f[i] = of;
+        oc.stamp(pb, sol, i, true);
+        return false;
+    }
+
     // move one block to a target bay (tight: entry <= D-P). Restores the
     // block on failure.
     bool moveBlock(int i, int targetBay, bool tight, uint64_t seed) {
@@ -340,6 +369,7 @@ PYBIND11_MODULE(sscore, m) {
         .def("get_block", &Engine::getBlock)
         .def("objective", &Engine::objective)
         .def("nudge_block", &Engine::nudgeBlock)
+        .def("retime_block", &Engine::retimeBlock)
         .def("move_block", &Engine::moveBlock)
         // ---- experiment tools (probes, arm-level A/B, state I/O) ----
         .def("run_alns", &Engine::runALNS,

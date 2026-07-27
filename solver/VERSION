@@ -1,4 +1,4 @@
-v1 (candidate -- full-40 validation pending)
+v1d (candidate -- gate hardened; full-40 x2-budget validation pending)
 
 v1 = v0 rewritten for legibility: one insertion algorithm, one prefilter
 semantic, zero dead knobs. Kernel 2199 -> 1567 lines, API 29 -> 19 methods.
@@ -20,3 +20,14 @@ Deliberate behavior changes vs v0 (everything else is deletion):
 
 Lineage: v0 = offline campaign end point ("smax78-v82"), tagged v0 in git.
 Old-numbering (v57-v85) references live in docs/KERNEL_SPEC.md.
+
+v1d adds the gate repair program (the two-budget T900 verdict exposed it):
+  - retime_block kernel primitive: shift/extend a stay in time, vp-gated.
+  - gate ladder reordered least-destructive first: nudges -> retimes
+    (entry +1 / exit +1: time sidesteps exact-touch artifacts at <= a few
+    tardy days) -> relocations (tight before loose).
+  - deadline-aware: every rescue stage checks that another checker call fits.
+  - portfolio reserves gate budget (3 + 0.03n s, cap 15).
+  - fallback ladder gains a SEED FLOOR before _trivial (~1000x better floor).
+  - OGC_DIAG=1 emits stderr gate/fallback events (harness logs them; the
+    grading server never sets it).

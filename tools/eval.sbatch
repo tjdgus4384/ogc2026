@@ -21,6 +21,7 @@ mkdir -p "$OUT"
 
 export OGC_SOLVER="$SOLVER"
 export OMP_NUM_THREADS=4
+export OGC_DIAG=1
 export OPENBLAS_NUM_THREADS=1
 export MKL_NUM_THREADS=1
 

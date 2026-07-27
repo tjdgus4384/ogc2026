@@ -18,11 +18,25 @@
   archive. Formerly: assign.py keeps the
   windowed-energetic capability for re-enable on its habitat.
 """
+import json as _json
 import math
 import re
+import sys as _sys
 import time
 
 import os as _os
+
+_DIAG = _os.environ.get("OGC_DIAG")
+
+
+def _diag(tag, **kw):
+    """env-gated stderr diagnostics: harness logs capture them, the grading
+    server (no OGC_DIAG) stays silent. Never allowed to raise."""
+    if _DIAG:
+        try:
+            print(_json.dumps({"diag": tag, **kw}), file=_sys.stderr, flush=True)
+        except Exception:
+            pass
 
 # sec 158: no single import may take the submission down. `algorithm()` guards
 # its body, but a module-level ImportError happens before that guard, scoring
@@ -176,14 +190,49 @@ def _check(p, sol):
     return res if isinstance(res, dict) else None
 
 
-def _gate(p, eng, n):
-    """checker + pair-nudge (sec 81) + replace rounds (sec 46)."""
+def _gate(p, eng, n, deadline=None):
+    """Checker gate: legalize float artifacts, LEAST-DESTRUCTIVE FIRST.
+
+    The violations this gate exists for are measure-zero exact-touch
+    artifacts (sec 182: shapely emits ~1e-15 slivers at legal contact; the
+    checker has no epsilon). Rescue ladder, ordered by objective damage:
+      1  pair nudges     1-unit spatial shifts     (zero cost, often boxed in)
+      2  retimes         entry +1 day / exit +1 day (cost <= a few tardy days;
+                         a blocked instant usually clears when the obstructor
+                         leaves -- time sidesteps what space cannot)
+      3  relocations     move within the bay, TIGHT first, loose only then
+                         (loose can park a block arbitrarily late: suspected
+                         +92 tardy days on prob_35 @T900)
+    Deadline-aware: each stage runs only if another checker call still fits
+    (the server kills overruns; a rescue that misses the deadline is worth
+    negative points).
+    """
     sol = _recs_to_sol(_extract(eng, n))
+    t0 = time.time()
     res = _check(p, sol)
+    ck = max(0.3, time.time() - t0)          # measured checker cost
     if res is None:
-        return sol, None            # checker unusable -> trust the kernel
+        return sol, None                     # checker unusable -> trust kernel
     if res.get("feasible"):
         return sol, res
+
+    def room():
+        return deadline is None or time.time() + ck + 0.3 < deadline
+
+    def recheck(stage):
+        nonlocal sol, res
+        sol = _recs_to_sol(_extract(eng, n))
+        res = _check(p, sol)
+        if res is not None:
+            _diag("gate", stage=stage, feasible=bool(res.get("feasible")),
+                  nviol=len(res.get("violations", [])))
+        return res
+
+    _diag("gate", stage="raw", feasible=False,
+          nviol=len(res.get("violations", [])),
+          first=str(res.get("violations", ["?"])[0])[:120])
+
+    # stage 1: pair nudges
     for v in res.get("violations", [])[:6]:
         ids = [int(x) for x in re.findall(r"block (\d+)", str(v))[:2]]
         hit = False
@@ -195,12 +244,37 @@ def _gate(p, eng, n):
                     break
             if hit:
                 break
-    sol = _recs_to_sol(_extract(eng, n))
-    res = _check(p, sol)
-    if res is None:
+    if not room():
+        return None, res
+    r = recheck("nudge")
+    if r is None:
         return sol, None
-    if res.get("feasible"):
-        return sol, res
+    if r.get("feasible"):
+        return sol, r
+
+    # stage 2: retimes -- entry obstruction: shift the entrant's stay +1 day;
+    # exit obstruction: extend the stay's exit +1 day (EXIT-ENTRY >= P allows
+    # remaining longer). Up to 3 passes.
+    for _pass in range(3):
+        moved = 0
+        for v in res.get("violations", [])[:8]:
+            m = re.search(r"block (\d+) (entry|exit) obstructed", str(v))
+            if not m:
+                continue
+            bi, kindv = int(m.group(1)), m.group(2)
+            if kindv == "entry":
+                moved += bool(eng.retime_block(bi, 1, 1))
+            else:
+                moved += bool(eng.retime_block(bi, 0, 1))
+        if not moved or not room():
+            break
+        r = recheck("retime")
+        if r is None:
+            return sol, None
+        if r.get("feasible"):
+            return sol, r
+
+    # stage 3: relocations, tight first
     for sd in (21, 22, 23, 24):
         ids = []
         for v in res.get("violations", [])[:6]:
@@ -210,41 +284,38 @@ def _gate(p, eng, n):
         moved = 0
         for bi in ids:
             b = eng.get_block(bi)
-            if b[6] and eng.move_block(bi, b[0], False, sd):
+            if b[6] and (eng.move_block(bi, b[0], True, sd)
+                         or eng.move_block(bi, b[0], False, sd)):
                 moved += 1
-        if not moved:
+        if not moved or not room():
             break
-        sol = _recs_to_sol(_extract(eng, n))
-        res = _check(p, sol)
-        if res is None:
+        r = recheck(f"move{sd}")
+        if r is None:
             return sol, None
-        if res.get("feasible"):
-            return sol, res
+        if r.get("feasible"):
+            return sol, r
     return None, res
 
 
 def _arm_free(p, deadline, seed=7):
-    """ARM B: diversified seed + one continuous portfolio + gate; then
-    keep continuing the same engine while time remains."""
+    """diversified seed -> one continuous portfolio -> checker gate."""
     n = len(p["blocks"])
     eng = _seed_free(p)
     if eng is None:
         return None, None
-    # one continuous leg on the wall-clock-normalized schedule (sec 114:
-    # the schedule is size-invariant, which removed the small-instance
-    # trajectory fragility that once required a polish leg), then the
-    # checker-gated tails (sweep + rescue: adopt-improvements-only).
-    sec = max(2.0, deadline - time.time() - 2.5)
+    # The gate reserve scales with n: its rescue ladder is up to ~6 checker
+    # calls, and a checker call grows with instance size. Without the reserve
+    # the gate ran in the last ~2.5s before the hard deadline -- on the
+    # grading server an overrun is scored as a crash, and a rescue that
+    # cannot finish collapses the run to the fallback ladder (measured:
+    # prob_29 @T900 -> _trivial, a 1000x objective loss).
+    reserve = min(15.0, 3.0 + 0.03 * n)
+    sec = max(2.0, deadline - time.time() - reserve)
     rounds = 1 if sec > 110 else 2
     eng.run_portfolio(_THR, sec, rounds, 0.05, 0.15, 0.002, 0.9995, seed, 1)
-    # sec 156: two checker-gated tails (a window-LNS sweep and a tardy rescue)
-    # used to hang here behind `>16s` / `>5s` guards that could never fire --
-    # the anneal consumed the whole budget, so both executed 0 times (measured
-    # at T20 and T60). Making them reachable (reserve derived from the measured
-    # gate cost) was tried and REJECTED: Set B mean +3.19% at T12, a wash at
-    # T60, +0.03% at T90 -- the anneal is more productive per second than
-    # either tail, both of which date from a weaker-anneal era. Removed.
-    return _gate(p, eng, n)
+    # sec 156: checker-gated improvement tails were measured unproductive
+    # vs annealing the same seconds and stay removed.
+    return _gate(p, eng, n, deadline)
 
 
 def _trivial(p):
@@ -304,12 +375,23 @@ def _algorithm(prob_info, timelimit=60):
 
     if best[0] is not None:
         return best[0]
-    # last resort ladder: short anneal -> gate -> trivial constructor
+    _diag("fallback", stage="ladder")
+    # last resort ladder: short anneal -> gate -> SEED FLOOR -> trivial.
+    # The seed floor is the important rung: a fresh un-annealed seed is a
+    # sparse packing, so exact-touch checker artifacts are rare there, and
+    # its objective is ~1000x better than _trivial's serialization
+    # (prob_29: seed 1.16M vs trivial 1.53e9).
     eng = _seed_free(prob_info, diversify=False)
     if eng is not None:
-        eng.run_portfolio(_THR, max(2.0, deadline - time.time() - 2.0), 1,
+        seed_sol = _recs_to_sol(_extract(eng, n))
+        eng.run_portfolio(_THR, max(2.0, deadline - time.time() - 4.0), 1,
                           0.05, 0.15, 0.002, 0.9995, 5, 1)
-        sol, _ = _gate(prob_info, eng, n)
+        sol, _ = _gate(prob_info, eng, n, deadline)
         if sol is not None:
             return sol
+        res = _check(prob_info, seed_sol)
+        if res is None or res.get("feasible"):
+            _diag("fallback", stage="seed_floor")
+            return seed_sol
+    _diag("fallback", stage="trivial")
     return _trivial(prob_info)
