@@ -226,19 +226,25 @@ def _gate(p, eng, n, deadline=None):
     sol = _recs_to_sol(_extract(eng, n))
     t0 = time.time()
     res = _check(p, sol)
-    ck = max(0.3, time.time() - t0)          # measured checker cost
+    ck = max(0.3, time.time() - t0)          # measured checker cost (max seen)
     if res is None:
         return sol, None                     # checker unusable -> trust kernel
     if res.get("feasible"):
         return sol, res
 
     def room():
-        return deadline is None or time.time() + ck + 0.3 < deadline
+        # 1.3x on the WORST observed checker cost: the first call is often the
+        # cheapest, and a stage that starts a check it cannot finish overruns
+        # the hard TL (server = kill). Measured: +0.1-0.3s overruns on the
+        # n>=200 boards with the naive first-call estimate.
+        return deadline is None or time.time() + 1.3 * ck + 0.5 < deadline
 
     def recheck(stage):
-        nonlocal sol, res
+        nonlocal sol, res, ck
         sol = _recs_to_sol(_extract(eng, n))
+        t1 = time.time()
         res = _check(p, sol)
+        ck = max(ck, time.time() - t1)       # keep the worst-case estimate
         if res is not None:
             _diag("gate", stage=stage, feasible=bool(res.get("feasible")),
                   nviol=len(res.get("violations", [])))
@@ -329,8 +335,11 @@ def _arm_free(p, deadline, seed=7):
     # the gate ran in the last ~2.5s before the hard deadline -- on the
     # grading server an overrun is scored as a crash, and a rescue that
     # cannot finish collapses the run to the fallback ladder (measured:
-    # prob_29 @T900 -> _trivial, a 1000x objective loss).
-    reserve = min(15.0, 3.0 + 0.03 * n)
+    # prob_29 @T900 -> _trivial, a 1000x objective loss). The reserve also
+    # covers the portfolio's post-anneal compaction, which runs OUTSIDE the
+    # anneal's wall budget and starved the gate on n>=200 boards (measured:
+    # prob_34 raw check -> no ladder stage fit -> fallback -> _trivial).
+    reserve = min(20.0, 4.0 + 0.05 * n)
     sec = max(2.0, deadline - time.time() - reserve)
     rounds = 1 if sec > 110 else 2
     eng.run_portfolio(_THR, sec, rounds, 0.05, 0.15, 0.002, 0.9995, seed, 1,
@@ -397,23 +406,29 @@ def _algorithm(prob_info, timelimit=60):
 
     if best[0] is not None:
         return best[0]
-    _diag("fallback", stage="ladder")
-    # last resort ladder: short anneal -> gate -> SEED FLOOR -> trivial.
-    # The seed floor is the important rung: a fresh un-annealed seed is a
-    # sparse packing, so exact-touch checker artifacts are rare there, and
-    # its objective is ~1000x better than _trivial's serialization
-    # (prob_29: seed 1.16M vs trivial 1.53e9).
+    _diag("fallback", stage="ladder", left=round(deadline - time.time(), 1))
+    # Last resort, STRICTLY budget-aware: everything here runs after the main
+    # arm already failed, typically near the deadline -- and the server kills
+    # overruns. Measured (v2seed s7 draw): the old unconditional 2s-anneal +
+    # unguarded checker calls overran TL by up to +2.8s and still bottomed
+    # out at _trivial when the fresh seed itself carried an exact-touch
+    # artifact. Ladder: fresh seed -> (if time) short anneal -> gate; else
+    # gate the SEED ITSELF (sparse, so nudges/retimes almost always fix it)
+    # -> trivial only when nothing checker-feasible fits the clock.
     eng, _ = _seed_free(prob_info, diversify=False)
     if eng is not None:
-        seed_sol = _recs_to_sol(_extract(eng, n))
-        eng.run_portfolio(_THR, max(2.0, deadline - time.time() - 4.0), 1,
-                          0.05, 0.15, 0.002, 0.9995, 5, 1)
-        sol, _ = _gate(prob_info, eng, n, deadline)
-        if sol is not None:
-            return sol
-        res = _check(prob_info, seed_sol)
-        if res is None or res.get("feasible"):
-            _diag("fallback", stage="seed_floor")
-            return seed_sol
+        left = deadline - time.time()
+        if left > 8.0:
+            eng.run_portfolio(_THR, max(2.0, left - 6.0), 1,
+                              0.05, 0.15, 0.002, 0.9995, 5, 1)
+        # the gate ladder legalizes whatever state the engine holds (annealed
+        # or the bare seed) with deadline-guarded stages. Even the gate's
+        # unconditional raw check costs ~n/100 seconds -- skip it entirely
+        # when that no longer fits (trivial needs no checker at all).
+        if deadline - time.time() > 1.0 + 0.01 * n:
+            sol, _ = _gate(prob_info, eng, n, deadline)
+            if sol is not None:
+                _diag("fallback", stage="rescued")
+                return sol
     _diag("fallback", stage="trivial")
     return _trivial(prob_info)
