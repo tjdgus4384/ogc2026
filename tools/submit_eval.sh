@@ -25,6 +25,7 @@ TL="${2:?usage: submit_eval.sh <tag> <timelimit_sec> [partition] [instances]}"
 PART="${3:-dept}"
 INSTSPEC="${4:-1-40}"
 SOLVER="${SOLVER:-$ROOT/solver}"
+PSEED="${SEED:-7}"
 PERNODE=10
 
 if [[ -e "$ROOT/results/$TAG.json" ]]; then
@@ -62,7 +63,7 @@ mkdir -p "$ROOT/runs/$TAG"
 
 cat > "$ROOT/runs/$TAG/META.json" <<EOF
 {"tag": "$TAG", "timelimit": $TL, "partition": "$PART", "instances": "$INSTSPEC",
- "solver_dir": "$(basename "$SOLVER")",
+ "solver_dir": "$(basename "$SOLVER")", "pseed": $PSEED,
  "solver_commit": "$(cd "$ROOT" && git rev-parse --short HEAD)",
  "solver_dirty": $(cd "$ROOT" && git diff --quiet HEAD -- solver && echo false || echo true),
  "submitted": "$(date -Iseconds)"}
@@ -78,7 +79,7 @@ for ((o = 0; o < ${#ALL[@]}; o += PERNODE)); do
     CHUNK="${ALL[@]:o:PERNODE}"
     JID=$(sbatch --parsable --partition="$PART" --time="$WALL" \
           --job-name="ogc-$TAG" "${DEP_FLAG[@]}" \
-          "$ROOT/tools/eval.sbatch" "$TAG" "$TL" "$SOLVER" "$CHUNK")
+          "$ROOT/tools/eval.sbatch" "$TAG" "$TL" "$SOLVER" "$CHUNK" "$PSEED")
     JIDS+=("$JID")
 done
 

@@ -38,7 +38,12 @@ try:
 except Exception:                                     # pragma: no cover
     utils = None
 
-_THR = min(4, _os.cpu_count() or 1)   # sec 100: hard-coded 4 on a 1-core
+_THR = min(4, _os.cpu_count() or 1)
+# portfolio seed: env-overridable for DISTRIBUTIONAL testing (an engine change
+# reshuffles the RNG stream = one frozen lottery redraw; single-draw A/Bs
+# compare tickets, not engines). Absent env (the grading server) => 7, the
+# historical value.
+_PSEED = int(_os.environ.get("OGC_SEED", "7"))   # sec 100: hard-coded 4 on a 1-core
                                       # sandbox oversubscribed every local
                                       # bench; the server has 4 cores.
 
@@ -299,7 +304,7 @@ def _algorithm(prob_info, timelimit=60):
     # habitat signal (Z1==0 is the mathematical precondition for the
     # arm's objective identity obj = w2*Z2 + w3*Z3 -- no threshold),
     # and (c) the instance's own measured delta. Zero constants.
-    s_b, r_b = _arm_free(prob_info, deadline)
+    s_b, r_b = _arm_free(prob_info, deadline, _PSEED)
     if s_b is not None:
         best = (s_b, r_b)
 
