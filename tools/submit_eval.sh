@@ -1,64 +1,88 @@
 #!/usr/bin/env bash
-# Submit a full-40 evaluation to Slurm. NEVER run the solver on the gateway.
+# Submit an evaluation as whole-node Slurm jobs. NEVER run the solver on the
+# gateway.
 #
-#   tools/submit_eval.sh <tag> <timelimit_seconds> [partition] [instances]
+#   tools/submit_eval.sh <tag> <timelimit_sec> [partition] [instances]
 #
-#   tag        names the run; results land in runs/<tag>/ and are frozen into
+#   tag        names the run; raw output in runs/<tag>/, frozen into
 #              results/<tag>.json by tools/collect.py
-#   timelimit  the value handed to algorithm(prob, timelimit) -- the number the
-#              grading server would use. Typical hidden-instance limits are
-#              "a few minutes to half an hour" (problem_statement.md §3.2).
-#   partition  dept (default) or titan. Both are CPU nodes with no oversubscribe.
-#   instances  sbatch array spec, default 1-40. e.g. "1,2,22,28,38" for a probe.
+#   timelimit  the value handed to algorithm(prob, timelimit)
+#   partition  dept (default) or titan
+#   instances  "1-40" (default), or a list like "1,2,22,28,38"
 #
-# SHARED-CLUSTER RULE: at most 2 of our tasks may run at once. The array is
-# throttled with %MAXPAR (default 1), so one submission occupies one running
-# task and you may have at most two submissions in flight. Set MAXPAR only if
-# you are running a single submission and know the cluster is free.
+# Shape: each job takes ONE node and runs 10 instances in parallel, each
+# pinned to 4 cores + 16 GB = the grading envelope. A full 40 is 4 jobs /
+# 4 nodes and finishes in ~one instance-runtime (T300 -> ~6 min).
 #
-#   full-40 @T300 at MAXPAR=1 takes ~3.4 h; @T900 ~10 h. Plan overnight.
-#
-# The Slurm wall limit is set to the algorithm limit + 10 min of slack, so a
-# hung instance is killed by Slurm rather than sitting on a node forever.
+# CLUSTER BUDGET: at most 4 of our node-jobs running at once. To queue another
+# eval behind a running one, pass DEPEND="<jobid> <jobid> ..." -- it submits
+# with --dependency=afterany and waits its turn instead of stacking nodes.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TAG="${1:?usage: submit_eval.sh <tag> <timelimit_sec> [partition] [instances]}"
 TL="${2:?usage: submit_eval.sh <tag> <timelimit_sec> [partition] [instances]}"
 PART="${3:-dept}"
-ARRAY="${4:-1-40}"
+INSTSPEC="${4:-1-40}"
 SOLVER="${SOLVER:-$ROOT/solver}"
-MAXPAR="${MAXPAR:-1}"       # concurrent array tasks -- see the rule above
-
-RUNNING=$(squeue -h -u "$USER" -t RUNNING,CONFIGURING 2>/dev/null | wc -l)
-if (( RUNNING >= 2 )); then
-    echo "refusing to submit: $RUNNING of our tasks are already running." >&2
-    echo "The shared-cluster budget is 2. Wait, or scancel something." >&2
-    squeue -u "$USER" >&2
-    exit 1
-fi
+PERNODE=10
 
 if [[ -e "$ROOT/results/$TAG.json" ]]; then
     echo "results/$TAG.json already exists -- pick a new tag." >&2
-    echo "Frozen results are never overwritten; that rule is what makes" >&2
-    echo "cross-version comparison meaningful." >&2
+    echo "Frozen results are never overwritten." >&2
     exit 1
 fi
+
+if [[ -z "${DEPEND:-}" ]]; then
+    RUNNING=$(squeue -h -u "$USER" -t RUNNING,CONFIGURING 2>/dev/null | wc -l)
+    if (( RUNNING >= 4 )); then
+        echo "refusing: $RUNNING of our jobs already running (budget 4)." >&2
+        echo "Pass DEPEND=\"<jobids>\" to chain behind them, or wait." >&2
+        squeue -u "$USER" >&2
+        exit 1
+    fi
+fi
+
+# expand "1-40" / "3,7,22" into a list
+INSTS=$(python3 - "$INSTSPEC" <<'PY'
+import sys
+out = []
+for part in sys.argv[1].split(','):
+    if '-' in part:
+        a, b = part.split('-'); out += list(range(int(a), int(b)+1))
+    else:
+        out.append(int(part))
+print(' '.join(map(str, out)))
+PY
+)
+read -ra ALL <<< "$INSTS"
 
 WALL=$(python3 -c "import math;print(int(math.ceil(($TL+600)/60)))")
 mkdir -p "$ROOT/runs/$TAG"
 
 cat > "$ROOT/runs/$TAG/META.json" <<EOF
-{"tag": "$TAG", "timelimit": $TL, "partition": "$PART", "array": "$ARRAY",
- "solver_dir": "'$(basename "$SOLVER")'", "solver_commit": "$(cd "$ROOT" && git rev-parse --short HEAD)",
+{"tag": "$TAG", "timelimit": $TL, "partition": "$PART", "instances": "$INSTSPEC",
+ "solver_dir": "$(basename "$SOLVER")",
+ "solver_commit": "$(cd "$ROOT" && git rev-parse --short HEAD)",
  "solver_dirty": $(cd "$ROOT" && git diff --quiet HEAD -- solver && echo false || echo true),
  "submitted": "$(date -Iseconds)"}
 EOF
 
-JID=$(TAG="$TAG" TL="$TL" SOLVER="$SOLVER" sbatch --parsable \
-        --partition="$PART" --array="${ARRAY}%${MAXPAR}" --time="${WALL}" \
-        "$ROOT/tools/eval.sbatch")
+DEP_FLAG=()
+if [[ -n "${DEPEND:-}" ]]; then
+    DEP_FLAG=(--dependency="afterany:$(echo "$DEPEND" | tr ' ' ':')")
+fi
 
-echo "submitted array job $JID  tag=$TAG  tl=${TL}s  partition=$PART  array=$ARRAY%$MAXPAR"
-echo "  watch:   squeue -j $JID"
+JIDS=()
+for ((o = 0; o < ${#ALL[@]}; o += PERNODE)); do
+    CHUNK="${ALL[@]:o:PERNODE}"
+    JID=$(sbatch --parsable --partition="$PART" --time="$WALL" \
+          --job-name="ogc-$TAG" "${DEP_FLAG[@]}" \
+          "$ROOT/tools/eval.sbatch" "$TAG" "$TL" "$SOLVER" "$CHUNK")
+    JIDS+=("$JID")
+done
+
+echo "submitted ${#JIDS[@]} node-jobs (${JIDS[*]})  tag=$TAG  tl=${TL}s  partition=$PART"
+echo "  watch:   squeue -u \$USER"
+echo "  chain:   DEPEND=\"${JIDS[*]}\" tools/submit_eval.sh <next> ..."
 echo "  collect: python3 tools/collect.py $TAG"

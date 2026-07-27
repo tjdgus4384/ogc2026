@@ -243,13 +243,16 @@ inline bool insertGreedy(Ctx& c, int A, int eCap = -1) {
         }
         if (scanLocal(c, A, pr.second, e, areaA)) return true;
     }
-    // phase 3: sparse dense sweep (completeness net; rarely reached)
+    // phase 3: sparse dense sweep -- the completeness net. Deliberately NO
+    // area screen here: areaRoom compares a bbox-area SUM against bay area,
+    // and interlocking non-convex shapes can exceed that sum while remaining
+    // feasible, so the screen is a speed heuristic (phases 1-2), never a
+    // verdict. Screening this phase collapsed dense boards (v1 candidate:
+    // prob_16 +308%).
     int stride = (eTop - eBot <= 24) ? 1 : 6;
     for (int e = eBot; e <= eTop; e += stride) {
-        for (int j : bays) {
-            if (!areaRoom(c, j, areaA, e, e + pb.P[A])) continue;
+        for (int j : bays)
             if (scanBayAt(c, A, j, e, oris, xs, ys)) return true;
-        }
     }
     return false;
 }
