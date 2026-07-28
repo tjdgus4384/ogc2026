@@ -16,6 +16,16 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 
+# instance families from the v0 baseline map (results/v0-t300 decomposition +
+# T300-vs-T900 convergence): each family has its own lever, so goal progress
+# is read per family.
+FAMILIES = {
+    "converged":  [1, 2, 3, 4, 8, 5, 12, 19, 6, 15, 16, 17],   # fixed points
+    "z3-open":    [7, 9, 10, 11, 13, 14, 18, 20, 21, 22, 24, 29, 34, 36],
+    "z1-bound":   [23, 25, 26, 27, 28, 30, 31, 32, 33, 35, 37, 38, 39, 40],
+}
+FAM_OF = {f"prob_{i}": name for name, ids in FAMILIES.items() for i in ids}
+
 
 def load(tag):
     f = ROOT / "results" / f"{tag}.json"
@@ -47,11 +57,16 @@ def main():
           f"{sum(1 for _, d in rows if d < -0.5)}/40   "
           f"mean {st.mean(d for _, d in rows):+.2f}%  "
           f"median {st.median(d for _, d in rows):+.2f}%")
-    print(f"cand draws: {len(cands)}  base draws: {len(bases)}\n")
+    print(f"cand draws: {len(cands)}  base draws: {len(bases)}")
+    for fam in FAMILIES:
+        fd = [d for k, d in rows if FAM_OF.get(k) == fam]
+        fh = sum(1 for d in fd if d <= a.target)
+        print(f"  {fam:<10} mean {st.mean(fd):+7.2f}%  reached {fh}/{len(fd)}")
+    print()
     for k, d in rows:
         bar = "#" * min(40, int(abs(d))) if d < 0 else "-" * min(40, int(abs(d)))
         mark = " <<" if d <= a.target else ""
-        print(f"  {k:<9} {d:+7.2f}% {bar}{mark}")
+        print(f"  {k:<9} {FAM_OF.get(k,'?')[:4]:<5} {d:+7.2f}% {bar}{mark}")
 
 
 if __name__ == "__main__":
