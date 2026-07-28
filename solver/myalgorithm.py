@@ -332,7 +332,7 @@ def _gate(p, eng, n, deadline=None):
     return None, res
 
 
-def _arm_free(p, deadline, seed=7):
+def _arm_free(p, deadline, seed=7, tl=None):
     """diversified seeds -> one continuous portfolio (threads hedged across
     distinct seed basins) -> checker gate."""
     n = len(p["blocks"])
@@ -352,7 +352,11 @@ def _arm_free(p, deadline, seed=7):
     # covers the portfolio's post-anneal compaction, which runs OUTSIDE the
     # anneal's wall budget and starved the gate on n>=200 boards (measured:
     # prob_34 raw check -> no ladder stage fit -> fallback -> _trivial).
-    reserve = min(20.0, 4.0 + 0.05 * n)
+    # TL-proportional cap: the fixed reserve was 27-55% of a T30-T60 budget
+    # on big boards (annealing less than HALF of v0's time). Short runs pack
+    # less densely, so exact-touch artifacts -- the gate's whole workload --
+    # are rarer there and a smaller reserve is consistent, not risky.
+    reserve = min(20.0, 4.0 + 0.05 * n, 0.12 * (tl or 300.0))
     sec = max(2.0, deadline - time.time() - reserve)
     rounds = 1 if sec > 110 else 2
     r = eng.run_portfolio(_THR, sec, rounds, 0.05, 0.15, 0.002, 0.9995, seed,
@@ -414,7 +418,7 @@ def _algorithm(prob_info, timelimit=60):
     # habitat signal (Z1==0 is the mathematical precondition for the
     # arm's objective identity obj = w2*Z2 + w3*Z3 -- no threshold),
     # and (c) the instance's own measured delta. Zero constants.
-    s_b, r_b = _arm_free(prob_info, deadline, _PSEED)
+    s_b, r_b = _arm_free(prob_info, deadline, _PSEED, float(timelimit))
     if s_b is not None:
         best = (s_b, r_b)
 
