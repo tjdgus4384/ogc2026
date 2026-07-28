@@ -342,8 +342,9 @@ def _arm_free(p, deadline, seed=7):
     reserve = min(20.0, 4.0 + 0.05 * n)
     sec = max(2.0, deadline - time.time() - reserve)
     rounds = 1 if sec > 110 else 2
-    eng.run_portfolio(_THR, sec, rounds, 0.05, 0.15, 0.002, 0.9995, seed, 1,
-                      starts)
+    r = eng.run_portfolio(_THR, sec, rounds, 0.05, 0.15, 0.002, 0.9995, seed,
+                          1, starts)
+    _diag("portfolio", winner=int(r[2]), thread_best=[round(x) for x in r[3:]])
     # sec 156: checker-gated improvement tails were measured unproductive
     # vs annealing the same seconds and stay removed.
     return _gate(p, eng, n, deadline)
