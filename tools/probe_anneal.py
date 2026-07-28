@@ -62,7 +62,7 @@ def mode_arm(pid, seedfile, arm, seedv, wall):
     r = eng.run_alns(float(wall), 0.05, 0.15, 0.002, 0.9995, int(seedv),
                      0, hc, bq, mask)
     dt = time.time() - t0
-    h = eng.kind_hist()
+    h = eng.kind_hist() if hasattr(eng, "kind_hist") else [0] * 32
     print(json.dumps({
         "inst": f"prob_{pid}", "solver": SOLVER.name, "arm": arm,
         "seedv": int(seedv), "wall": round(dt, 1),
