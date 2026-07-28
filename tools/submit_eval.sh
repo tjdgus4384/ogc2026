@@ -71,7 +71,7 @@ JIDS=()
 for ((o = 0; o < ${#ALL[@]}; o += PERNODE)); do
     CHUNK="${ALL[@]:o:PERNODE}"
     JID=$(sbatch --parsable --partition="$PART" --time="$WALL" \
-          --job-name="ogc-$TAG" \
+          --job-name="eval" \
           "$ROOT/tools/eval.sbatch" "$TAG" "$TL" "$SOLVER" "$CHUNK" "$PSEED")
     JIDS+=("$JID")
 done
