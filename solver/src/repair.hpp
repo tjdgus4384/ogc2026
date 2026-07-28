@@ -41,6 +41,13 @@ struct Ctx {
                                       // Predicate lives in alns::run (sec 148):
                                       // z1<=0 AND z3<n -- a measured two-order
                                       // regime gap, not a tuned constant.
+    // preference ejection chain (op 8) handoff: pickRemoval chose an upgrading
+    // block and its target bay; the reinsert step must know to force that bay
+    // with an on-time entry cap. Reset at every pickRemoval call.
+    int tsBlk = -1, tsBay = -1, tsECap = -1;
+    // live dominance gate for op 8: is the priced preference loss the dominant
+    // objective term? Parameter-free (w3*z3 > w1*z1), set by the obj lambda.
+    bool z3dom = false;
 };
 
 // Area screen for bay j over [e,f) -- a SPEED HEURISTIC, never a verdict.

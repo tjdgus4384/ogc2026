@@ -306,9 +306,22 @@ def _gate(p, eng, n, deadline=None):
         moved = 0
         for bi in ids:
             b = eng.get_block(bi)
-            if b[6] and (eng.move_block(bi, b[0], True, sd)
-                         or eng.move_block(bi, b[0], False, sd)):
+            if not b[6]:
+                continue
+            if (eng.move_block(bi, b[0], True, sd)
+                    or eng.move_block(bi, b[0], False, sd)):
                 moved += 1
+                continue
+            # same-bay relocation can deterministically re-find the exact
+            # same exact-touch hole (first-fit) -- the measured persistent-
+            # violation loop (prob_36: nviol constant through the whole
+            # ladder -> trivial). A CROSS-BAY move breaks that cycle: it
+            # costs a little Z2/Z3 and saves the instance from a 1000x loss.
+            for j2 in range(len(p["bays"])):
+                if j2 != b[0] and (eng.move_block(bi, j2, True, sd)
+                                   or eng.move_block(bi, j2, False, sd)):
+                    moved += 1
+                    break
         if not moved or not room():
             break
         r = recheck(f"move{sd}")
@@ -342,8 +355,9 @@ def _arm_free(p, deadline, seed=7):
     reserve = min(20.0, 4.0 + 0.05 * n)
     sec = max(2.0, deadline - time.time() - reserve)
     rounds = 1 if sec > 110 else 2
-    eng.run_portfolio(_THR, sec, rounds, 0.05, 0.15, 0.002, 0.9995, seed, 1,
-                      starts)
+    r = eng.run_portfolio(_THR, sec, rounds, 0.05, 0.15, 0.002, 0.9995, seed,
+                          1, starts)
+    _diag("portfolio", winner=int(r[2]), thread_best=[round(x) for x in r[3:]])
     # sec 156: checker-gated improvement tails were measured unproductive
     # vs annealing the same seconds and stay removed.
     return _gate(p, eng, n, deadline)

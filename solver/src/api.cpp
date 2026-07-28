@@ -161,6 +161,8 @@ struct Engine {
         core::Sol globalBest = sol;
         double bestObj = core::evaluate(pb, sol).total;
         long totIters = 0;
+        int winnerTid = -1;                       // -1: no thread beat the seed
+        std::vector<double> threadBest((size_t)threads, -1.0);
         rounds = std::max(1, rounds);
         double perRound = seconds / rounds;
         const bool dbgRounds = (getenv("SMAX_DEBUG") != nullptr);
@@ -216,7 +218,7 @@ struct Engine {
                 rp.cooling = cooling;
                 rp.hcFrac  = (tid % 2 == 0) ? 1.0 : 0.75;   // half pure-SA
                 rp.bigQProb = (tid % 2 == 0) ? 0.0 : 0.06;
-                rp.opMask  = (tid % 2 == 0) ? 0x1F : 0xFF;  // exploit/explore
+                rp.opMask  = (tid % 2 == 0) ? 0x1F : 0x3FF; // exploit / explore+ejections
                 auto st = alns::run(c2, perRound, rp,
                                     seed + 1000003ULL * (r * 64 + tid + 1));
                 {   // post-round left compaction on this thread's best.
@@ -233,7 +235,10 @@ struct Engine {
                 {
                     totIters += st.iters;
                     double o2 = core::evaluate(pb, s2).total;
-                    if (o2 < bestObj - 1e-9) { bestObj = o2; globalBest = s2; }
+                    threadBest[tid] = o2;
+                    if (o2 < bestObj - 1e-9) {
+                        bestObj = o2; globalBest = s2; winnerTid = tid;
+                    }
                 }
             }
             if (dbgRounds)
@@ -244,7 +249,12 @@ struct Engine {
                         : 0.0);
         }
         sol = globalBest;
-        return {(double)totIters, bestObj};
+        // [totIters, bestObj, winnerTid, perThreadBest...] -- winnerTid tells
+        // which start (seed slot / construction) actually won the merge:
+        // the observable that decides future portfolio composition.
+        std::vector<double> out = {(double)totIters, bestObj, (double)winnerTid};
+        out.insert(out.end(), threadBest.begin(), threadBest.end());
+        return out;
     }
 
     // ------------------------------------------------------ reconstruction
