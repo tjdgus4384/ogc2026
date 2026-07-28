@@ -218,7 +218,7 @@ struct Engine {
                 rp.cooling = cooling;
                 rp.hcFrac  = (tid % 2 == 0) ? 1.0 : 0.75;   // half pure-SA
                 rp.bigQProb = (tid % 2 == 0) ? 0.0 : 0.06;
-                rp.opMask  = (tid % 2 == 0) ? 0x1F : 0x1FF; // exploit / explore+chain
+                rp.opMask  = (tid % 2 == 0) ? 0x1F : 0x3FF; // exploit / explore+ejections
                 auto st = alns::run(c2, perRound, rp,
                                     seed + 1000003ULL * (r * 64 + tid + 1));
                 {   // post-round left compaction on this thread's best.

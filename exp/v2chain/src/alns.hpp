@@ -62,11 +62,12 @@ struct Destroyers {
     }
 };
 
-// The 9 destroy operators. opMask selects a subset (portfolio: even threads
-// run 0x1F = ops 0-4, odd threads 0x1FF = ops 0-8).
+// The 10 destroy operators. opMask selects a subset (portfolio: even threads
+// run 0x1F = ops 0-4, odd threads 0x3FF = ops 0-9).
 //   0 random          1 worst-tardy (noisy)     2 related (bay+time+space)
 //   3 crane-bbox nbrs 4 crane-exact blocker BFS 5 bay x time-slice
 //   6 semi-worst      7 least-recently-touched  8 preference ejection chain
+//   9 tardy min-cut ejection
 // Op 8 is a DIRECTED assignment move the plain removals cannot compose: pick
 // a block whose preferred bay would pay (priced in w3), evict from that bay
 // whoever values it least while the running eviction cost stays under the
@@ -217,6 +218,56 @@ inline std::vector<int> pickRemoval(repair::Ctx& c, int kind, int q,
         }
         if (take == 0) return {};
         c.tsBlk = b; c.tsBay = Y; c.tsECap = eb;
+    } else if (kind == 9) {                           // tardy min-cut ejection
+        // The Z1 mirror of op 8: LNS theory says destroy proportional to the
+        // relaxation value of the binding constraint. For a tardy block the
+        // binding constraint is the occupancy of its ON-TIME window -- so
+        // find, over all candidate positions in its bay, the hole whose
+        // conflict set is CHEAPEST to evict (count, slack-weighted), remove
+        // exactly that set, and reinsert the block forced at its on-time
+        // entry. Ops 1/3/4 are noisy approximations of this certificate.
+        std::vector<std::pair<double,int>> t;
+        for (int i : placedIds) {
+            int es = std::max(pb.R[i], pb.D[i] - pb.P[i]);
+            double g = pb.w1 * std::max(0, s.f[i] - (es + pb.P[i]));
+            if (g > 0) t.push_back({-g * (0.75 + 0.5 * U01()), i});
+        }
+        if (t.empty()) return {};
+        std::sort(t.begin(), t.end());
+        int b = t[c.rng() % std::min<size_t>(4, t.size())].second;
+        int j = s.bay[b];                              // same bay: pure Z1 move
+        int es = std::max(pb.R[b], pb.D[b] - pb.P[b]);
+        int fs = es + pb.P[b];
+        // candidate positions: corner set of the on-time window, per orient
+        double bestCost = 1e18; std::vector<int> bestSet;
+        thread_local std::vector<int> cxs, cys;
+        for (size_t oo = 0; oo < pb.geo[b].orients.size(); oo++) {
+            const auto& g = pb.geo[b].orients[(int)oo];
+            repair::cornerSets(c, b, (int)oo, j, es, fs, cxs, cys);
+            for (int y : cys) for (int x : cxs) {
+                double cost = 0; std::vector<int> setv;
+                for (int k : s.byBay[j]) {
+                    if (k == b || !s.placed[k]) continue;
+                    if (!(s.e[k] < fs && es < s.f[k])) continue;
+                    const auto& gk = pb.geo[k].orients[s.ori[k]];
+                    if (!crane::bboxOverlapOff(g.bb, x, y,
+                                               gk.bb, s.x[k], s.y[k])) continue;
+                    // eviction price: 1 + how tardy re-inserting k may get
+                    // (slack-poor residents are expensive to displace)
+                    int slack = pb.D[k] - s.f[k];
+                    cost += 1.0 + (slack < 0 ? 2.0 : (slack < 3 ? 1.0 : 0.0));
+                    setv.push_back(k);
+                    if (cost >= bestCost) break;
+                }
+                if (cost < bestCost && (int)setv.size() <= std::max(q, 4)) {
+                    bestCost = cost; bestSet = std::move(setv);
+                }
+            }
+        }
+        if (bestCost >= 1e17) return {};
+        out.push_back(b);
+        for (int k : bestSet) out.push_back(k);
+        c.tsBlk = b; c.tsBay = j; c.tsECap = es;
     } else {                                          // 7: least-recently-touched
         std::vector<std::pair<double,int>> t;
         for (int i : placedIds)
@@ -232,14 +283,14 @@ struct RunParams {
     double T0mul = 0.002, cooling = 0.9997;
     double hcFrac = 0.75;        // fraction of budget after which hill-climb
     double bigQProb = 0.04;      // probability of a large removal
-    uint32_t opMask = 0x1FF;     // destroyer enable bits (9 ops)
+    uint32_t opMask = 0x3FF;     // destroyer enable bits (10 ops)
 };
 
 inline RunStats run(repair::Ctx& c, double seconds, const RunParams& rp,
                     uint64_t seedv, int auditEvery = 0) {
     const Problem& pb = *c.pb; Sol& s = *c.s;
     c.rng.seed(seedv);
-    Destroyers ds(9); ds.rng = &c.rng;
+    Destroyers ds(10); ds.rng = &c.rng;
     auto t0 = std::chrono::steady_clock::now();
     auto now = [&]{ return std::chrono::duration<double>(
         std::chrono::steady_clock::now() - t0).count(); };
@@ -275,7 +326,8 @@ inline RunStats run(repair::Ctx& c, double seconds, const RunParams& rp,
         // exactly the boards that could least afford it (the real cause of
         // the sec 193-195 Set B losses).
         uint32_t em = rp.opMask;
-        if (!c.z3dom) em &= ~(1u << 8);
+        if (!c.z3dom) em &= ~(1u << 8);   // op 8 lives where w3*Z3 dominates
+        if (c.z3dom)  em &= ~(1u << 9);   // op 9 lives on the complement
         int kind = ds.pick();
         for (int tries = 0; tries < 8 && !((em >> kind) & 1); tries++)
             kind = ds.pick();
@@ -302,7 +354,7 @@ inline RunStats run(repair::Ctx& c, double seconds, const RunParams& rp,
         std::sort(rem.begin(), rem.end(),
                   [&](int a, int b){ return pb.D[a] < pb.D[b]; });
         bool ok = true;
-        if (kind == 8 && c.tsBlk >= 0) {
+        if ((kind == 8 || kind == 9) && c.tsBlk >= 0) {
             // the upgrader claims the freed space first: forced into its
             // preferred bay at an on-time entry, then the evicted go free.
             thread_local std::vector<int> fbv;
