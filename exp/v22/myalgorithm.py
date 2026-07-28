@@ -348,8 +348,10 @@ def _assign_enum(p, eng, n, tend, cur_cost):
     """
     try:
         from ortools.sat.python import cp_model
-    except Exception:
+    except Exception as e:
+        _diag("aenum", status="import_fail", err=str(e)[:80])
         return False
+    _diag("aenum", status="enter", cur=cur_cost)
     B = p["blocks"]; bays = p["bays"]; w = p["weights"]
     m = len(bays)
     if m < 2:
@@ -474,6 +476,7 @@ def _arm_free(p, deadline, seed=7, tl=None):
                           0.9995, seed, 1, starts)
     if carve > 0:
         ob = eng.objective()
+        _diag("carve", z1=ob[0], left=round(carve, 1))
         if ob[0] == 0:
             _assign_enum(p, eng, n, time.time() + carve - 2.0, ob[3])
         else:
