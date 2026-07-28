@@ -371,7 +371,6 @@ def _arm_free(p, deadline, seed=7, tl=None):
     sol, res = _gate(p, eng, n, deadline)
     if sol is not None:
         return sol, res
-    H = eng
     for k, flat in enumerate(eng.get_candidates()[1:4]):
         if time.time() > deadline - 1.0 - 0.01 * n:
             break
