@@ -362,9 +362,29 @@ def _arm_free(p, deadline, seed=7, tl=None):
     r = eng.run_portfolio(_THR, sec, rounds, 0.05, 0.15, 0.002, 0.9995, seed,
                           1, starts)
     _diag("portfolio", winner=int(r[2]), thread_best=[round(x) for x in r[3:]])
-    # sec 156: checker-gated improvement tails were measured unproductive
-    # vs annealing the same seconds and stay removed.
-    return _gate(p, eng, n, deadline)
+    # The gate consumes the portfolio's candidate SET, best first. Whether a
+    # layout carries a measure-zero checker artifact is an independent
+    # lottery per candidate, so trying the runner-ups on gate failure drops
+    # the tail multiplicatively and rescues at runner-up quality (measured:
+    # p22@T60 one draw returned a fresh-seed 1.47M while a clean 743k
+    # candidate sat discarded).
+    sol, res = _gate(p, eng, n, deadline)
+    if sol is not None:
+        return sol, res
+    H = eng
+    for k, flat in enumerate(eng.get_candidates()[1:4]):
+        if time.time() > deadline - 1.0 - 0.01 * n:
+            break
+        eng.set_solution(flat)
+        B = p["blocks"]
+        eng.build_occ(max(int(round(b["due_date"])) for b in B)
+                      + max(max(1, int(math.ceil(b["processing_time"] - 1e-9)))
+                            for b in B) + 40)
+        _diag("gate", stage=f"cand{k+1}")
+        sol, res = _gate(p, eng, n, deadline)
+        if sol is not None:
+            return sol, res
+    return None, res
 
 
 def _trivial(p):

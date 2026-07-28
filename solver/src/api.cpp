@@ -163,6 +163,7 @@ struct Engine {
         long totIters = 0;
         int winnerTid = -1;                       // -1: no thread beat the seed
         std::vector<double> threadBest((size_t)threads, -1.0);
+        candSols.assign((size_t)threads, {});     // per-thread candidates
         rounds = std::max(1, rounds);
         double perRound = seconds / rounds;
         const bool dbgRounds = (getenv("SMAX_DEBUG") != nullptr);
@@ -236,6 +237,16 @@ struct Engine {
                     totIters += st.iters;
                     double o2 = core::evaluate(pb, s2).total;
                     threadBest[tid] = o2;
+                    candSols[tid].reserve((size_t)pb.n * 7);
+                    for (int i = 0; i < pb.n; i++) {
+                        candSols[tid].push_back(s2.bay[i]);
+                        candSols[tid].push_back(s2.ori[i]);
+                        candSols[tid].push_back(s2.x[i]);
+                        candSols[tid].push_back(s2.y[i]);
+                        candSols[tid].push_back(s2.e[i]);
+                        candSols[tid].push_back(s2.f[i]);
+                        candSols[tid].push_back((int)s2.placed[i]);
+                    }
                     if (o2 < bestObj - 1e-9) {
                         bestObj = o2; globalBest = s2; winnerTid = tid;
                     }
@@ -388,6 +399,33 @@ struct Engine {
     }
 
     int compactLeft(int maxPasses) { return alns::compactLeft(ctx, maxPasses); }
+
+    // The portfolio's candidate SET, objective-ascending. The checker gate
+    // consumes candidates in order: whether a layout carries a measure-zero
+    // exact-touch artifact is an independent lottery per candidate, so
+    // P(all fail) decays multiplicatively -- and a rescued run returns the
+    // runner-up's quality instead of a fresh-seed's (measured: p22@T60 s8
+    // returned 1.47M while a clean 743k candidate sat discarded).
+    std::vector<std::vector<int>> candSols;
+    std::vector<std::vector<int>> getCandidates() {
+        std::vector<std::pair<double,int>> ord;
+        for (size_t t = 0; t < candSols.size(); t++) {
+            if (candSols[t].empty()) continue;
+            // objective of candidate t
+            core::Sol tmp; tmp.init(pb.n, pb.m);
+            const auto& f = candSols[t];
+            for (int i = 0; i < pb.n; i++) {
+                const int* b = &f[i*7];
+                tmp.bay[i]=b[0]; tmp.ori[i]=b[1]; tmp.x[i]=b[2]; tmp.y[i]=b[3];
+                tmp.e[i]=b[4]; tmp.f[i]=b[5]; tmp.placed[i]=(uint8_t)b[6];
+            }
+            ord.push_back({core::evaluate(pb, tmp).total, (int)t});
+        }
+        std::sort(ord.begin(), ord.end());
+        std::vector<std::vector<int>> out;
+        for (auto& pr : ord) out.push_back(candSols[pr.second]);
+        return out;
+    }
 };
 
 PYBIND11_MODULE(sscore, m) {
@@ -404,6 +442,7 @@ PYBIND11_MODULE(sscore, m) {
              py::arg("cooling"), py::arg("seed"), py::arg("multiStart") = 1,
              py::arg("starts") = std::vector<std::vector<int>>{})
         .def("get_block", &Engine::getBlock)
+        .def("get_candidates", &Engine::getCandidates)
         .def("objective", &Engine::objective)
         .def("nudge_block", &Engine::nudgeBlock)
         .def("retime_block", &Engine::retimeBlock)
