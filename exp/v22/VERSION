@@ -1,0 +1,30 @@
+v1 (final -- distributional verdict passed 2026-07-28)
+
+The engine formerly "smax78-v82" (tagged v0), rewritten so the whole solver
+is inspectable: one insertion algorithm, one prefilter semantic per role,
+zero dead knobs, kernel 1594 lines, every line reachable. Validated
+DISTRIBUTIONALLY against a same-toolchain v0 rebuild (3 portfolio seeds x
+full-40 @T300 each, plus T900):
+
+  quality    3-seed means: v1 -0.71% (parity; medians ~0)
+  variance   seed-to-seed per-instance spread ~9-10% both engines
+  tail       v0 collapsed prob_29 to _trivial (1.53e9, ~4000x) in 2 of 5
+             draws; v1: zero collapses in 5 draws -- the hardened gate
+             (nudge -> retime -> tight/loose move, deadline-aware, seed
+             floor) removed the failure mode
+  canary     prob_1 1499 / prob_2 3690 preserved
+  anneal     +32% iterations, -2.9% quality from identical seeds (controlled)
+
+Single-draw A/Bs between engine families compare lottery tickets, not
+engines: a kernel change reshuffles the RNG stream once, and the fixed
+portfolio seed then freezes that redraw (v1c/v1d/v1e produced byte-identical
+objectives on the same instances). Judge engine changes on multi-seed
+distributions (OGC_SEED) or accept only differences far outside the ~10%
+per-instance draw band.
+
+Deliberate deviations from v0, each measured: unified seeder path (seed A/B
+40/40: parity), post-compaction portfolio merge (strictly better-informed),
+8 destroyer slots (mixture drift real but quality-neutral), crane-aware
+hits() kept in the dense fallback as placement policy, gate ladder +
+reserve + seed floor (the robustness win), OGC_DIAG/OGC_SEED env hooks
+(inert on the grading server).
