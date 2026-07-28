@@ -34,6 +34,8 @@ def horizon(prob):
 def mode_seed(pid, out):
     prob = json.loads((ROOT / "data" / "train" / f"prob_{pid}.json").read_text())
     eng = MA._seed_free(prob)
+    if isinstance(eng, tuple):               # newer engines: (eng, starts)
+        eng = eng[0]
     o = eng.objective()
     pathlib.Path(out).write_text(json.dumps({
         "inst": f"prob_{pid}", "solver": SOLVER.name, "seed_obj": o[3],
@@ -70,8 +72,27 @@ def mode_arm(pid, seedfile, arm, seedv, wall):
     }))
 
 
+def mode_port(pid, seedfile, seedv, wall):
+    prob = json.loads((ROOT / "data" / "train" / f"prob_{pid}.json").read_text())
+    seed = json.loads(pathlib.Path(seedfile).read_text())
+    eng = MA._build_engine(prob)
+    eng.set_solution(seed["flat"])
+    eng.build_occ(horizon(prob))
+    if hasattr(eng, "set_event_local"):
+        eng.set_event_local(True)
+    t0 = time.time()
+    eng.run_portfolio(4, float(wall), 1, 0.05, 0.15, 0.002, 0.9995,
+                      int(seedv), 1)
+    print(json.dumps({"inst": f"prob_{pid}", "solver": SOLVER.name,
+                      "arm": "port4", "seedv": int(seedv),
+                      "wall": round(time.time() - t0, 1),
+                      "best": eng.objective()[3]}))
+
+
 if __name__ == "__main__":
     if sys.argv[1] == "seed":
         mode_seed(sys.argv[2], sys.argv[3])
+    elif sys.argv[1] == "port":
+        mode_port(*sys.argv[2:6])
     else:
         mode_arm(*sys.argv[2:7])
