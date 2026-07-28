@@ -463,8 +463,22 @@ def _arm_free(p, deadline, seed=7, tl=None):
     reserve = min(20.0, 4.0 + 0.05 * n, 0.12 * (tl or 300.0))
     sec = max(2.0, deadline - time.time() - reserve)
     rounds = 1 if sec > 110 else 2
-    r = eng.run_portfolio(_THR, sec, rounds, 0.05, 0.15, 0.002, 0.9995, seed,
-                          1, starts)
+    # enum carve: the anneal consumes every second by design, so the exact
+    # assignment descent must be BUDGETED, not given leftovers (v22's first
+    # cut never fired -- zero leftovers exist). Boards that reach z1==0 by
+    # the checkpoint are the converged/z3 family, whose last half-minute of
+    # annealing is measured worthless (byte-identical T300 vs T900); boards
+    # still carrying tardiness get the carve back as more anneal.
+    carve = 35.0 if sec > 150 else 0.0
+    r = eng.run_portfolio(_THR, sec - carve, rounds, 0.05, 0.15, 0.002,
+                          0.9995, seed, 1, starts)
+    if carve > 0:
+        ob = eng.objective()
+        if ob[0] == 0:
+            _assign_enum(p, eng, n, time.time() + carve - 2.0, ob[3])
+        else:
+            r = eng.run_portfolio(_THR, carve, 1, 0.05, 0.15, 0.002,
+                                  0.9995, seed + 31, 0)
     _diag("portfolio", winner=int(r[2]), thread_best=[round(x) for x in r[3:]])
     # The gate consumes the portfolio's candidate SET, best first. Whether a
     # layout carries a measure-zero checker artifact is an independent
@@ -474,16 +488,6 @@ def _arm_free(p, deadline, seed=7, tl=None):
     # candidate sat discarded).
     sol, res = _gate(p, eng, n, deadline)
     if sol is not None:
-        # converged/z3 boards end the anneal at z1==0 with idle tail time:
-        # spend it on EXACT assignment-layer descent (F1: at z1==0 the whole
-        # objective is a function of the assignment alone). Verified-adoption
-        # only -- a failed enumeration changes nothing but the clock.
-        ob = eng.objective()
-        if ob[0] == 0 and deadline - time.time() > 25.0 + 0.05 * n:
-            if _assign_enum(p, eng, n, deadline - (4.0 + 0.02 * n), ob[3]):
-                sol2, res2 = _gate(p, eng, n, deadline)
-                if sol2 is not None:
-                    return sol2, res2
         return sol, res
     for k, flat in enumerate(eng.get_candidates()[1:4]):
         if time.time() > deadline - 1.0 - 0.01 * n:
