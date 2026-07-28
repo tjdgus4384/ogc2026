@@ -366,6 +366,26 @@ def _assign_enum(p, eng, n, tend, cur_cost):
     x = [[md.NewBoolVar(f"x{i}_{j}") for j in range(m)] for i in range(n)]
     for i in range(n):
         md.AddExactlyOne(x[i])
+    # DEMONSTRATED-capacity screen (sec 189-191: without it, 24 of 26
+    # enumerated candidates were area-infeasible and the search drowned).
+    # Any bay may be loaded up to the best area-time density ANY bay has
+    # provably packed in the incumbent, +10% -- a bound taken from evidence,
+    # and only a pruning guide: packability is still verified by the kernel.
+    flat = eng.get_solution()
+    at = []                                   # area*processing per block
+    for i, b in enumerate(B):
+        xs = [v[0] for lay in b["shape"][0]["layers"] for v in lay]
+        ys = [v[1] for lay in b["shape"][0]["layers"] for v in lay]
+        pt = max(1, int(round(b["processing_time"])))
+        at.append((max(xs) - min(xs)) * (max(ys) - min(ys)) * pt)
+    used = [0.0] * m
+    for i in range(n):
+        if flat[i * 7 + 6]:
+            used[flat[i * 7]] += at[i]
+    dens = max(used[j] / A[j] for j in range(m))
+    for j in range(m):
+        cap = int(round(dens * A[j] * 1.10 * SC))
+        md.Add(sum(int(round(at[i] * SC)) * x[i][j] for i in range(n)) <= cap)
     L = [md.NewIntVar(0, int(sum(wl) * u[j] * SC) + 1, f"L{j}") for j in range(m)]
     for j in range(m):
         md.Add(L[j] == sum(int(round(wl[i] * u[j] * SC)) * x[i][j]

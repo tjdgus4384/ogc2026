@@ -36,8 +36,8 @@ if [[ -e "$ROOT/results/$TAG.json" ]]; then
 fi
 
 RUNNING=$(squeue -h -u "$USER" 2>/dev/null | wc -l)
-if (( RUNNING > 0 )); then
-    echo "refusing: $RUNNING of our jobs are in the queue -- wait for them." >&2
+if (( RUNNING + 4 > 8 )); then
+    echo "refusing: $RUNNING jobs queued; +4 would exceed the 8-node budget." >&2
     squeue -u "$USER" >&2
     exit 1
 fi
