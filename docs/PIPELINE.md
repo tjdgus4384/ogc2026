@@ -119,6 +119,13 @@ than corner-greedy + ALNS reaches. The fixed points sit 25-40% above best
 known; single/double-move polish, bigger ruins, restarts, depth, placement
 scoring are all measured dead ends around them.
 
+- v12seed budgeted-preference plan seed @ exploit persona, 5 seeds:
+  P3 -1.0~-1.4% (s9 86,625 BEATS the board 87,140) but P4/P5/P6 +0.6~0.9%
+  -- wash overall. The plan basin wins rarely but with real Z3 structure
+  (P5-s7 Z3 3134). Start x persona interaction is STRONG (same plan:
+  10.66M under exploit, 12.52M under explore) -- seed value is defined by
+  its polishing persona. Parked as a P3-conditional lever.
+
 NEXT STRUCTURAL CANDIDATES (in order):
 1. Exact window subproblem: at a congested (bay, window), solve the true
    placement problem exhaustively-ish (branch-and-bound over corner
