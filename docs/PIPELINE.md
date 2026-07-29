@@ -114,7 +114,13 @@ flags-alone (+1-6%, memory-bound); two-sided pair-mask rule screens
 (sound + byte-identical but +0-1%: dense packings land in the exact-test
 gap). Cost map (measured): scan machinery ~55% (gen was ori-repeated
 resident scans -- fixed), vp 24-30% (r45 > r1 > r2 > r3), snap ~2%.
-NEXT: spatial/temporal indexing of resident loops (structural, ~x1.5-2?).
+REFUTED also: overlap memoization (-0~-4%; vp cost = ~22ns/entry loop
+iterations x 5 passes x pop, NOT geometry -- layer-bbox early-outs already
+gate the exact work; 32MB memo thrashes cache). CORRECTED TARGET: vp's five
+internal nb loops (the 26-34% block) via a Sol-level per-bay time-bucket
+index -- pop (60-100) -> overlappers (15-30) per pass; consumers are
+order-insensitive so byte-identity holds. rbCollect/fev variants of the
+same idea REFUTED-by-measurement first (they are only 2-7%).
 
 Closed fronts (each refuted by controlled measurement, 07-29/30):
 - candidate-grain vp parallelism 0.69-0.76x; (bay,event)-grain reached
