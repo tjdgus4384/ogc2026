@@ -78,7 +78,11 @@ first candidates for principled replacement.
 | q big | 5–15%·n | run | [유산] |
 | destroyer weights | decay 0.85, floor 0.05, score 3/1/0.3 | Destroyers | [판정: 유지 — 균일 대체(v13uni)가 P5 +5.0% (4/4 draws). 바닥 상태여도 마스킹-op의 유령 1.0이 리젝션-루프로 op0 ~5% 추가 주입, 이 동적 혼합이 유효] |
 | op8/9 gates | w3·Z3 vs w1·Z1 (parameter-free) | run | [측정] |
-| op8 pick | top-4 noisy, ±25% noise | pickRemoval | [자의] |
+| pick noise ±25% | ops 1/8/9 공통 (0.75+0.5·U) | pickRemoval | [자의] |
+| op8 pick top-k | 4 (OGC_OP8TOP) | pickRemoval | [자의] (스크리너 준비) |
+| op2 공간 가중 | 0.25·(|Δx|+|Δy|), 베이 벌점 50 | pickRemoval | [자의] |
+| op9 축출 가격 | 1 + (slack<0? 2 : slack<3? 1 : 0) | pickRemoval | [자의] |
+| credit 갱신 주기 | 60 iters | run | [자의] |
 | portfolio splits | q ×{0.6,1,1.5}, T0 ×{0.5,1,2}, masks 0x1F/0x3FF | runPortfolio | [유산] (T0 split degenerate for 4 threads — measured no-fix) |
 | rounds | 1 if sec>110 else 2 | _arm_free | [측정 5시드: rounds=2 → P3 −1.3 / P4 −3.7 / P5 +2.7 / P6 +1.3% — P4-s8 3.01M 신기록. 채택은 합성 판정 후] |
 | seed orders | EDD, slack, workload, LPT, 2×noisy(σ=8) | _seed_free | [유산] v59 |
