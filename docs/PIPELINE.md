@@ -136,6 +136,14 @@ Closed structural candidates (07-30 continued):
   wall-clock test budgets must be iteration/window-bounded.
 - locked plan-anneal: refuted (see closed fronts).
 
+- P3 assignment frontier (CP min-Z3 under area budgets -> locked chase +
+  anneal, util sweep 0.24-0.33 x 240s): Z1 STALLS at 22-63 instead of
+  reaching 0 (w1 17,778 => >=390k, vs the free anneal's 89.5k). The trade
+  curve (Z3 rises slowly as budgets tighten) was real but the locked packer
+  cannot clear the last tardy days -- same law as lockplan/v3deep: locked
+  or decomposed search loses to the free anneal, and aggregate-area
+  feasibility is far from peak-window geometric feasibility. REFUTED.
+
 NEXT STRUCTURAL CANDIDATES (in order):
 1. Assignment-first construction executed properly: budgeted-preference
    assignment (z3bound machinery, util-tightened) + plan-chase packing as
