@@ -60,6 +60,11 @@ _THR = min(4, os.cpu_count() or 1)   # the server grants 4 cores (sec 100)
 # historical value.
 _PSEED = int(os.environ.get("OGC_SEED", "7"))
 
+# destroy-size multiplier, judgment knob: the q range (0.05-0.15) was tuned
+# in the 1-core T60-T300 era; official TLs are 480-900s where bigger ruins
+# may pay. Default 1 = legacy. Hard-code the judged winner.
+_QMUL = float(os.environ.get("OGC_QMUL", "1"))
+
 # depth-vs-breadth split of the 4 cores: arms anneal legs, each verifying
 # placements with threads/arms-way candidate-parallel vp (trajectory identical
 # to serial vp -- a pure speed knob, so fewer arms = deeper legs). 0 = legacy
@@ -365,7 +370,8 @@ def _arm_free(p, deadline, seed=7, tl=None):
     reserve = min(20.0, 4.0 + 0.05 * n, 0.12 * (tl or 300.0))
     sec = max(2.0, deadline - time.time() - reserve)
     rounds = 1 if sec > 110 else 2
-    r = eng.run_portfolio(_THR, sec, rounds, 0.05, 0.15, 0.002, 0.9995, seed,
+    r = eng.run_portfolio(_THR, sec, rounds, 0.05 * _QMUL, 0.15 * _QMUL,
+                          0.002, 0.9995, seed,
                           1, starts, _ARMS)
     _diag("portfolio", winner=int(r[2]), thread_best=[round(x) for x in r[3:]])
     # The gate consumes the portfolio's candidate SET, best first. Whether a

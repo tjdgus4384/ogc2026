@@ -21,14 +21,15 @@ Kernel call graph (one line per function, seams marked):
 
 ```
 insertGreedy ── phase1 full scan @R ──┐
-             ── phase2 exit events ───┼─ probeBayAt / probeLocal → commitAt
+             ── phase2 exit events ───┼─ scanBayAt / scanLocal
              ── phase3 sparse sweep ──┘      │
-probeBayAt: cornerSets → hitsSnap prefilter → vpConservativeAt (read-only;
-            commit is separate). vpThreads>1: phase 1 probes bays and phase 2
-            probes K-event blocks CONCURRENTLY over frozen state, committing
-            the first feasible in serial order ⇒ trajectory is IDENTICAL to
-            serial — vpThreads is a pure speed knob. Grain is (bay, event)
-            slots (12-100us); candidate-grain chunks MEASURED 0.7x serial.
+scanBayAt: cornerSets → hitsSnap prefilter → candidates ordered by fitScore
+           (v6fit experiment: fragmentation-aware best-fit; v2.1's implicit
+           order was bottom-left) → vpConservativeAt until first feasible →
+           commitAt. vp effort matches first-fit; only the ORDER changes.
+(2026-07-29 depth-bet CLOSED: speculative-parallel probes reached 1.38-2.0x
+ but arms<4 LOST on the real boards -- P4 +60% at arms=1; 4-persona breadth
+ is structural. The parallel machinery lives only in exp/v4spec history.)
 vpConservativeAt: the 5 checker rules, candidate side ALWAYS from arguments
            (rule1 restOverlapAt · rule2 entryOK · rule3 exitOK ·
             rule4/5 neighbour entry/exit with exact bbox early-outs)
@@ -86,17 +87,26 @@ first candidates for principled replacement.
 | spec block K | 4·vpThreads (sweep pending) | insertGreedy p2 | [자의→측정중] |
 | horizon | (maxD+maxP+40)·hmul | _fresh | [유산] |
 
+## The finals front (2026-07-29, real P1-P6 in data/preliminary_test)
+
+Gap to rank-1 lives in: P3 pure Z3 (ours 494-516 vs ~350-390); P4/P5/P6 pure
+Z1 (196-229 vs ~110 / 740-786 vs ~535 / 4731-4823 vs ~3700 days). CP-SAT
+area relaxation proves Z1=0 possible on ALL boards (tools/z1bound.py) — the
+binding constraint is GEOMETRY. frag_diag.py: 51.5%/53%/18.3% of tardy
+blocks' waiting days (P4/P5/P6) had enough free area somewhere — admission
+fails on fragmentation, and those fractions MATCH the rank-1 gaps. Lever:
+placement quality (v6fit fitScore experiment), then coordinated repacking.
+
 ## Principled-replacement queue (strength via fewer knobs)
 
 1. SA temperature: replace (T0, cooling, reheat) with acceptance-rate
-   targeting (e.g., keep acceptance near a schedule by adjusting T) — 3
-   knobs → 1 target curve; robust to instance-scale changes (new hidden
-   instances!).
+   targeting (exp/v5temp built, unvalidated) — 3 knobs → 1 target curve;
+   robust to instance-scale changes.
 2. Destroyer credit: replace (decay, floor, scores) with a standard
    non-stationary bandit rule.
 3. Seed orders: add ATC dispatch (the principled tardiness rule) and judge
    whether the hand-picked zoo can shrink.
-4. stride/chunk/noise constants: derive from n or measure-and-fix.
+4. stride/noise constants: derive from n or measure-and-fix.
 
 Each replacement is judged distributionally (multi-seed, T60+T300+T600)
 before adoption; canaries (p1 1499, p2 3690) plus the determinism check
