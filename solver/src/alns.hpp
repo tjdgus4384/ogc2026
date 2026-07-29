@@ -197,7 +197,9 @@ inline std::vector<int> pickRemoval(repair::Ctx& c, int kind, int q,
         for (size_t k = 0; k < idx.size(); k++) idx[k] = k;
         std::sort(idx.begin(), idx.end(),
                   [&](size_t x, size_t y){ return t[x].first < t[y].first; });
-        size_t pk = idx[c.rng() % std::min<size_t>(4, idx.size())];
+        static const size_t TOPK = [] { const char* v =
+            getenv("OGC_OP8TOP"); return v ? (size_t)atoi(v) : 4; }();
+        size_t pk = idx[c.rng() % std::min<size_t>(TOPK, idx.size())];
         int b = t[pk].second, Y = tgt[pk];
         double gain = -t[pk].first;
         int eb = std::max(pb.R[b], pb.D[b] - pb.P[b]);
@@ -427,7 +429,9 @@ inline RunStats run(repair::Ctx& c, double seconds, const RunParams& rp,
             T *= rp.cooling;
             if (sinceBest > 1200) { T = T0 * 0.3; sinceBest = 0; }   // reheat
         }
-        if (++sinceUpdate >= 60) { ds.update(); sinceUpdate = 0; }
+        static const double DEC = [] { const char* v = getenv("OGC_DECAY");
+            return v ? atof(v) : 0.85; }();      // judgment screener
+        if (++sinceUpdate >= 60) { ds.update(DEC); sinceUpdate = 0; }
         if (auditEvery > 0 && (st.iters % auditEvery) == 0) {
             int bb = -1; int code = audit(pb, s, &bb);
             if (code) { st.badIter = st.iters; st.badKind = kind;
@@ -499,7 +503,9 @@ inline bool constructInitial(repair::Ctx& c, uint64_t seedv) {
     c.oc->clearBits();
     std::vector<int> order(pb.n);
     for (int i = 0; i < pb.n; i++) order[i] = i;
-    std::normal_distribution<double> N(0.0, 3.0);
+    static const double CN = [] { const char* v = getenv("OGC_CNOISE");
+        return v ? atof(v) : 3.0; }();           // judgment screener
+    std::normal_distribution<double> N(0.0, CN);
     std::vector<double> key(pb.n);
     for (int i = 0; i < pb.n; i++) key[i] = pb.D[i] + N(c.rng);
     std::sort(order.begin(), order.end(),

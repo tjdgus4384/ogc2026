@@ -32,6 +32,11 @@ export OGC_ROUNDS=$ROUNDS
 [ -n "${OGC_HCFRAC:-}" ] && export OGC_HCFRAC
 [ -n "${OGC_BIGQ:-}" ] && export OGC_BIGQ
 [ -n "${OGC_PREFP:-}" ] && export OGC_PREFP
+[ -n "${OGC_AREASLK:-}" ] && export OGC_AREASLK
+[ -n "${OGC_STRIDE:-}" ] && export OGC_STRIDE
+[ -n "${OGC_CNOISE:-}" ] && export OGC_CNOISE
+[ -n "${OGC_DECAY:-}" ] && export OGC_DECAY
+[ -n "${OGC_OP8TOP:-}" ] && export OGC_OP8TOP
 export OGC_SAVE_SOL=1
 export OPENBLAS_NUM_THREADS=1
 export MKL_NUM_THREADS=1

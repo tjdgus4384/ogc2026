@@ -62,7 +62,9 @@ struct Ctx {
 //   phase 3:    NO screen -- the completeness net must stay unconditional.
 // Screening phase 3 collapsed dense boards (v1 candidate: prob_16 +308%).
 inline bool areaRoom(const Ctx& c, int j, double areaA, int e, int f) {
-    double cap = c.pb->bayW[j] * c.pb->bayH[j] * 1.02;
+    static const double SLK = [] { const char* v = getenv("OGC_AREASLK");
+        return v ? atof(v) : 1.02; }();          // judgment screener
+    double cap = c.pb->bayW[j] * c.pb->bayH[j] * SLK;
     const auto& au = c.oc->areaUsed[j];
     for (int t = e; t < f && t < c.oc->T; t++)
         if (au[t] + areaA > cap) return false;
@@ -258,7 +260,9 @@ inline bool insertGreedy(Ctx& c, int A, int eCap = -1) {
     // the last resort. The candidate test here is the crane-aware occ::hits
     // (a placement policy: avoid sticky interlocks at crowded moments -- see
     // its comment), NOT the same-layer snapshot the fast phases use.
-    int stride = (eTop - eBot <= 24) ? 1 : 6;
+    static const int STRIDE = [] { const char* v = getenv("OGC_STRIDE");
+        return v ? atoi(v) : 6; }();             // judgment screener
+    int stride = (eTop - eBot <= 24) ? 1 : STRIDE;
     for (int e = eBot; e <= eTop; e += stride) {
         int f = e + pb.P[A];
         for (int j : bays) {
