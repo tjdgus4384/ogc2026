@@ -325,7 +325,11 @@ inline RunStats run(repair::Ctx& c, double seconds, const RunParams& rp,
     while (now() < seconds &&
            (rp.maxIters <= 0 || st.iters < rp.maxIters)) {
         st.iters++;
-        bool hc = now() > rp.hcFrac * seconds;        // late phase: hill climbing
+        // late phase: hill climbing. Iteration-based when a budget is set
+        // (machine-independent trajectory); wall-based only in legacy mode.
+        bool hc = rp.maxIters > 0
+                  ? st.iters > rp.hcFrac * rp.maxIters
+                  : now() > rp.hcFrac * seconds;
         // Mask-level habitat gate for op 8: when the preference term is not
         // dominant the op is simply not selectable. The old design let a
         // gated op return an empty removal, wasting the iteration while its

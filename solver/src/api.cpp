@@ -117,6 +117,8 @@ struct Engine {
     // keep every block in its locked bay, freezing Z2/Z3 at the locked
     // assignment's values so the search optimizes pure Z1 geometry.
     std::vector<int> lockVec;
+    int lastChunks_ = 0;                 // rounds completed by the last
+    int lastChunks() const { return lastChunks_; }   // portfolio call
     // insert ONE unplaced block with an entry cap and an optional forced
     // bay -- the primitive for chasing an external plan (plan seeds,
     // tools/plan_pack.py).
@@ -167,11 +169,18 @@ struct Engine {
     // starts[tid % k]: a flat n*7 solution, or an empty vector meaning
     // "construct fresh" (noisy-EDD). Empty `starts` = legacy behavior
     // (all from the engine's solution, odd threads construct).
+    // coreIters > 0 switches to machine-independent governance: every round
+    // runs a FIXED iteration budget per leg (trajectory = f(seed, round
+    // count)); wall clock only decides HOW MANY rounds fit (monotone in
+    // best-so-far) and never truncates a round that was started -- rounds
+    // are only started when the measured previous round fits 1.3x in the
+    // remaining wall. Legacy wall-budget mode when coreIters == 0.
     std::vector<double> runPortfolio(int threads, double seconds, int rounds,
                                      double qlo, double qhi, double T0mul,
                                      double cooling, uint64_t seed,
                                      int multiStart = 1,
-                                     std::vector<std::vector<int>> starts = {}) {
+                                     std::vector<std::vector<int>> starts = {},
+                                     long coreIters = 0) {
         core::Sol globalBest = sol;
         double bestObj = core::evaluate(pb, sol).total;
         long totIters = 0;
@@ -179,9 +188,24 @@ struct Engine {
         std::vector<double> threadBest((size_t)threads, -1.0);
         candSols.assign((size_t)threads, {});     // per-thread candidates
         rounds = std::max(1, rounds);
+        auto wall0 = std::chrono::steady_clock::now();
+        auto elapsed = [&] { return std::chrono::duration<double>(
+            std::chrono::steady_clock::now() - wall0).count(); };
+        if (coreIters > 0) rounds = 16;          // hard cap; wall decides
         double perRound = seconds / rounds;
+        double lastRound = 0.0;
+        long lastIters = coreIters;
         const bool dbgRounds = (getenv("SMAX_DEBUG") != nullptr);
+        int chunks = 0;
         for (int r = 0; r < rounds; r++) {
+            long thisIters = (coreIters > 0 && r > 0)
+                ? std::max<long>(1, coreIters / 3) : coreIters;
+            if (coreIters > 0 && r > 0 &&
+                elapsed() + 1.15 * lastRound *
+                    ((double)thisIters / std::max<long>(1, lastIters))
+                    > seconds)
+                break;                            // next round would not fit
+            double roundT0 = elapsed();
             core::Sol roundStart = globalBest;
             double roundEnterBest = bestObj;
             #pragma omp parallel num_threads(threads)
@@ -242,7 +266,11 @@ struct Engine {
                 rp.bigQProb = (tid % 2 == 0) ? 0.0
                               : (BQ >= 0 ? BQ : 0.06);
                 rp.opMask  = (tid % 2 == 0) ? 0x1F : 0x3FF; // exploit / explore+ejections
-                auto st = alns::run(c2, perRound, rp,
+                // round 0 = the full core; extensions run core/3 (fit-check
+                // scales the duration estimate by the iteration ratio)
+                if (coreIters > 0) rp.maxIters = thisIters;
+                auto st = alns::run(c2,
+                    coreIters > 0 ? seconds - roundT0 : perRound, rp,
                                     seed + 1000003ULL * (r * 64 + tid + 1));
                 {   // post-round left compaction on this thread's best.
                     // alns::run returned bestSol into s2 but oc2 reflects the
@@ -274,6 +302,9 @@ struct Engine {
                     }
                 }
             }
+            lastRound = elapsed() - roundT0;
+            lastIters = thisIters;
+            chunks++;
             if (dbgRounds)
                 fprintf(stderr, "[round %d] best %.6g -> %.6g (%+.3g%%)\n",
                         r, roundEnterBest, bestObj,
@@ -281,6 +312,7 @@ struct Engine {
                         100.0 * (bestObj - roundEnterBest) / roundEnterBest
                         : 0.0);
         }
+        lastChunks_ = chunks;
         sol = globalBest;
         // [totIters, bestObj, winnerTid, perThreadBest...] -- winnerTid tells
         // which start (seed slot / construction) actually won the merge:
@@ -462,7 +494,8 @@ PYBIND11_MODULE(sscore, m) {
              py::arg("threads"), py::arg("seconds"), py::arg("rounds"),
              py::arg("qlo"), py::arg("qhi"), py::arg("T0mul"),
              py::arg("cooling"), py::arg("seed"), py::arg("multiStart") = 1,
-             py::arg("starts") = std::vector<std::vector<int>>{})
+             py::arg("starts") = std::vector<std::vector<int>>{},
+             py::arg("coreIters") = 0)
         .def("get_block", &Engine::getBlock)
         .def("get_candidates", &Engine::getCandidates)
         .def("objective", &Engine::objective)
@@ -478,6 +511,7 @@ PYBIND11_MODULE(sscore, m) {
              py::arg("maxIters") = 0)
         .def("reconstruct_assigned", &Engine::reconstructAssigned)
         .def("insert_capped", &Engine::insertCapped)
+        .def("last_chunks", &Engine::lastChunks)
         .def("set_assignment_lock", &Engine::setAssignmentLock)
         .def("compact_left", &Engine::compactLeft)
         .def("set_block", &Engine::setBlock)
