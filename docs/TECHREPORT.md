@@ -99,7 +99,7 @@ engine is the survivor set.
 ## 4. Results
 
 Preliminary final board (rank 27/397): P1 11,280, P2 31,368 (universal
-fixed points), P3 87,140, P4 3,259,259, P5 11,089,821, P6 32,950,799 →
+fixed points), P3 87,140, P4 3,259,259, P5 11,089,821, P6 32,104,939 →
 finals qualification. The finals solver improves the P3/P4 class by
 −2.1%/−8.2% (5-seed means at official TLs) with best local draws 86,625
 and 3,118,626, and adds the reproducibility governance above.
