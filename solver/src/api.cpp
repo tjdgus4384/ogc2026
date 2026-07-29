@@ -117,6 +117,18 @@ struct Engine {
     // keep every block in its locked bay, freezing Z2/Z3 at the locked
     // assignment's values so the search optimizes pure Z1 geometry.
     std::vector<int> lockVec;
+    // insert ONE unplaced block with an entry cap and an optional forced
+    // bay -- the primitive for chasing an external plan (plan seeds,
+    // tools/plan_pack.py).
+    bool insertCapped(int A, int eCap, int bay) {
+        std::vector<int> fbv(pb.n, -1);
+        if (bay >= 0) fbv[A] = bay;
+        const int* save = ctx.forcedBay;
+        ctx.forcedBay = fbv.data();
+        bool ok = repair::insertGreedy(ctx, A, eCap);
+        ctx.forcedBay = save;
+        return ok;
+    }
     void setAssignmentLock(std::vector<int> v) {
         lockVec = std::move(v);
         ctx.forcedBay = lockVec.empty() ? nullptr : lockVec.data();
@@ -128,11 +140,13 @@ struct Engine {
     std::vector<double> runALNS(double seconds, double qlo, double qhi,
                                 double T0mul, double cooling, uint64_t seed,
                                 int auditEvery = 0, double hcFrac = 0.75,
-                                double bigQProb = 0.04, int opMask = 0xFF) {
+                                double bigQProb = 0.04, int opMask = 0xFF,
+                                long maxIters = 0) {
         alns::RunParams rp;
         rp.qloF = qlo; rp.qhiF = qhi; rp.T0mul = T0mul; rp.cooling = cooling;
         rp.hcFrac = hcFrac; rp.bigQProb = bigQProb;
         rp.opMask = (uint32_t)opMask;
+        rp.maxIters = maxIters;
         auto st = alns::run(ctx, seconds, rp, seed, auditEvery);
         return {(double)st.iters, (double)st.accepted, (double)st.improved,
                 (double)st.failed, st.best, (double)st.badIter,
@@ -452,8 +466,10 @@ PYBIND11_MODULE(sscore, m) {
              py::arg("seconds"), py::arg("qlo"), py::arg("qhi"),
              py::arg("T0mul"), py::arg("cooling"), py::arg("seed"),
              py::arg("auditEvery") = 0, py::arg("hcFrac") = 0.75,
-             py::arg("bigQProb") = 0.04, py::arg("opMask") = 255)
+             py::arg("bigQProb") = 0.04, py::arg("opMask") = 255,
+             py::arg("maxIters") = 0)
         .def("reconstruct_assigned", &Engine::reconstructAssigned)
+        .def("insert_capped", &Engine::insertCapped)
         .def("set_assignment_lock", &Engine::setAssignmentLock)
         .def("compact_left", &Engine::compactLeft)
         .def("set_block", &Engine::setBlock)

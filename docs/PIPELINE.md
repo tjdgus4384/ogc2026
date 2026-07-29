@@ -69,22 +69,21 @@ first candidates for principled replacement.
 | pref-first prob | 0.70 / 0.92 (prefStrong) | insertGreedy | [유산] v58 |
 | area screen slack | ×1.02, orient-0 bbox | areaRoom | [유산] (+판정: 대안 2종 기각) |
 | phase-3 stride | 6 (≤24 window: 1) | insertGreedy | [자의] |
-| SA T0 | 0.002·obj | run | [유산] |
-| cooling | 0.9995 | run | [유산] |
+| SA T0 | 0.002·obj | run | [유산] (동결 아님 실측: acc 0.48-0.63 @T20-120) |
+| cooling | 0.9995 | run | [유산] (같은 실측; v5temp 대체 기각) |
 | reheat | sinceBest>1200 → 0.3·T0 | run | [자의] |
 | hcFrac | 0.75 / 1.0 split | portfolio | [유산] |
 | bigQProb | 0.04 (portfolio: 0 / 0.06) | run | [유산] |
-| q small | 2..max(8, 3%·n) | run | [유산] |
+| q small | 2..max(8, 3%·n) | run | [판정: ×2/×3 확대 기각 (공식 TL 실보드)] |
 | q big | 5–15%·n | run | [유산] |
-| destroyer weights | decay 0.85, floor 0.05, score 3/1/0.3 | Destroyers | [자의] |
+| destroyer weights | decay 0.85, floor 0.05, score 3/1/0.3 | Destroyers | [측정: 사문화 — 실보드에서 전 op 바닥 = 균일 선택. 균일 대체(v13uni) 판정 중] |
 | op8/9 gates | w3·Z3 vs w1·Z1 (parameter-free) | run | [측정] |
 | op8 pick | top-4 noisy, ±25% noise | pickRemoval | [자의] |
 | portfolio splits | q ×{0.6,1,1.5}, T0 ×{0.5,1,2}, masks 0x1F/0x3FF | runPortfolio | [유산] (T0 split degenerate for 4 threads — measured no-fix) |
 | rounds | 1 if sec>110 else 2 | _arm_free | [유산] |
 | seed orders | EDD, slack, workload, LPT, 2×noisy(σ=8) | _seed_free | [유산] v59 |
 | construct noise | σ=3.0 | constructInitial | [자의] |
-| starts map | best/construct/2nd/3rd | _arm_free | [측정: 품질 중립, 보호관찰] |
-| spec block K | 4·vpThreads (sweep pending) | insertGreedy p2 | [자의→측정중] |
+| starts map | best/construct/2nd/3rd | _arm_free | [측정: 품질 중립 + 시드×페르소나 교호 강함 (v12: exploit 밑 10.66M vs explore 밑 12.52M)] |
 | horizon | (maxD+maxP+40)·hmul | _fresh | [유산] |
 
 ## The finals front (2026-07-29/30, real P1-P6 in data/preliminary_test)

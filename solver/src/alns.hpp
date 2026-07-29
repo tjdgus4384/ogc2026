@@ -44,9 +44,12 @@ inline int audit(const core::Problem& pb, core::Sol& s, int* badBlock = nullptr)
 struct Destroyers {
     std::vector<double> w, score;
     std::vector<int> used;
+    std::vector<long> totUsed, totImp;   // lifetime fires / new-best hits
+                                         // (diagnostic only, [ops] dump)
     std::mt19937* rng;
     int K;
-    explicit Destroyers(int k) : w(k,1.0), score(k,0.0), used(k,0), K(k) {}
+    explicit Destroyers(int k)
+        : w(k,1.0), score(k,0.0), used(k,0), totUsed(k,0), totImp(k,0), K(k) {}
     int pick() {
         double sm = 0; for (double v : w) sm += v;
         double r = std::uniform_real_distribution<double>(0, sm)(*rng);
@@ -55,6 +58,7 @@ struct Destroyers {
     }
     void update(double decay = 0.85) {
         for (int i = 0; i < K; i++) {
+            totUsed[i] += used[i];
             if (used[i]) w[i] = decay * w[i] + (1 - decay) * (score[i] / used[i]);
             w[i] = std::max(w[i], 0.05);
             score[i] = 0; used[i] = 0;
@@ -284,6 +288,8 @@ struct RunParams {
     double hcFrac = 0.75;        // fraction of budget after which hill-climb
     double bigQProb = 0.04;      // probability of a large removal
     uint32_t opMask = 0x3FF;     // destroyer enable bits (10 ops)
+    long maxIters = 0;           // 0 = wall-clock only; >0 makes runs exactly
+                                 // reproducible (determinism tests, A/B)
 };
 
 inline RunStats run(repair::Ctx& c, double seconds, const RunParams& rp,
@@ -316,7 +322,8 @@ inline RunStats run(repair::Ctx& c, double seconds, const RunParams& rp,
     long sinceBest = 0;
     std::vector<long> lastTouch(pb.n, 0);
 
-    while (now() < seconds) {
+    while (now() < seconds &&
+           (rp.maxIters <= 0 || st.iters < rp.maxIters)) {
         st.iters++;
         bool hc = now() > rp.hcFrac * seconds;        // late phase: hill climbing
         // Mask-level habitat gate for op 8: when the preference term is not
@@ -400,7 +407,7 @@ inline RunStats run(repair::Ctx& c, double seconds, const RunParams& rp,
             for (int A : rem) lastTouch[A] = st.iters;
             if (nv < best - 1e-9) {
                 best = nv; bestSol = s; st.improved++; sinceBest = 0;
-                ds.score[kind] += 3.0;
+                ds.score[kind] += 3.0; ds.totImp[kind]++;
             } else { ds.score[kind] += (dlt < -1e-9 ? 1.0 : 0.3); sinceBest++; }
         } else {
             sinceBest++;
@@ -425,6 +432,15 @@ inline RunStats run(repair::Ctx& c, double seconds, const RunParams& rp,
     }
     s = bestSol;
     st.best = best;
+    if (getenv("SMAX_DEBUG")) {   // per-op economics: who fired, who earned
+        fprintf(stderr, "[ops]");
+        for (int i = 0; i < ds.K; i++)
+            fprintf(stderr, " %d:%ld/%ld", i,
+                    ds.totUsed[i] + ds.used[i], ds.totImp[i]);
+        fprintf(stderr, " iters=%ld acc=%.2f fail=%ld\n",
+                st.iters, st.accepted / (double)std::max(1L, st.iters),
+                st.failed);
+    }
     return st;
 }
 
