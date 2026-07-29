@@ -79,14 +79,14 @@ _CORE_ON = os.environ.get("OGC_CORE", "1") != "0"
 
 def _rate(n, m):
     if m >= 4:
-        return 900.0 if n <= 220 else 600.0
+        return 1050.0 if n <= 220 else 700.0
     if n <= 160:
-        return 1050.0
+        return 1200.0
     if n <= 210:
-        return 2700.0
+        return 3100.0
     if n <= 260:
-        return 620.0
-    return 170.0
+        return 740.0
+    return 195.0
 
 
 # ---------------------------------------------------------------- engine io
@@ -416,7 +416,7 @@ def _arm_free(p, deadline, seed=7, tl=None):
     core = 0
     if _CORE_ON:
         sec_nom = max(30.0, (tl or 300.0) - 2.0 - reserve)
-        core = int(0.85 * sec_nom * _rate(n, len(p["bays"])))
+        core = int(0.9 * sec_nom * _rate(n, len(p["bays"])))
     r = eng.run_portfolio(_THR, sec, rounds, 0.05, 0.15, 0.002, 0.9995, seed,
                           1, starts, core)
     _diag("portfolio", winner=int(r[2]), chunks=eng.last_chunks(),
