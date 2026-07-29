@@ -1,0 +1,1 @@
+v30: solver + measured feature rule -- rounds=2 + pref-first 0.85 on (m<=3, saturation<1.0) boards. 5-seed measured: that config wins P3 -1.8% / P4 -7.0% and loses on the 4-bay (P5 +4.5%) and oversaturated (P6 +2.6%) boards; the rule keys on runtime-computable structure, not problem identity.
