@@ -112,6 +112,14 @@ Closed fronts (each refuted by controlled measurement, 07-29/30):
   argmax-pref was 0-packable (June) — so peak-WINDOW geometry binds, not
   aggregate capacity.
 
+SERVER-ENVELOPE FORENSIC (07-30, the submitted zip itself on real P3):
+TL240 x2 = 92,900 byte-reproduced; TL270 92,895; TL300 91,435; TL600
+91,040; TL900 89,870. The server's 87,140 @TL240 is unreachable at ANY
+local time budget -- it lives on a hardware-pacing branch of the
+wall-clock-driven trajectory. Local pipeline integrity proven; wall-clock
+governance is the flaw (fixed by v31det: iteration-budgeted rounds,
+cross-node byte-identity proven, quality parity with v30).
+
 CONVERGENT DIAGNOSIS (07-30): every board's gap reduces to one competency —
 packing more blocks into preferred/on-time positions at congested windows
 than corner-greedy + ALNS reaches. The fixed points sit 25-40% above best
