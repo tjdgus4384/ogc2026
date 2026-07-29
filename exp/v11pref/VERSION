@@ -1,0 +1,1 @@
+v11pref: v2.1 + compactPref -- deterministic exhaustive Z3 polish (descending-regret single-block reassignment to better-preference bays at the same entry day, exact-objective accept, iterate to fixpoint). Motive: P3 is a near-fixed-point (95 new-bests in 212k iters) with Z3 494-516 vs top 350-390; op8 earns but glacially.
