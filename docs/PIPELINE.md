@@ -76,7 +76,7 @@ first candidates for principled replacement.
 | bigQProb | 0.04 (portfolio: 0 / 0.06) | run | [유산] |
 | q small | 2..max(8, 3%·n) | run | [판정: ×2/×3 확대 기각 (공식 TL 실보드)] |
 | q big | 5–15%·n | run | [유산] |
-| destroyer weights | decay 0.85, floor 0.05, score 3/1/0.3 | Destroyers | [측정: 사문화 — 실보드에서 전 op 바닥 = 균일 선택. 균일 대체(v13uni) 판정 중] |
+| destroyer weights | decay 0.85, floor 0.05, score 3/1/0.3 | Destroyers | [판정: 유지 — 균일 대체(v13uni)가 P5 +5.0% (4/4 draws). 바닥 상태여도 마스킹-op의 유령 1.0이 리젝션-루프로 op0 ~5% 추가 주입, 이 동적 혼합이 유효] |
 | op8/9 gates | w3·Z3 vs w1·Z1 (parameter-free) | run | [측정] |
 | op8 pick | top-4 noisy, ±25% noise | pickRemoval | [자의] |
 | portfolio splits | q ×{0.6,1,1.5}, T0 ×{0.5,1,2}, masks 0x1F/0x3FF | runPortfolio | [유산] (T0 split degenerate for 4 threads — measured no-fix) |

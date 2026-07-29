@@ -1,1 +1,0 @@
-v13uni: solver + UNIFORM destroyer selection. The adaptive-weight machinery measured dead on the real boards ([ops]: every op pinned at the 0.05 floor = de-facto uniform, plus a phantom bias from masked ops keeping weight 1.0). Uniform makes it explicit and deletes three arbitrary knobs (decay 0.85, floor 0.05, credit 3/1/0.3).
