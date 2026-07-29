@@ -9,13 +9,13 @@
 #
 # The REAL preliminary P1-P6 (data/preliminary_test), each at its OFFICIAL
 # time limit, six 4-core grading envelopes side by side on one node.
-# Args: TAG SOLVER [PSEED] [ARMS] [QMUL]
+# Args: TAG SOLVER [PSEED] [ARMS] [QMUL] [ROUNDS]
 set -euo pipefail
 
 ROOT=/data_fast/home/tjdgus4384/priv/ogc2026
 PY=$ROOT/.miniforge/envs/ogc2026/bin/python
 
-TAG="$1"; SOLVER="$2"; PSEED="${3:-7}"; ARMS="${4:-0}"; QMUL="${5:-1}"
+TAG="$1"; SOLVER="$2"; PSEED="${3:-7}"; ARMS="${4:-0}"; QMUL="${5:-1}"; ROUNDS="${6:-0}"
 
 OUT=$ROOT/runs/$TAG
 mkdir -p "$OUT"
@@ -27,6 +27,11 @@ export OGC_DIAG=1
 export OGC_SEED=$PSEED
 export OGC_ARMS=$ARMS
 export OGC_QMUL=$QMUL
+export OGC_ROUNDS=$ROUNDS
+# optional kernel screeners: pass through when set in the caller's env
+[ -n "${OGC_HCFRAC:-}" ] && export OGC_HCFRAC
+[ -n "${OGC_BIGQ:-}" ] && export OGC_BIGQ
+[ -n "${OGC_PREFP:-}" ] && export OGC_PREFP
 export OGC_SAVE_SOL=1
 export OPENBLAS_NUM_THREADS=1
 export MKL_NUM_THREADS=1

@@ -231,8 +231,16 @@ struct Engine {
                 rp.T0mul = T0mul * ((tid/3) % 3 == 0 ? 0.5 :
                                     ((tid/3) % 3 == 1 ? 1.0 : 2.0));
                 rp.cooling = cooling;
-                rp.hcFrac  = (tid % 2 == 0) ? 1.0 : 0.75;   // half pure-SA
-                rp.bigQProb = (tid % 2 == 0) ? 0.0 : 0.06;
+                // judgment screeners ([유산] re-judgment): env-gated persona
+                // overrides, inert when unset (grading server).
+                static const double HCF = [] { const char* v =
+                    getenv("OGC_HCFRAC"); return v ? atof(v) : -1.0; }();
+                static const double BQ = [] { const char* v =
+                    getenv("OGC_BIGQ"); return v ? atof(v) : -1.0; }();
+                rp.hcFrac  = HCF >= 0 ? HCF
+                             : ((tid % 2 == 0) ? 1.0 : 0.75); // half pure-SA
+                rp.bigQProb = (tid % 2 == 0) ? 0.0
+                              : (BQ >= 0 ? BQ : 0.06);
                 rp.opMask  = (tid % 2 == 0) ? 0x1F : 0x3FF; // exploit / explore+ejections
                 auto st = alns::run(c2, perRound, rp,
                                     seed + 1000003ULL * (r * 64 + tid + 1));

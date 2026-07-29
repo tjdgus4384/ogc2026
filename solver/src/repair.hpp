@@ -206,8 +206,10 @@ inline bool insertGreedy(Ctx& c, int A, int eCap = -1) {
     else { bays.resize(pb.m); for (int j = 0; j < pb.m; j++) bays[j] = j; }
     std::vector<int> oris(pb.geo[A].orients.size());
     for (size_t o = 0; o < oris.size(); o++) oris[o] = (int)o;
+    static const double PREFP = [] { const char* v =
+        getenv("OGC_PREFP"); return v ? atof(v) : -1.0; }();
     if (std::uniform_real_distribution<double>(0,1)(c.rng)
-            < (c.prefStrong ? 0.92 : 0.70))
+            < (PREFP >= 0 ? PREFP : (c.prefStrong ? 0.92 : 0.70)))
         std::sort(bays.begin(), bays.end(), [&](int a, int b){
             return pb.pref[A][a] > pb.pref[A][b]; });
     else

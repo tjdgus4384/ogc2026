@@ -60,6 +60,11 @@ _THR = min(4, os.cpu_count() or 1)   # the server grants 4 cores (sec 100)
 # historical value.
 _PSEED = int(os.environ.get("OGC_SEED", "7"))
 
+# rounds override, judgment knob ([유산] re-judgment at official TLs):
+# rounds>1 restarts every thread from the round's global best -- unlike the
+# refuted independent-restart-max this KEEPS convergence. 0 = legacy rule.
+_ROUNDS = int(os.environ.get("OGC_ROUNDS", "0"))
+
 
 # ---------------------------------------------------------------- engine io
 def _build_engine(p):
@@ -358,7 +363,7 @@ def _arm_free(p, deadline, seed=7, tl=None):
     # are rarer there and a smaller reserve is consistent, not risky.
     reserve = min(20.0, 4.0 + 0.05 * n, 0.12 * (tl or 300.0))
     sec = max(2.0, deadline - time.time() - reserve)
-    rounds = 1 if sec > 110 else 2
+    rounds = _ROUNDS if _ROUNDS > 0 else (1 if sec > 110 else 2)
     r = eng.run_portfolio(_THR, sec, rounds, 0.05, 0.15, 0.002, 0.9995, seed,
                           1, starts)
     _diag("portfolio", winner=int(r[2]), thread_best=[round(x) for x in r[3:]])

@@ -5,7 +5,7 @@
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=16G
 #SBATCH --time=00:20:00
-#SBATCH --output=/data_fast/home/tjdgus4384/priv/ogc2026/runs/battery-exp/v13uni.log
+#SBATCH --output=/data_fast/home/tjdgus4384/priv/ogc2026/runs/battery-v13.log
 #
 # exp/v13uni battery after diagnostic-infra fold: canaries MUST stay byte-exact (all additions are gated/inert)
 # 
