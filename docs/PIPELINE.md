@@ -123,6 +123,17 @@ Closed fronts (each refuted by controlled measurement, 07-29/30):
   argmax-pref was 0-packable (June) — so peak-WINDOW geometry binds, not
   aggregate capacity.
 
+SPEED-SELECTS-BASIN (07-30, asym probe, the submitted zip on real P3):
+effective per-thread speed monotonically selects the wall-clock engine's
+attractor: dept 4-core 92,900 (pinned) == titan 2-core (heavy contention)
+92,900 x3; titan 3-core 91.4k; titan 4-core 91.0-91.4k; grading server
+(faster) 87,140. The server "luck" is a speed-ladder rung our hardware
+cannot reach; TL extension is NOT equivalent (TL is not speed). v3.0's
+governance absorbs the same speed benefit as monotone chunk gains instead
+(titan >= dept per seed, proven), making local seed-menu values SERVER
+LOWER BOUNDS. Finals plan: per-submission seed iteration (governed results
+reproduce on resubmission -- impossible with wall-clock).
+
 SERVER-ENVELOPE FORENSIC (07-30, the submitted zip itself on real P3):
 TL240 x2 = 92,900 byte-reproduced; TL270 92,895; TL300 91,435; TL600
 91,040; TL900 89,870. The server's 87,140 @TL240 is unreachable at ANY
