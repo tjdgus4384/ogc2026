@@ -83,6 +83,9 @@ first candidates for principled replacement.
 | op2 공간 가중 | 0.25·(|Δx|+|Δy|), 베이 벌점 50 | pickRemoval | [자의] |
 | op9 축출 가격 | 1 + (slack<0? 2 : slack<3? 1 : 0) | pickRemoval | [자의] |
 | credit 갱신 주기 | 60 iters | run | [자의] |
+| 압축 패스 수 | 3 (라운드별 compactLeft) | runPortfolio | [자의] |
+| 후보-게이트 폭 | 차순위 3개 ([1:4]) | _arm_free | [측정: p22 구출 사례] |
+| 폴백 anneal 예산 | left − 6.0s, 1라운드 | _arm_free | [측정: 예산-초과 사고 후] |
 | portfolio splits | q ×{0.6,1,1.5}, T0 ×{0.5,1,2}, masks 0x1F/0x3FF | runPortfolio | [유산] (T0 split degenerate for 4 threads — measured no-fix) |
 | rounds | 1 if sec>110 else 2 | _arm_free | [측정 5시드: rounds=2 → P3 −1.3 / P4 −3.7 / P5 +2.7 / P6 +1.3% — P4-s8 3.01M 신기록. 채택은 합성 판정 후] |
 | seed orders | EDD, slack, workload, LPT, 2×noisy(σ=8) | _seed_free | [유산] v59 |
