@@ -125,13 +125,19 @@ scoring are all measured dead ends around them.
   10.66M under exploit, 12.52M under explore) -- seed value is defined by
   its polishing persona. Parked as a P3-conditional lever.
 
+Closed structural candidates (07-30 continued):
+- exact window B&B (v14exact): first full run on real P4 (15 windows x 20k
+  nodes, audit-clean, deterministic) found ZERO improving joint
+  (entry,position,ori) reschedules. Third independent confirmation that the
+  fixed points are locally optimal at every searchable neighbourhood scale
+  (after compactPref and op10). Budget-bounded search cannot reach deeper
+  within competition time; folded. Two engineering lessons banked: the
+  thread_local identity trap has a RECURSION flavour (per-depth pools), and
+  wall-clock test budgets must be iteration/window-bounded.
+- locked plan-anneal: refuted (see closed fronts).
+
 NEXT STRUCTURAL CANDIDATES (in order):
-1. Exact window subproblem: at a congested (bay, window), solve the true
-   placement problem exhaustively-ish (branch-and-bound over corner
-   positions of the window's blocks with vp feasibility, seconds budget) —
-   replace the window's layout wholesale when better. The deterministic
-   big-neighbourhood the stochastic ops cannot compose.
-2. Assignment-first construction executed properly: budgeted-preference
+1. Assignment-first construction executed properly: budgeted-preference
    assignment (z3bound machinery, util-tightened) + plan-chase packing as
    a P3-class portfolio seed (v9plan pattern, clean base).
 3. If both fail: profile-guided speed (10x iterations at same quality
