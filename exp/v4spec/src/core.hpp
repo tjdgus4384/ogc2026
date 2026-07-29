@@ -44,16 +44,19 @@ struct Sol {
     }
 };
 
-// same-layer positive-area overlap between two placed blocks (rule 1 helper)
-inline bool restOverlap(const Problem& pb, const Sol& s, int a, int b) {
-    const OrientGeom& ga = pb.geo[a].orients[s.ori[a]];
-    const OrientGeom& gb = pb.geo[b].orients[s.ori[b]];
-    if (!crane::bboxOverlapOff(ga.bb, s.x[a], s.y[a], gb.bb, s.x[b], s.y[b]))
+// Same-layer positive-area overlap: candidate block (gA at xA,yA) vs placed
+// block k. THE single rule-1 geometry path -- one side always comes from
+// explicit arguments, so no caller can accidentally read stale solution
+// fields (the bug class the first vpConservativeAt build shipped).
+inline bool restOverlapAt(const Problem& pb, const Sol& s,
+                          const OrientGeom& gA, double xA, double yA, int k) {
+    const OrientGeom& gk = pb.geo[k].orients[s.ori[k]];
+    if (!crane::bboxOverlapOff(gA.bb, xA, yA, gk.bb, s.x[k], s.y[k]))
         return false;
-    int L = std::min(ga.layers.size(), gb.layers.size());
+    int L = (int)std::min(gA.layers.size(), gk.layers.size());
     for (int l = 0; l < L; l++)
-        if (crane::overlapsLay(ga, l, s.x[a], s.y[a],
-                               gb, l, s.x[b], s.y[b])) return true;
+        if (crane::overlapsLay(gA, l, xA, yA, gk, l, s.x[k], s.y[k]))
+            return true;
     return false;
 }
 
@@ -83,20 +86,11 @@ inline bool vpConservativeAt(const Problem& pb, const Sol& s, int A,
     double W = pb.bayW[jT], H = pb.bayH[jT];
 
     const std::vector<int>& nb = s.byBay[jT];
-    // rule 1 -- inlined restOverlap with A's side taken from the CANDIDATE
-    // arguments (restOverlap reads s.ori/x/y[A], which are stale here; the
-    // old scan wrote the candidate into s first, masking this dependency --
-    // the exact bug the first build of this refactor shipped).
+    // rule 1: resting collision vs every time-overlapping resident
     for (int k : nb) {
         if (k == A || !s.placed[k]) continue;
         if (!(s.e[k] < fN && eN < s.f[k])) continue;
-        const OrientGeom& gk = pb.geo[k].orients[s.ori[k]];
-        if (!crane::bboxOverlapOff(gA.bb, xA, yA, gk.bb, s.x[k], s.y[k]))
-            continue;
-        int L = (int)std::min(gA.layers.size(), gk.layers.size());
-        for (int l = 0; l < L; l++)
-            if (crane::overlapsLay(gA, l, xA, yA, gk, l, s.x[k], s.y[k]))
-                return false;
+        if (restOverlapAt(pb, s, gA, xA, yA, k)) return false;
     }
     // pres is reused across calls: vpConservative runs millions of times per
     // anneal and entryOK/exitOK only read the buffer within the call.
