@@ -87,15 +87,29 @@ first candidates for principled replacement.
 | spec block K | 4·vpThreads (sweep pending) | insertGreedy p2 | [자의→측정중] |
 | horizon | (maxD+maxP+40)·hmul | _fresh | [유산] |
 
-## The finals front (2026-07-29, real P1-P6 in data/preliminary_test)
+## The finals front (2026-07-29/30, real P1-P6 in data/preliminary_test)
 
 Gap to rank-1 lives in: P3 pure Z3 (ours 494-516 vs ~350-390); P4/P5/P6 pure
 Z1 (196-229 vs ~110 / 740-786 vs ~535 / 4731-4823 vs ~3700 days). CP-SAT
 area relaxation proves Z1=0 possible on ALL boards (tools/z1bound.py) — the
 binding constraint is GEOMETRY. frag_diag.py: 51.5%/53%/18.3% of tardy
-blocks' waiting days (P4/P5/P6) had enough free area somewhere — admission
-fails on fragmentation, and those fractions MATCH the rank-1 gaps. Lever:
-placement quality (v6fit fitScore experiment), then coordinated repacking.
+blocks' waiting days (P4/P5/P6) had enough free area somewhere.
+
+Closed fronts (each refuted by controlled measurement, 07-29/30):
+- candidate-grain vp parallelism 0.69-0.76x; (bay,event)-grain reached
+  1.38-2.0x but arms<4 lost the breadth (P4 +60%) — depth bet CLOSED.
+- best-fit placement scoring (contact/BL/affinity): fights crane
+  feasibility + kills ori-shuffle diversity; production +1.5~8.4%.
+- SA-freeze hypothesis: false — acceptance holds 0.48-0.63 at long TLs.
+- uniform bigger ruins (QMUL small-q x2/x3): all boards neutral-to-worse.
+- op10 tardy-window bulldozer (plain AND area-certified): 5-seed wash,
+  0 new-bests ever; ops 9/10 are passengers on the real boards.
+- independent-restart-max: no half-TL plateau (second half still earns
+  2-20%) — variance harvest would trade real convergence.
+Live: v11pref compactPref (deterministic Z3 sweep, judging); plan-seed on a
+clean base (parked); next structural candidates live in this list's ashes —
+the remaining P4-P6 gap likely needs a stronger packing/search organism,
+not another ALNS op.
 
 ## Principled-replacement queue (strength via fewer knobs)
 
