@@ -106,10 +106,30 @@ Closed fronts (each refuted by controlled measurement, 07-29/30):
   0 new-bests ever; ops 9/10 are passengers on the real boards.
 - independent-restart-max: no half-TL plateau (second half still earns
   2-20%) — variance harvest would trade real convergence.
-Live: v11pref compactPref (deterministic Z3 sweep, judging); plan-seed on a
-clean base (parked); next structural candidates live in this list's ashes —
-the remaining P4-P6 gap likely needs a stronger packing/search organism,
-not another ALNS op.
+- compactPref (deterministic single-block Z3 sweep): runs in 0.0-0.3s and
+  moves 0-1 blocks — the single-relocation neighbourhood is EXHAUSTED at
+  the anneal's fixed points. P3's Z3 surplus is chain-locked.
+- z3bound: aggregate area-day budgets admit Z3=0 even at util 0.7 — yet
+  argmax-pref was 0-packable (June) — so peak-WINDOW geometry binds, not
+  aggregate capacity.
+
+CONVERGENT DIAGNOSIS (07-30): every board's gap reduces to one competency —
+packing more blocks into preferred/on-time positions at congested windows
+than corner-greedy + ALNS reaches. The fixed points sit 25-40% above best
+known; single/double-move polish, bigger ruins, restarts, depth, placement
+scoring are all measured dead ends around them.
+
+NEXT STRUCTURAL CANDIDATES (in order):
+1. Exact window subproblem: at a congested (bay, window), solve the true
+   placement problem exhaustively-ish (branch-and-bound over corner
+   positions of the window's blocks with vp feasibility, seconds budget) —
+   replace the window's layout wholesale when better. The deterministic
+   big-neighbourhood the stochastic ops cannot compose.
+2. Assignment-first construction executed properly: budgeted-preference
+   assignment (z3bound machinery, util-tightened) + plan-chase packing as
+   a P3-class portfolio seed (v9plan pattern, clean base).
+3. If both fail: profile-guided speed (10x iterations at same quality
+   would also move fixed points).
 
 ## Principled-replacement queue (strength via fewer knobs)
 

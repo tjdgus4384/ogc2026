@@ -357,7 +357,8 @@ def _arm_free(p, deadline, seed=7, tl=None):
     # less densely, so exact-touch artifacts -- the gate's whole workload --
     # are rarer there and a smaller reserve is consistent, not risky.
     reserve = min(20.0, 4.0 + 0.05 * n, 0.12 * (tl or 300.0))
-    sec = max(2.0, deadline - time.time() - reserve)
+    # 1s carved from the anneal for the post-portfolio Z3 sweep below
+    sec = max(2.0, deadline - time.time() - reserve - 1.0)
     rounds = 1 if sec > 110 else 2
     r = eng.run_portfolio(_THR, sec, rounds, 0.05, 0.15, 0.002, 0.9995, seed,
                           1, starts)
@@ -367,9 +368,9 @@ def _arm_free(p, deadline, seed=7, tl=None):
     # entry, kept only on exact-objective gain (compactPref). The anneal's
     # op8 grinds this direction stochastically and plateaus (P3: 95
     # new-bests in 212k iters); the sweep finishes it in O(n*m) inserts.
-    if time.time() < deadline - reserve:
-        moved = eng.compact_pref(4)
-        _diag("compact_pref", moved=moved)
+    t0 = time.time()
+    moved = eng.compact_pref(4)
+    _diag("compact_pref", moved=moved, sweep_s=round(time.time() - t0, 2))
     # The gate consumes the portfolio's candidate SET, best first. Whether a
     # layout carries a measure-zero checker artifact is an independent
     # lottery per candidate, so trying the runner-ups on gate failure drops
