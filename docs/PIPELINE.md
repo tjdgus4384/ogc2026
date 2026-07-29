@@ -67,7 +67,7 @@ first candidates for principled replacement.
 | gate reserve | min(20, 4+0.05n, 0.12·TL) | _arm_free | [측정] (3 incidents) |
 | room() margin | 1.3·ck_max + 0.5 | _gate | [측정] (overruns) |
 | pref-first prob | 0.70 / 0.92 (prefStrong) | insertGreedy | [측정 4시드: 0.85 균일 → P3 −2.8 / P4 −6.9 / P5 +5.8 / P6 +1.5% — P5(유일 4-베이)만 손해. 국면 규칙 검토 중] |
-| area screen slack | ×1.02, orient-0 bbox | areaRoom | [유산] (+판정: 대안 2종 기각) |
+| area screen slack | ×1.02, orient-0 bbox | areaRoom | [측정: ×1.00 전보드 +5~9% 기각; ×1.05 P6 −3% 신호 확인 중] |
 | phase-3 stride | 6 (≤24 window: 1) | insertGreedy | [자의] |
 | SA T0 | 0.002·obj | run | [유산] (동결 아님 실측: acc 0.48-0.63 @T20-120) |
 | cooling | 0.9995 | run | [유산] (같은 실측; v5temp 대체 기각) |
@@ -82,7 +82,7 @@ first candidates for principled replacement.
 | portfolio splits | q ×{0.6,1,1.5}, T0 ×{0.5,1,2}, masks 0x1F/0x3FF | runPortfolio | [유산] (T0 split degenerate for 4 threads — measured no-fix) |
 | rounds | 1 if sec>110 else 2 | _arm_free | [측정 5시드: rounds=2 → P3 −1.3 / P4 −3.7 / P5 +2.7 / P6 +1.3% — P4-s8 3.01M 신기록. 채택은 합성 판정 후] |
 | seed orders | EDD, slack, workload, LPT, 2×noisy(σ=8) | _seed_free | [유산] v59 |
-| construct noise | σ=3.0 | constructInitial | [자의] |
+| construct noise | σ=3.0 | constructInitial | [측정: σ=6 중립 — 유지] |
 | starts map | best/construct/2nd/3rd | _arm_free | [측정: 품질 중립 + 시드×페르소나 교호 강함 (v12: exploit 밑 10.66M vs explore 밑 12.52M)] |
 | horizon | (maxD+maxP+40)·hmul | _fresh | [유산] |
 | spec rule | m≤3 ∧ sat<1.0 → r2+pp0.85 | _spec_rule | [측정: 5시드 P3 −2.1/P4 −8.2, P5/P6 제외로 중립] |
