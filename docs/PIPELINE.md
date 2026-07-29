@@ -72,15 +72,15 @@ first candidates for principled replacement.
 | SA T0 | 0.002·obj | run | [유산] (동결 아님 실측: acc 0.48-0.63 @T20-120) |
 | cooling | 0.9995 | run | [유산] (같은 실측; v5temp 대체 기각) |
 | reheat | sinceBest>1200 → 0.3·T0 | run | [자의] |
-| hcFrac | 0.75 / 1.0 split | portfolio | [유산] |
-| bigQProb | 0.04 (portfolio: 0 / 0.06) | run | [유산] |
+| hcFrac | 0.75 / 1.0 split | portfolio | [측정: 유지 — 전-0.75가 P4 +5.8% 등 전보드 악화 (공식 TL 2시드)] |
+| bigQProb | 0.04 (portfolio: 0 / 0.06) | run | [측정: 유지 — 0.12가 P4 +4.1% / P6 +2.6%] |
 | q small | 2..max(8, 3%·n) | run | [판정: ×2/×3 확대 기각 (공식 TL 실보드)] |
 | q big | 5–15%·n | run | [유산] |
 | destroyer weights | decay 0.85, floor 0.05, score 3/1/0.3 | Destroyers | [판정: 유지 — 균일 대체(v13uni)가 P5 +5.0% (4/4 draws). 바닥 상태여도 마스킹-op의 유령 1.0이 리젝션-루프로 op0 ~5% 추가 주입, 이 동적 혼합이 유효] |
 | op8/9 gates | w3·Z3 vs w1·Z1 (parameter-free) | run | [측정] |
 | op8 pick | top-4 noisy, ±25% noise | pickRemoval | [자의] |
 | portfolio splits | q ×{0.6,1,1.5}, T0 ×{0.5,1,2}, masks 0x1F/0x3FF | runPortfolio | [유산] (T0 split degenerate for 4 threads — measured no-fix) |
-| rounds | 1 if sec>110 else 2 | _arm_free | [유산] |
+| rounds | 1 if sec>110 else 2 | _arm_free | [판정 중: rounds=2 스크린 P4 −7.1% — 5시드 확정 진행] |
 | seed orders | EDD, slack, workload, LPT, 2×noisy(σ=8) | _seed_free | [유산] v59 |
 | construct noise | σ=3.0 | constructInitial | [자의] |
 | starts map | best/construct/2nd/3rd | _arm_free | [측정: 품질 중립 + 시드×페르소나 교호 강함 (v12: exploit 밑 10.66M vs explore 밑 12.52M)] |
