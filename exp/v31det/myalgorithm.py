@@ -70,10 +70,23 @@ _ROUNDS = int(os.environ.get("OGC_ROUNDS", "0"))
 # (TL - slack - reserve, computed not measured), so the trajectory is
 # f(seed, round count) and machine speed only decides how many rounds fit
 # (best-so-far monotone in that count). Conservative per-arm iters/sec from
-# our node measurements (P4 1.28k/s, P6 750/s, p38 205/s; x0.7 margin).
+# our node measurements per (m, n) class -- structure moves the rate 5x
+# (P3 m=3/n=200: 3.3k/s vs P5 m=4/n=200: ~1.1k/s), so the table is m-aware.
+# x0.82 margin; a slower grader only truncates the core at the wall cap.
 # OGC_CORE=0 disables (legacy wall governance) for A/B.
 _CORE_ON = os.environ.get("OGC_CORE", "1") != "0"
-_RATE = ((160, 900.0), (260, 500.0), (10 ** 9, 150.0))
+
+
+def _rate(n, m):
+    if m >= 4:
+        return 900.0 if n <= 220 else 600.0
+    if n <= 160:
+        return 1050.0
+    if n <= 210:
+        return 2700.0
+    if n <= 260:
+        return 620.0
+    return 170.0
 
 
 # ---------------------------------------------------------------- engine io
@@ -402,9 +415,8 @@ def _arm_free(p, deadline, seed=7, tl=None):
                                            else (1 if sec > 110 else 2))
     core = 0
     if _CORE_ON:
-        rate = next(rt for lim, rt in _RATE if n <= lim)
         sec_nom = max(30.0, (tl or 300.0) - 2.0 - reserve)
-        core = int(0.6 * sec_nom * rate)
+        core = int(0.85 * sec_nom * _rate(n, len(p["bays"])))
     r = eng.run_portfolio(_THR, sec, rounds, 0.05, 0.15, 0.002, 0.9995, seed,
                           1, starts, core)
     _diag("portfolio", winner=int(r[2]), chunks=eng.last_chunks(),

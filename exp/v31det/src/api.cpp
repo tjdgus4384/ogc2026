@@ -194,11 +194,16 @@ struct Engine {
         if (coreIters > 0) rounds = 16;          // hard cap; wall decides
         double perRound = seconds / rounds;
         double lastRound = 0.0;
+        long lastIters = coreIters;
         const bool dbgRounds = (getenv("SMAX_DEBUG") != nullptr);
         int chunks = 0;
         for (int r = 0; r < rounds; r++) {
+            long thisIters = (coreIters > 0 && r > 0)
+                ? std::max<long>(1, coreIters / 3) : coreIters;
             if (coreIters > 0 && r > 0 &&
-                elapsed() + 1.15 * lastRound > seconds)
+                elapsed() + 1.15 * lastRound *
+                    ((double)thisIters / std::max<long>(1, lastIters))
+                    > seconds)
                 break;                            // next round would not fit
             double roundT0 = elapsed();
             core::Sol roundStart = globalBest;
@@ -261,12 +266,9 @@ struct Engine {
                 rp.bigQProb = (tid % 2 == 0) ? 0.0
                               : (BQ >= 0 ? BQ : 0.06);
                 rp.opMask  = (tid % 2 == 0) ? 0x1F : 0x3FF; // exploit / explore+ejections
-                // round 0 = the full core; extensions run core/3 so the
-                // fit-check's waste is bounded by a THIRD of a round, not a
-                // whole one (measured: P4 threw away >50% of wall at 1x).
-                if (coreIters > 0)
-                    rp.maxIters = r == 0 ? coreIters
-                                         : std::max<long>(1, coreIters / 3);
+                // round 0 = the full core; extensions run core/3 (fit-check
+                // scales the duration estimate by the iteration ratio)
+                if (coreIters > 0) rp.maxIters = thisIters;
                 auto st = alns::run(c2,
                     coreIters > 0 ? seconds - roundT0 : perRound, rp,
                                     seed + 1000003ULL * (r * 64 + tid + 1));
@@ -301,6 +303,7 @@ struct Engine {
                 }
             }
             lastRound = elapsed() - roundT0;
+            lastIters = thisIters;
             chunks++;
             if (dbgRounds)
                 fprintf(stderr, "[round %d] best %.6g -> %.6g (%+.3g%%)\n",
