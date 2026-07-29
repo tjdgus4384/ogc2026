@@ -1,22 +1,21 @@
-"""Shipyard block placement -- pipeline v5 (lean, 4 files).
+"""Shipyard block placement -- solver v3.0 (map: docs/PIPELINE.md).
 
-  FREE   kernel-native best-of-5 seeds -> one continuous 4-thread
-         portfolio on a wall-clock-normalized SA schedule (size-
-         invariant temperature curve, sec 114) -> checker-gated tails:
-         windowed-repack sweep (sec 109) + tardy rescue (sec 110),
-         both adopt-improvements-only with snapshot rollback.
-  SAFETY adaptive occupancy horizon (sec 103), pair-nudge + replace
-         gate (secs 81/46), trivial always-feasible constructor and a
-         never-raise contract (sec 99).
-  The exact-assignment (delta) arm is dormant. sec 157: its module was also
-  IMPORTED here but never called, and that import pulled in ortools CP-SAT --
-  0.83s of startup on every run and, worse, a module-level single point of
-  failure (a missing/mismatched ortools in the grading environment would kill
-  the whole submission before algorithm() could catch anything). Import and
-  file both dropped from the shipped bundle; the mechanism stays documented in
-  FAST_KERNEL_SPEC secs 90-98/106 and the source is kept in the kernel-source
-  archive. Formerly: assign.py keeps the
-  windowed-energetic capability for re-enable on its habitat.
+  algorithm(prob, TL) never raises; worst case returns the always-feasible
+  trivial constructor. Pipeline: kernel-native seeding (6 insertion orders,
+  top-3 distinct layouts) -> 4-persona portfolio ALNS on iteration-governed
+  rounds (trajectory = f(seed, round count); machine speed only decides the
+  count, monotone in best-so-far) -> checker gate with a least-destructive
+  rescue ladder over the portfolio's candidate set -> deadline-guarded
+  fallback ladder.
+
+  Structure-keyed config (_spec_rule, measured 5-seed at official TLs):
+  <=3-bay AND under-saturated boards run rounds=2 + pref-first 0.85
+  (P3 -2.1% / P4 -8.2%); 4-bay or over-saturated boards keep legacy.
+
+  Env hooks, all inert on the grading server (unset): OGC_SEED (portfolio
+  seed, distributional testing), OGC_DIAG (stderr diagnostics), OGC_CORE=0
+  (legacy wall-clock governance, byte-exact v2.1), OGC_ROUNDS / OGC_PREFP /
+  screener knobs (judgment instruments; see docs/PIPELINE.md knob census).
 """
 import json
 import math

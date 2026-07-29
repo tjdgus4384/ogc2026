@@ -1,4 +1,4 @@
-// alns.hpp -- adaptive LNS: 8 destroy operators, adaptive weights, SA
+// alns.hpp -- adaptive LNS: 10 destroy operators, adaptive weights, SA
 // acceptance with reheating and a late hill-climb phase, plus the two
 // deterministic helpers (left compaction, noisy-EDD construction).
 //
