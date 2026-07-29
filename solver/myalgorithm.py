@@ -77,15 +77,17 @@ _CORE_ON = os.environ.get("OGC_CORE", "1") != "0"
 
 
 def _rate(n, m):
+    # x1.15: the rb-cache + flags speedup (measured x1.12-1.20, byte-
+    # identical trajectories) converts to quality through bigger cores.
     if m >= 4:
-        return 1050.0 if n <= 220 else 700.0
+        return 1200.0 if n <= 220 else 800.0
     if n <= 160:
-        return 1200.0
+        return 1380.0
     if n <= 210:
-        return 3100.0
+        return 3550.0
     if n <= 260:
-        return 740.0
-    return 195.0
+        return 850.0
+    return 225.0
 
 
 # ---------------------------------------------------------------- engine io

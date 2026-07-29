@@ -25,6 +25,7 @@ EXT=$("$PY" -c 'import sysconfig; print(sysconfig.get_config_var("EXT_SUFFIX"))'
 
 set -x
 g++ -O3 -std=c++17 -funroll-loops -fopenmp -shared -fPIC \
+    -march=x86-64-v3 -ffp-contract=off -flto \
     $("$PY" -m pybind11 --includes) \
     src/api.cpp -o "sscore${EXT}"
 set +x

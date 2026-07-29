@@ -448,6 +448,7 @@ inline RunStats run(repair::Ctx& c, double seconds, const RunParams& rp,
         fprintf(stderr, " iters=%ld acc=%.2f fail=%ld\n",
                 st.iters, st.accepted / (double)std::max(1L, st.iters),
                 st.failed);
+
     }
     return st;
 }

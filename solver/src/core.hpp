@@ -5,6 +5,7 @@
 #include <vector>
 #include <cmath>
 #include <cstdint>
+#include <chrono>
 
 namespace core {
 using crane::OrientGeom; using crane::BlockGeom; using crane::Placement;

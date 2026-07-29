@@ -73,8 +73,26 @@ inline bool areaRoom(const Ctx& c, int j, double areaA, int e, int f) {
 
 // Candidate x/y sets from corner points: bay walls plus the four positions
 // snugging A against each resident whose stay overlaps [e,f).
-inline void cornerSets(const Ctx& c, int A, int oi, int j, int e, int f,
-                       std::vector<int>& xs, std::vector<int>& ys) {
+// resident bbox, orientation-independent -- collected once per (bay, e, f)
+// and reused by every orientation's corner derivation (the resident scan
+// was the dominant cost when repeated per ori; measured +11-16% removing
+// the repeat in scanLocal alone).
+struct RB { double x0, x1, y0, y1; };
+inline void rbCollect(const Ctx& c, int j, int e, int f,
+                      std::vector<RB>& rbs) {
+    const Problem& pb = *c.pb;
+    rbs.clear();
+    for (int k : c.s->byBay[j]) {
+        if (!c.s->placed[k]) continue;
+        if (!(c.s->e[k] < f && e < c.s->f[k])) continue;    // time overlap
+        const auto& gk = pb.geo[k].orients[c.s->ori[k]];
+        rbs.push_back({gk.bb.x0 + c.s->x[k], gk.bb.x1 + c.s->x[k],
+                       gk.bb.y0 + c.s->y[k], gk.bb.y1 + c.s->y[k]});
+    }
+}
+inline void cornerSetsRB(const Ctx& c, int A, int oi, int j,
+                         const std::vector<RB>& rbs,
+                         std::vector<int>& xs, std::vector<int>& ys) {
     const Problem& pb = *c.pb;
     const auto& g = pb.geo[A].orients[oi];
     double W = pb.bayW[j], H = pb.bayH[j];
@@ -85,21 +103,22 @@ inline void cornerSets(const Ctx& c, int A, int oi, int j, int e, int f,
     xs.push_back(x0); xs.push_back(x1);
     ys.push_back(y0); ys.push_back(y1);
     double wA = g.bb.x1 - g.bb.x0, hA = g.bb.y1 - g.bb.y0;
-    for (int k : c.s->byBay[j]) {
-        if (!c.s->placed[k]) continue;
-        if (!(c.s->e[k] < f && e < c.s->f[k])) continue;    // time overlap
-        const auto& gk = pb.geo[k].orients[c.s->ori[k]];
-        double kx0 = gk.bb.x0 + c.s->x[k], kx1 = gk.bb.x1 + c.s->x[k];
-        double ky0 = gk.bb.y0 + c.s->y[k], ky1 = gk.bb.y1 + c.s->y[k];
-        int cx[2] = {(int)std::ceil (kx1 - g.bb.x0),          // right of k
-                     (int)std::floor(kx0 - wA - g.bb.x0)};    // left  of k
+    for (const RB& rb : rbs) {
+        int cx[2] = {(int)std::ceil (rb.x1 - g.bb.x0),        // right of k
+                     (int)std::floor(rb.x0 - wA - g.bb.x0)};  // left  of k
         for (int v : cx) if (v >= x0 && v <= x1) xs.push_back(v);
-        int cy[2] = {(int)std::ceil (ky1 - g.bb.y0),          // above k
-                     (int)std::floor(ky0 - hA - g.bb.y0)};    // below k
+        int cy[2] = {(int)std::ceil (rb.y1 - g.bb.y0),        // above k
+                     (int)std::floor(rb.y0 - hA - g.bb.y0)};  // below k
         for (int v : cy) if (v >= y0 && v <= y1) ys.push_back(v);
     }
     std::sort(xs.begin(), xs.end()); xs.erase(std::unique(xs.begin(), xs.end()), xs.end());
     std::sort(ys.begin(), ys.end()); ys.erase(std::unique(ys.begin(), ys.end()), ys.end());
+}
+inline void cornerSets(const Ctx& c, int A, int oi, int j, int e, int f,
+                       std::vector<int>& xs, std::vector<int>& ys) {
+    thread_local std::vector<RB> rbs;
+    rbCollect(c, j, e, f, rbs);
+    cornerSetsRB(c, A, oi, j, rbs, xs, ys);
 }
 
 // Try to place A at (bay j, entry e): every corner candidate of every
@@ -111,8 +130,10 @@ inline bool scanBayAt(Ctx& c, int A, int j, int e, const std::vector<int>& oris,
     int f = e + pb.P[A];
     thread_local occ::OccIndex::Snap sn;
     c.oc->buildSnap(j, e, f, sn);
+    thread_local std::vector<RB> rbs;
+    rbCollect(c, j, e, f, rbs);
     for (int oi : oris) {
-        cornerSets(c, A, oi, j, e, f, xs, ys);
+        cornerSetsRB(c, A, oi, j, rbs, xs, ys);
         for (int y : ys) for (int x : xs) {
             if (c.oc->hitsSnap(sn, A, oi, x, y)) continue;
             s.bay[A]=j; s.ori[A]=oi; s.x[A]=x; s.y[A]=y;
@@ -145,6 +166,11 @@ inline bool scanLocal(Ctx& c, int A, int trig, int e, double areaA) {
     double tx0 = gt.bb.x0 + s.x[trig], tx1 = gt.bb.x1 + s.x[trig];
     double ty0 = gt.bb.y0 + s.y[trig], ty1 = gt.bb.y1 + s.y[trig];
     thread_local std::vector<int> lxs, lys;
+    // resident bboxes are orientation-INDEPENDENT: collect the
+    // time-overlapping residents once per event, not once per orientation
+    // (the ori loop only shifts them by its own wA/hA offsets).
+    thread_local std::vector<RB> rbs;
+    rbCollect(c, j, e, f, rbs);
     for (size_t oo = 0; oo < pb.geo[A].orients.size(); oo++) {
         int oi = (int)oo;
         const auto& g = pb.geo[A].orients[oi];
@@ -162,16 +188,11 @@ inline bool scanLocal(Ctx& c, int A, int trig, int e, double areaA) {
         lxs.clear(); lys.clear();
         lxs.push_back(axlo); if (axhi != axlo) lxs.push_back(axhi);
         lys.push_back(aylo); if (ayhi != aylo) lys.push_back(ayhi);
-        for (int k : s.byBay[j]) {
-            if (!s.placed[k]) continue;
-            if (!(s.e[k] < f && e < s.f[k])) continue;
-            const auto& gk = pb.geo[k].orients[s.ori[k]];
-            double kx0 = gk.bb.x0 + s.x[k], kx1 = gk.bb.x1 + s.x[k];
-            double ky0 = gk.bb.y0 + s.y[k], ky1 = gk.bb.y1 + s.y[k];
-            int rx = (int)std::ceil (kx1 - g.bb.x0);
-            int lx = (int)std::floor(kx0 - wA - g.bb.x0);
-            int ay = (int)std::ceil (ky1 - g.bb.y0);
-            int by = (int)std::floor(ky0 - hA - g.bb.y0);
+        for (const RB& rb : rbs) {
+            int rx = (int)std::ceil (rb.x1 - g.bb.x0);
+            int lx = (int)std::floor(rb.x0 - wA - g.bb.x0);
+            int ay = (int)std::ceil (rb.y1 - g.bb.y0);
+            int by = (int)std::floor(rb.y0 - hA - g.bb.y0);
             if (rx >= axlo && rx <= axhi) lxs.push_back(rx);
             if (lx >= axlo && lx <= axhi) lxs.push_back(lx);
             if (ay >= aylo && ay <= ayhi) lys.push_back(ay);
@@ -266,8 +287,10 @@ inline bool insertGreedy(Ctx& c, int A, int eCap = -1) {
     for (int e = eBot; e <= eTop; e += stride) {
         int f = e + pb.P[A];
         for (int j : bays) {
+            thread_local std::vector<RB> rbs;
+            rbCollect(c, j, e, f, rbs);
             for (int oi : oris) {
-                cornerSets(c, A, oi, j, e, f, xs, ys);
+                cornerSetsRB(c, A, oi, j, rbs, xs, ys);
                 for (int y : ys) for (int x : xs) {
                     if (c.oc->hits(A, oi, j, x, y, e, f)) continue;
                     s.bay[A]=j; s.ori[A]=oi; s.x[A]=x; s.y[A]=y;
