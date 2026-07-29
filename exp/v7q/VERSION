@@ -1,0 +1,1 @@
+v7q: v2.1 + OGC_QMUL destroy-size multiplier (python-only; kernel identical). q range 0.05-0.15 is a 1-core T60-T300 era legacy -- rejudging at official TLs. QMUL=1 == v2.1 byte-identical.
