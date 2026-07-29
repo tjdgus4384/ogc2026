@@ -31,7 +31,10 @@ def main():
     tl = float(sys.argv[2])
     out_path = sys.argv[3] if len(sys.argv) > 3 else None
 
-    prob = json.loads((ROOT / "data" / "train" / f"prob_{pid}.json").read_text())
+    # OGC_DATA picks the instance set: train (default) or preliminary_test
+    # (the REAL P1-P6, published 2026-07-29 with the preliminary report).
+    data = os.environ.get("OGC_DATA", "train")
+    prob = json.loads((ROOT / "data" / data / f"prob_{pid}.json").read_text())
 
     t0 = time.time()
     try:
@@ -70,6 +73,9 @@ def main():
     print(line, flush=True)
     if out_path:
         pathlib.Path(out_path).write_text(line + "\n")
+        if sol is not None and os.environ.get("OGC_SAVE_SOL"):
+            pathlib.Path(out_path).with_suffix(".sol.json").write_text(
+                json.dumps(sol))
 
 
 if __name__ == "__main__":

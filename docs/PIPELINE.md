@@ -21,12 +21,14 @@ Kernel call graph (one line per function, seams marked):
 
 ```
 insertGreedy ── phase1 full scan @R ──┐
-             ── phase2 exit events ───┼─ scanBayAt / scanLocal
+             ── phase2 exit events ───┼─ probeBayAt / probeLocal → commitAt
              ── phase3 sparse sweep ──┘      │
-scanBayAt: cornerSets → hitsSnap prefilter → vpConservativeAt → commitAt
-           (candidates flattened in scan order; vpThreads>1 verifies chunks
-            concurrently; first-feasible-in-order commit ⇒ trajectory is
-            IDENTICAL to serial — vpThreads is a pure speed knob)
+probeBayAt: cornerSets → hitsSnap prefilter → vpConservativeAt (read-only;
+            commit is separate). vpThreads>1: phase 1 probes bays and phase 2
+            probes K-event blocks CONCURRENTLY over frozen state, committing
+            the first feasible in serial order ⇒ trajectory is IDENTICAL to
+            serial — vpThreads is a pure speed knob. Grain is (bay, event)
+            slots (12-100us); candidate-grain chunks MEASURED 0.7x serial.
 vpConservativeAt: the 5 checker rules, candidate side ALWAYS from arguments
            (rule1 restOverlapAt · rule2 entryOK · rule3 exitOK ·
             rule4/5 neighbour entry/exit with exact bbox early-outs)
@@ -81,7 +83,7 @@ first candidates for principled replacement.
 | seed orders | EDD, slack, workload, LPT, 2×noisy(σ=8) | _seed_free | [유산] v59 |
 | construct noise | σ=3.0 | constructInitial | [자의] |
 | starts map | best/construct/2nd/3rd | _arm_free | [측정: 품질 중립, 보호관찰] |
-| vp chunk | 16·vpThreads | scanBayAt | [자의] |
+| spec block K | 4·vpThreads (sweep pending) | insertGreedy p2 | [자의→측정중] |
 | horizon | (maxD+maxP+40)·hmul | _fresh | [유산] |
 
 ## Principled-replacement queue (strength via fewer knobs)

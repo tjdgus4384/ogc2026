@@ -27,6 +27,8 @@
 #include <random>
 #include <algorithm>
 #include <chrono>
+#include <atomic>
+#include <climits>
 
 namespace repair {
 using core::Problem; using core::Sol;
@@ -46,12 +48,12 @@ struct Ctx {
     // block and its target bay; the reinsert step must know to force that bay
     // with an on-time entry cap. Reset at every pickRemoval call.
     int tsBlk = -1, tsBay = -1, tsECap = -1;
-    // Candidate-parallel verification width (the depth bet, 3rd realization):
-    // vp is 53-70% of runtime and candidates are verified one by one with a
-    // temporary state mutation. vpConservativeAt removed the mutation, so a
-    // chunk of candidates can be verified concurrently; committing the FIRST
-    // feasible in scan order keeps choices identical to serial -- vpThreads
-    // changes speed, never the trajectory.
+    // Speculative probe width (the depth bet, 3rd realization): insertGreedy
+    // phases 1-2 probe many (bay, event) slots concurrently over frozen state
+    // and commit the first feasible in serial order -- vpThreads changes
+    // speed, never the trajectory. Grain matters: candidate-level chunks
+    // inside one scan MEASURED 0.7x serial (fork/join dwarfs sub-us
+    // verifications); (bay, event)-level probes are 12-100us each.
     int vpThreads = 1;
     // live dominance gate for op 8: is the priced preference loss the dominant
     // objective term? Parameter-free (w3*z3 > w1*z1), set by the obj lambda.
@@ -132,68 +134,50 @@ inline bool commitAt(Ctx& c, int A, int j, int oi, int x, int y, int e, int f) {
     return true;
 }
 
-inline bool scanBayAt(Ctx& c, int A, int j, int e, const std::vector<int>& oris,
-                      std::vector<int>& xs, std::vector<int>& ys) {
+// A concrete placement found by a probe.
+struct Fit { int j, oi, x, y; };
+// Upper bound on one speculative probe block (phase-1 bays / phase-2 events).
+constexpr int SPEC_MAX = 64;
+
+// Read-only full scan of bay j at entry e: writes the FIRST feasible corner
+// placement in scan order to out. Mutates nothing (vpConservativeAt takes the
+// candidate as arguments; Snap and scratch are built within the call), so
+// many probes may run concurrently over the same frozen state -- the basis of
+// the speculative phases in insertGreedy. Callers commit separately.
+inline bool probeBayAt(Ctx& c, int A, int j, int e,
+                       const std::vector<int>& oris, Fit& out) {
     const Problem& pb = *c.pb; Sol& s = *c.s;
     int f = e + pb.P[A];
     thread_local occ::OccIndex::Snap sn;
     c.oc->buildSnap(j, e, f, sn);
-    if (c.vpThreads <= 1) {
-        for (int oi : oris) {
-            cornerSets(c, A, oi, j, e, f, xs, ys);
-            for (int y : ys) for (int x : xs) {
-                if (c.oc->hitsSnap(sn, A, oi, x, y)) continue;
-                if (core::vpConservativeAt(pb, s, A, j, oi, x, y, e, f))
-                    return commitAt(c, A, j, oi, x, y, e, f);
-            }
-        }
-        return false;
-    }
-    // parallel path: flatten candidates in EXACT scan order, verify in
-    // chunks concurrently (vpConservativeAt mutates nothing; Snap and masks
-    // are read-only; crane/vp scratch buffers are thread_local), then commit
-    // the first feasible in order -- identical choice to the serial path.
-    struct Cand { int oi, x, y; };
-    thread_local std::vector<Cand> cands;
-    cands.clear();
+    thread_local std::vector<int> xs, ys;
     for (int oi : oris) {
         cornerSets(c, A, oi, j, e, f, xs, ys);
-        for (int y : ys) for (int x : xs) cands.push_back({oi, x, y});
-    }
-    int nc = (int)cands.size();
-    thread_local std::vector<char> ok;
-    int CH = 16 * c.vpThreads;
-    // A thread_local name inside the omp region resolves to each WORKER's own
-    // (empty) instance, not the buffer main just filled; bind plain locals so
-    // the region shares main's objects. (This crashed as an OOB write in ok.)
-    const occ::OccIndex::Snap& snR = sn;
-    const Cand* cdp = cands.data();
-    for (int st_ = 0; st_ < nc; st_ += CH) {
-        int en = std::min(nc, st_ + CH);
-        ok.assign(en - st_, 0);
-        char* okp = ok.data();
-        #pragma omp parallel for num_threads(c.vpThreads) schedule(static)
-        for (int i = st_; i < en; i++) {
-            const Cand& cd = cdp[i];
-            if (c.oc->hitsSnap(snR, A, cd.oi, cd.x, cd.y)) continue;
-            if (core::vpConservativeAt(pb, s, A, j, cd.oi, cd.x, cd.y, e, f))
-                okp[i - st_] = 1;
-        }
-        for (int i = st_; i < en; i++)
-            if (ok[i - st_]) {
-                const Cand& cd = cdp[i];
-                return commitAt(c, A, j, cd.oi, cd.x, cd.y, e, f);
+        for (int y : ys) for (int x : xs) {
+            if (c.oc->hitsSnap(sn, A, oi, x, y)) continue;
+            if (core::vpConservativeAt(pb, s, A, j, oi, x, y, e, f)) {
+                out = {j, oi, x, y};
+                return true;
             }
+        }
     }
     return false;
+}
+
+inline bool scanBayAt(Ctx& c, int A, int j, int e,
+                      const std::vector<int>& oris) {
+    Fit ft;
+    return probeBayAt(c, A, j, e, oris, ft) &&
+           commitAt(c, A, ft.j, ft.oi, ft.x, ft.y, e, e + c.pb->P[A]);
 }
 
 // Localised scan at a revival event: when trig exits at e, only positions
 // overlapping trig's footprint can NEWLY become feasible (every blocking rule
 // is footprint-overlap based, so a position's blockers all intersect it, and
 // the last one to leave is trig -- sec 48). Scans the anchor window around
-// trig only.
-inline bool scanLocal(Ctx& c, int A, int trig, int e, double areaA) {
+// trig only. Read-only, like probeBayAt.
+inline bool probeLocal(Ctx& c, int A, int trig, int e, double areaA,
+                       Fit& out) {
     const Problem& pb = *c.pb; Sol& s = *c.s;
     int f = e + pb.P[A];
     int j = s.bay[trig];
@@ -243,11 +227,19 @@ inline bool scanLocal(Ctx& c, int A, int trig, int e, double areaA) {
         lys.erase(std::unique(lys.begin(), lys.end()), lys.end());
         for (int yv : lys) for (int xv : lxs) {
             if (c.oc->hitsSnap(sn, A, oi, xv, yv)) continue;
-            if (core::vpConservativeAt(pb, s, A, j, oi, xv, yv, e, f))
-                return commitAt(c, A, j, oi, xv, yv, e, f);
+            if (core::vpConservativeAt(pb, s, A, j, oi, xv, yv, e, f)) {
+                out = {j, oi, xv, yv};
+                return true;
+            }
         }
     }
     return false;
+}
+
+inline bool scanLocal(Ctx& c, int A, int trig, int e, double areaA) {
+    Fit ft;
+    return probeLocal(c, A, trig, e, areaA, ft) &&
+           commitAt(c, A, ft.j, ft.oi, ft.x, ft.y, e, e + c.pb->P[A]);
 }
 
 // Insert block A at the earliest feasible entry <= eCap (eCap<=0: no cap).
@@ -279,15 +271,40 @@ inline bool insertGreedy(Ctx& c, int A, int eCap = -1) {
 
     NsAdd _prof(c.nsInsert); c.nCall++;
 
-    // phase 1: full scan at the release day
+    // phase 1: full scan at the release day. vpThreads>1: probe the bays
+    // concurrently over frozen state, commit the first feasible in bay-scan
+    // order -- identical choice to the serial loop.
     thread_local std::vector<char> areaRej;
     areaRej.assign(pb.m, 0);
     {
         int e = eBot, f = e + pb.P[A];
+        thread_local std::vector<int> pj; pj.clear();
         for (int j : bays) {
             if (!areaRoom(c, j, areaA, e, f)) { areaRej[j] = 1; continue; }
+            if (c.vpThreads <= 1) {
+                NsAdd t(c.nsScan[0]); c.nScan[0]++;
+                if (scanBayAt(c, A, j, e, oris)) return true;
+            } else pj.push_back(j);
+        }
+        if (pj.size() == 1) {
+            // one candidate bay (the common case: the area screen usually
+            // leaves <=1) -- a 1-task region would be pure fork/join cost
             NsAdd t(c.nsScan[0]); c.nScan[0]++;
-            if (scanBayAt(c, A, j, e, oris, xs, ys)) return true;
+            if (scanBayAt(c, A, pj[0], e, oris)) return true;
+        } else for (int b0 = 0; b0 < (int)pj.size(); b0 += SPEC_MAX) {
+            int bn = std::min((int)pj.size() - b0, SPEC_MAX);
+            NsAdd t(c.nsScan[0]); c.nScan[0] += bn;
+            Fit fits[SPEC_MAX]; char got[SPEC_MAX] = {0};
+            const int* pjp = pj.data() + b0;
+            #pragma omp parallel for num_threads(c.vpThreads) schedule(dynamic, 1)
+            for (int i = 0; i < bn; i++)
+                got[i] = probeBayAt(c, A, pjp[i], e, oris, fits[i]);
+            for (int i = 0; i < bn; i++)
+                if (got[i]) {
+                    commitAt(c, A, fits[i].j, fits[i].oi, fits[i].x, fits[i].y,
+                             e, f);
+                    return true;
+                }
         }
     }
     // phase 2: resident exits open space, in time order
@@ -298,19 +315,76 @@ inline bool insertGreedy(Ctx& c, int A, int eCap = -1) {
             if (s.placed[k] && s.f[k] > eBot && s.f[k] <= eTop)
                 fev.push_back({s.f[k], k});
     std::sort(fev.begin(), fev.end());
-    for (auto& pr : fev) {
-        int e = pr.first, jt = s.bay[pr.second], f = e + pb.P[A];
-        if (areaRej[jt]) {
-            // bay skipped while area-saturated: once area fits again, restore
-            // completeness with one full scan of the bay at this event.
-            if (!areaRoom(c, jt, areaA, e, f)) continue;
-            areaRej[jt] = 0;
+    if (c.vpThreads <= 1) {
+        for (auto& pr : fev) {
+            int e = pr.first, jt = s.bay[pr.second], f = e + pb.P[A];
+            if (areaRej[jt]) {
+                // bay skipped while area-saturated: once area fits again,
+                // restore completeness with one full scan at this event.
+                if (!areaRoom(c, jt, areaA, e, f)) continue;
+                areaRej[jt] = 0;
+                NsAdd t(c.nsScan[1]); c.nScan[1]++;
+                if (scanBayAt(c, A, jt, e, oris)) return true;
+                continue;
+            }
             NsAdd t(c.nsScan[1]); c.nScan[1]++;
-            if (scanBayAt(c, A, jt, e, oris, xs, ys)) return true;
-            continue;
+            if (scanLocal(c, A, pr.second, e, areaA)) return true;
         }
-        NsAdd t(c.nsScan[1]); c.nScan[1]++;
-        if (scanLocal(c, A, pr.second, e, areaA)) return true;
+    } else {
+        // Speculative event blocks (this is where 79-91% of anneal time goes,
+        // at ~12-27us per event -- too small for a region each). Phase 2
+        // mutates nothing until commit, so each event's action (skip /
+        // restore-scan / local-scan) is decided up front with the scan-free
+        // area screen, a block of probes runs concurrently over the frozen
+        // state, and the EARLIEST feasible event commits -- identical to the
+        // serial sweep. An atomic first-success index lets threads skip tasks
+        // past a hit already found, so waste is capped at the few in-flight
+        // probes REGARDLESS of block size and K maximises barrier
+        // amortisation. (Fixed K without the atomic measured monotone worse
+        // as K grew -- events/call 14 serial -> 37 at K=64, all waste; a
+        // geometric ramp lost too: successes are not front-loaded.)
+        struct Task { int e, kind, arg; };   // kind 0: restore-scan bay=arg,
+                                             // kind 1: local-scan trig=arg
+        const int K = SPEC_MAX;
+        thread_local std::vector<Task> tasks;
+        size_t ip = 0;
+        while (ip < fev.size()) {
+            tasks.clear();
+            while (ip < fev.size() && (int)tasks.size() < K) {
+                auto& pr = fev[ip++];
+                int e = pr.first, jt = s.bay[pr.second];
+                if (areaRej[jt]) {
+                    if (!areaRoom(c, jt, areaA, e, e + pb.P[A])) continue;
+                    areaRej[jt] = 0;
+                    tasks.push_back({e, 0, jt});
+                } else tasks.push_back({e, 1, pr.second});
+            }
+            int tn = (int)tasks.size();
+            if (!tn) continue;
+            NsAdd t(c.nsScan[1]); c.nScan[1] += tn;
+            Fit fits[SPEC_MAX]; char got[SPEC_MAX] = {0};
+            const Task* tp = tasks.data();
+            std::atomic<int> hit(INT_MAX);
+            #pragma omp parallel for num_threads(c.vpThreads) schedule(dynamic, 1)
+            for (int i = 0; i < tn; i++) {
+                if (i > hit.load(std::memory_order_relaxed)) continue;
+                const Task& tk = tp[i];
+                if (tk.kind == 0
+                        ? probeBayAt(c, A, tk.arg, tk.e, oris, fits[i])
+                        : probeLocal(c, A, tk.arg, tk.e, areaA, fits[i])) {
+                    got[i] = 1;
+                    int cur = hit.load(std::memory_order_relaxed);
+                    while (i < cur &&
+                           !hit.compare_exchange_weak(cur, i)) {}
+                }
+            }
+            for (int i = 0; i < tn; i++)
+                if (got[i]) {
+                    commitAt(c, A, fits[i].j, fits[i].oi, fits[i].x, fits[i].y,
+                             tp[i].e, tp[i].e + pb.P[A]);
+                    return true;
+                }
+        }
     }
     // phase 3: sparse dense sweep -- the completeness net. Unconditional by
     // design: the area screen is a heuristic (see areaRoom) and must not gate
