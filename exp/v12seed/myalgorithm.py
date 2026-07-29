@@ -418,7 +418,11 @@ def _arm_free(p, deadline, seed=7, tl=None):
     R = [int(math.ceil(b["release_time"] - 1e-9)) for b in B]
     plan = _plan_seed(p, n, D, P, R)
     if seeds and plan is not None:
-        starts = [seeds[0], [], plan] + seeds[1:2]
+        # ONLY the fresh-construction slot is replaced -- the insertion-seed
+        # slots stay exactly as v2.1's, isolating the plan seed's effect
+        # from slot-shuffle confounds (measured: demoting 2nd/3rd moved
+        # winners as much as the plan itself).
+        starts = [seeds[0], plan] + seeds[1:3]
     else:
         starts = [seeds[0], []] + seeds[1:3] if seeds else []
     # The gate reserve scales with n: its rescue ladder is up to ~6 checker
