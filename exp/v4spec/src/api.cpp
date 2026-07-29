@@ -224,15 +224,23 @@ struct Engine {
                     for (int i = 0; i < pb.n; i++)
                         if (s2.placed[i]) oc2.stamp(pb, s2, i, true);
                 }
+                // persona: with fewer (deeper) arms, run the measured-
+                // winningest personas -- winner histogram over 160 full-40
+                // draws: tid3 52, tid1 44, tid0 40, tid2 24 -- instead of
+                // tid-arithmetic accidents (tid0 alone would be exploit-only,
+                // q x0.6, NO ejection ops). starts/seeds stay tid-indexed.
+                int pid = tid;
+                if (arms == 1) pid = 3;
+                else if (arms == 2) pid = (tid == 0) ? 3 : 1;
                 alns::RunParams rp;
-                double mult = (tid % 3 == 0 ? 0.6 : (tid % 3 == 1 ? 1.0 : 1.5));
+                double mult = (pid % 3 == 0 ? 0.6 : (pid % 3 == 1 ? 1.0 : 1.5));
                 rp.qloF = qlo * mult; rp.qhiF = qhi * mult;
-                rp.T0mul = T0mul * ((tid/3) % 3 == 0 ? 0.5 :
-                                    ((tid/3) % 3 == 1 ? 1.0 : 2.0));
+                rp.T0mul = T0mul * ((pid/3) % 3 == 0 ? 0.5 :
+                                    ((pid/3) % 3 == 1 ? 1.0 : 2.0));
                 rp.cooling = cooling;
-                rp.hcFrac  = (tid % 2 == 0) ? 1.0 : 0.75;   // half pure-SA
-                rp.bigQProb = (tid % 2 == 0) ? 0.0 : 0.06;
-                rp.opMask  = (tid % 2 == 0) ? 0x1F : 0x3FF; // exploit / explore+ejections
+                rp.hcFrac  = (pid % 2 == 0) ? 1.0 : 0.75;   // half pure-SA
+                rp.bigQProb = (pid % 2 == 0) ? 0.0 : 0.06;
+                rp.opMask  = (pid % 2 == 0) ? 0x1F : 0x3FF; // exploit / explore+ejections
                 auto st = alns::run(c2, perRound, rp,
                                     seed + 1000003ULL * (r * 64 + tid + 1));
                 {   // post-round left compaction on this thread's best.
@@ -477,4 +485,13 @@ PYBIND11_MODULE(sscore, m) {
         .def("get_solution", &Engine::getSolution)
         .def("vp_ok", &Engine::vpOK)
         .def("audit_state", &Engine::auditState);
+    // test-only: actual team size a num_threads(nt) region gets in this
+    // process, so batteries can prove the vp-parallel path really ran hot.
+    m.def("omp_probe", [](int nt) {
+        int mx = 0;
+        #pragma omp parallel num_threads(nt)
+        #pragma omp critical
+        mx = std::max(mx, omp_get_num_threads());
+        return mx;
+    });
 }

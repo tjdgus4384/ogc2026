@@ -425,6 +425,15 @@ inline RunStats run(repair::Ctx& c, double seconds, const RunParams& rp,
     }
     s = bestSol;
     st.best = best;
+    if (getenv("SMAX_DEBUG")) {
+        double run_s = now();
+        fprintf(stderr,
+            "[prof] run=%.2fs insert=%.2fs (%ld calls) scan p1=%.2fs/%ld "
+            "p2=%.2fs/%ld p3=%.2fs/%ld iters=%ld\n",
+            run_s, c.nsInsert / 1e9, c.nCall,
+            c.nsScan[0] / 1e9, c.nScan[0], c.nsScan[1] / 1e9, c.nScan[1],
+            c.nsScan[2] / 1e9, c.nScan[2], st.iters);
+    }
     return st;
 }
 

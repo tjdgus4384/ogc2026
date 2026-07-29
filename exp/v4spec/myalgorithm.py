@@ -60,6 +60,12 @@ _THR = min(4, os.cpu_count() or 1)   # the server grants 4 cores (sec 100)
 # historical value.
 _PSEED = int(os.environ.get("OGC_SEED", "7"))
 
+# depth-vs-breadth split of the 4 cores: arms anneal legs, each verifying
+# placements with threads/arms-way candidate-parallel vp (trajectory identical
+# to serial vp -- a pure speed knob, so fewer arms = deeper legs). 0 = legacy
+# threads x 1. Env-overridable for the arms judgment; default legacy.
+_ARMS = int(os.environ.get("OGC_ARMS", "0"))
+
 
 # ---------------------------------------------------------------- engine io
 def _build_engine(p):
@@ -360,7 +366,7 @@ def _arm_free(p, deadline, seed=7, tl=None):
     sec = max(2.0, deadline - time.time() - reserve)
     rounds = 1 if sec > 110 else 2
     r = eng.run_portfolio(_THR, sec, rounds, 0.05, 0.15, 0.002, 0.9995, seed,
-                          1, starts)
+                          1, starts, _ARMS)
     _diag("portfolio", winner=int(r[2]), thread_best=[round(x) for x in r[3:]])
     # The gate consumes the portfolio's candidate SET, best first. Whether a
     # layout carries a measure-zero checker artifact is an independent

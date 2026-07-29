@@ -26,6 +26,7 @@
 #include "occ.hpp"
 #include <random>
 #include <algorithm>
+#include <chrono>
 
 namespace repair {
 using core::Problem; using core::Sol;
@@ -55,6 +56,18 @@ struct Ctx {
     // live dominance gate for op 8: is the priced preference loss the dominant
     // objective term? Parameter-free (w3*z3 > w1*z1), set by the obj lambda.
     bool z3dom = false;
+    // profiling accumulators (ns; printed by alns::run under SMAX_DEBUG):
+    // where does insertion time go? Decides the parallel-grain design.
+    long long nsInsert = 0, nsScan[3] = {0, 0, 0};
+    long nCall = 0, nScan[3] = {0, 0, 0};
+};
+
+// scoped ns accumulator for the profile counters above
+struct NsAdd {
+    long long& acc; std::chrono::steady_clock::time_point t0;
+    explicit NsAdd(long long& a)
+        : acc(a), t0(std::chrono::steady_clock::now()) {}
+    ~NsAdd() { acc += (std::chrono::steady_clock::now() - t0).count(); }
 };
 
 // Area screen for bay j over [e,f) -- a SPEED HEURISTIC, never a verdict.
@@ -150,19 +163,25 @@ inline bool scanBayAt(Ctx& c, int A, int j, int e, const std::vector<int>& oris,
     int nc = (int)cands.size();
     thread_local std::vector<char> ok;
     int CH = 16 * c.vpThreads;
+    // A thread_local name inside the omp region resolves to each WORKER's own
+    // (empty) instance, not the buffer main just filled; bind plain locals so
+    // the region shares main's objects. (This crashed as an OOB write in ok.)
+    const occ::OccIndex::Snap& snR = sn;
+    const Cand* cdp = cands.data();
     for (int st_ = 0; st_ < nc; st_ += CH) {
         int en = std::min(nc, st_ + CH);
         ok.assign(en - st_, 0);
+        char* okp = ok.data();
         #pragma omp parallel for num_threads(c.vpThreads) schedule(static)
         for (int i = st_; i < en; i++) {
-            const Cand& cd = cands[i];
-            if (c.oc->hitsSnap(sn, A, cd.oi, cd.x, cd.y)) continue;
+            const Cand& cd = cdp[i];
+            if (c.oc->hitsSnap(snR, A, cd.oi, cd.x, cd.y)) continue;
             if (core::vpConservativeAt(pb, s, A, j, cd.oi, cd.x, cd.y, e, f))
-                ok[i - st_] = 1;
+                okp[i - st_] = 1;
         }
         for (int i = st_; i < en; i++)
             if (ok[i - st_]) {
-                const Cand& cd = cands[i];
+                const Cand& cd = cdp[i];
                 return commitAt(c, A, j, cd.oi, cd.x, cd.y, e, f);
             }
     }
@@ -258,6 +277,8 @@ inline bool insertGreedy(Ctx& c, int A, int eCap = -1) {
     double areaA = (g0.bb.x1 - g0.bb.x0) * (g0.bb.y1 - g0.bb.y0);
     thread_local std::vector<int> xs, ys;
 
+    NsAdd _prof(c.nsInsert); c.nCall++;
+
     // phase 1: full scan at the release day
     thread_local std::vector<char> areaRej;
     areaRej.assign(pb.m, 0);
@@ -265,6 +286,7 @@ inline bool insertGreedy(Ctx& c, int A, int eCap = -1) {
         int e = eBot, f = e + pb.P[A];
         for (int j : bays) {
             if (!areaRoom(c, j, areaA, e, f)) { areaRej[j] = 1; continue; }
+            NsAdd t(c.nsScan[0]); c.nScan[0]++;
             if (scanBayAt(c, A, j, e, oris, xs, ys)) return true;
         }
     }
@@ -283,9 +305,11 @@ inline bool insertGreedy(Ctx& c, int A, int eCap = -1) {
             // completeness with one full scan of the bay at this event.
             if (!areaRoom(c, jt, areaA, e, f)) continue;
             areaRej[jt] = 0;
+            NsAdd t(c.nsScan[1]); c.nScan[1]++;
             if (scanBayAt(c, A, jt, e, oris, xs, ys)) return true;
             continue;
         }
+        NsAdd t(c.nsScan[1]); c.nScan[1]++;
         if (scanLocal(c, A, pr.second, e, areaA)) return true;
     }
     // phase 3: sparse dense sweep -- the completeness net. Unconditional by
@@ -293,6 +317,7 @@ inline bool insertGreedy(Ctx& c, int A, int eCap = -1) {
     // the last resort. The candidate test here is the crane-aware occ::hits
     // (a placement policy: avoid sticky interlocks at crowded moments -- see
     // its comment), NOT the same-layer snapshot the fast phases use.
+    NsAdd _p3(c.nsScan[2]); c.nScan[2]++;
     int stride = (eTop - eBot <= 24) ? 1 : 6;
     for (int e = eBot; e <= eTop; e += stride) {
         int f = e + pb.P[A];

@@ -42,6 +42,9 @@ alns::run: pick destroyer (adaptive weights, habitat masks) → remove →
    commitAt/removeBlock/stamp (+bay-local best restore).
 3. vp evaluates candidates WITHOUT state mutation; any new scan must pass
    the candidate through arguments, never through s (the restOverlap bug).
+   Corollary for omp regions: a thread_local buffer filled OUTSIDE the
+   region names a different (empty) object INSIDE it on every worker —
+   bind plain local refs/pointers before the pragma (the vp4 OOB crash).
 4. The gate is the only exit for solutions (checker byte-authority); the
    only checker-free return is _trivial (feasible by construction).
 5. No stage starts work whose worst-case cost misses the deadline (server
