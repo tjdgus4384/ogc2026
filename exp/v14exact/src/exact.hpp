@@ -45,6 +45,11 @@ struct WinBnB {
     double tBest;                  // best total tardiness found (days)
     std::vector<alns::Backup> best;
     bool improved = false;
+    // per-depth scratch: dfs recurses, so thread_local scratch would be
+    // CLOBBERED by child calls mid-iteration (the invariant-3 identity trap,
+    // recursion flavour -- this segfaulted on real P4). One pool row per
+    // depth instead.
+    std::vector<std::vector<int>> evsP, xsP, ysP;
 
     static constexpr int EMAX = 5, CMAX = 3;
 
@@ -72,14 +77,15 @@ struct WinBnB {
         int i = S[k];
         // event-driven entry candidates: R_i plus exits of everything
         // currently placed in the bay (fixed blocks and S[0..k-1])
-        thread_local std::vector<int> evs;
+        std::vector<int>& evs = evsP[k];
         evs.clear();
         evs.push_back(pb.R[i]);
         for (int b : s.byBay[j])
             if (s.placed[b] && s.f[b] > pb.R[i]) evs.push_back(s.f[b]);
         std::sort(evs.begin(), evs.end());
         evs.erase(std::unique(evs.begin(), evs.end()), evs.end());
-        thread_local std::vector<int> xs, ys;
+        std::vector<int>& xs = xsP[k];
+        std::vector<int>& ys = ysP[k];
         int tried = 0;
         for (int e : evs) {
             if (tried >= EMAX) break;
@@ -122,16 +128,16 @@ struct WinBnB {
 // window exactly (sets capped at WMAX blocks, nodeBudget nodes, wall
 // seconds overall). Returns the number of windows improved.
 inline int windowExact(repair::Ctx& c, double seconds, long nodeBudget = 60000,
-                       int WMAX = 12) {
+                       int WMAX = 12, int maxWindows = 0) {
     const Problem& pb = *c.pb; Sol& s = *c.s;
     auto t0 = std::chrono::steady_clock::now();
     auto left = [&] {
         return seconds - std::chrono::duration<double>(
             std::chrono::steady_clock::now() - t0).count();
     };
-    int wins = 0;
+    int wins = 0, windows = 0;
     std::vector<uint8_t> done(pb.n, 0);      // one window per seed block
-    while (left() > 0.05) {
+    while (left() > 0.05 && (maxWindows <= 0 || windows < maxWindows)) {
         // most tardy unprocessed block
         int b = -1; double worst = 0;
         for (int i = 0; i < pb.n; i++) {
@@ -168,6 +174,15 @@ inline int windowExact(repair::Ctx& c, double seconds, long nodeBudget = 60000,
             w.lbTail[k] = w.lbTail[k + 1] +
                 std::max(0, pb.R[w.S[k]] + pb.P[w.S[k]] - pb.D[w.S[k]]);
         if (w.lbTail[0] >= t0d - 1e-9) continue;    // no room below incumbent
+        windows++;
+        w.evsP.assign(w.S.size() + 1, {});
+        w.xsP.assign(w.S.size() + 1, {});
+        w.ysP.assign(w.S.size() + 1, {});
+        // per-window wall cap: node costs are ms-scale, so the node budget
+        // alone can blow the pass budget; convert remaining wall to nodes
+        // via a measured ~0.2ms/node and take the tighter bound.
+        w.nodeBudget = std::min<long>(w.nodeBudget,
+                                      (long)(left() * 5000.0) + 100);
         for (int i : w.S) repair::removeBlock(c, i);
         w.dfs(0, 0.0, j);
         // clear any partial placements, then apply best (found or original)

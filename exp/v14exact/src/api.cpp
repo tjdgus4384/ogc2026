@@ -422,8 +422,9 @@ struct Engine {
     }
 
     int compactLeft(int maxPasses) { return alns::compactLeft(ctx, maxPasses); }
-    int windowExact(double seconds, long nodeBudget = 60000) {
-        return exact::windowExact(ctx, seconds, nodeBudget);
+    int windowExact(double seconds, long nodeBudget = 60000,
+                    int maxWindows = 0) {
+        return exact::windowExact(ctx, seconds, nodeBudget, 12, maxWindows);
     }
 
     // The portfolio's candidate SET, objective-ascending. The checker gate
@@ -485,7 +486,8 @@ PYBIND11_MODULE(sscore, m) {
         .def("set_assignment_lock", &Engine::setAssignmentLock)
         .def("compact_left", &Engine::compactLeft)
         .def("window_exact", &Engine::windowExact,
-             py::arg("seconds"), py::arg("nodeBudget") = 60000)
+             py::arg("seconds"), py::arg("nodeBudget") = 60000,
+             py::arg("maxWindows") = 0)
         .def("set_block", &Engine::setBlock)
         .def("finalize_load", &Engine::finalizeLoad)
         .def("set_solution", &Engine::setSolution)
