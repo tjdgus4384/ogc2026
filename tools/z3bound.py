@@ -25,7 +25,7 @@ def poly_area(pts):
     return abs(s) / 2
 
 
-def bound(prob, util):
+def bound(prob, util, plan_out=None):
     B, bays = prob["blocks"], prob["bays"]
     n, m = len(B), len(bays)
     R = [b["release_time"] for b in B]
@@ -63,12 +63,21 @@ def bound(prob, util):
     sv = cp_model.CpSolver()
     sv.parameters.max_time_in_seconds = 60
     st = sv.Solve(md)
-    return (sv.StatusName(st), sv.ObjectiveValue() / SC
-            if st in (cp_model.OPTIMAL, cp_model.FEASIBLE) else None)
+    ok = st in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+    if ok and plan_out:
+        asg = [next(j for j in range(m) if (i, j) in x
+                    and sv.BooleanValue(x[i, j])) for i in range(len(B))]
+        json.dump(asg, open(plan_out, "w"))
+    return (sv.StatusName(st), sv.ObjectiveValue() / SC if ok else None)
 
 
 def main():
     prob = json.load(open(sys.argv[1]))
+    if len(sys.argv) > 3:                    # util plan_out: export one plan
+        st, z3 = bound(prob, float(sys.argv[2]), sys.argv[3])
+        print(json.dumps({"util": float(sys.argv[2]), "status": st,
+                          "z3_lb": z3}))
+        return
     for u in (1.0, 0.9, 0.8, 0.7):
         st, z3 = bound(prob, u)
         print(json.dumps({"util": u, "status": st, "z3_lb": z3}))

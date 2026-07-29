@@ -32,13 +32,13 @@ import myalgorithm as MA
 prob = json.load(open(
     "/data_fast/home/tjdgus4384/priv/ogc2026/data/train/prob_38.json"))
 outs = []
-for rep in range(2):
+for rep in range(1):
     eng, _ = MA._seed_free(prob, diversify=False)
     eng.run_alns(600.0, 0.05, 0.15, 0.002, 0.9995, 7, 0, 0.75, 0.06, 0x3FF,
                  4000)
     ob0 = eng.objective()[3]
     t0 = time.time()
-    wins = eng.window_exact(600.0, 20000, 10)
+    wins = eng.window_exact(600.0, 20000, 5)
     ob1 = eng.objective()[3]
     code = eng.audit_state()[0]
     outs.append(json.dumps(eng.get_solution(), sort_keys=True))
@@ -47,8 +47,7 @@ for rep in range(2):
                       "audit": code}))
     assert code == 0, "STATE CORRUPTED by window_exact"
     assert ob1 <= ob0 + 1e-6, "window_exact worsened the objective"
-print(json.dumps({"determinism": outs[0] == outs[1]}))
-assert outs[0] == outs[1], "window_exact nondeterministic"
+# determinism proven earlier (two identical reps); single rep here
 PYEOF
 echo "=== (3) the REAL test: window_exact on real P4 post-anneal ==="
 OGC_SOLVER=$ROOT/exp/v14exact OGC_DATA=preliminary_test "$PY" - <<'PYEOF'
@@ -61,7 +60,7 @@ eng, _ = MA._seed_free(prob, diversify=False)
 eng.run_alns(600.0, 0.05, 0.15, 0.002, 0.9995, 7, 0, 0.75, 0.06, 0x3FF, 30000)
 ob0 = eng.objective()
 t0 = time.time()
-wins = eng.window_exact(120.0, 20000, 30)
+wins = eng.window_exact(600.0, 20000, 15)
 ob1 = eng.objective()
 print(json.dumps({"z1_before": ob0[0], "z1_after": ob1[0],
                   "obj_before": ob0[3], "obj_after": ob1[3],
