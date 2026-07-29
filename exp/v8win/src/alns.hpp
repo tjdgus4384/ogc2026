@@ -44,9 +44,12 @@ inline int audit(const core::Problem& pb, core::Sol& s, int* badBlock = nullptr)
 struct Destroyers {
     std::vector<double> w, score;
     std::vector<int> used;
+    std::vector<long> totUsed, totImp;   // lifetime fires / new-best hits
+                                         // (diagnostic only)
     std::mt19937* rng;
     int K;
-    explicit Destroyers(int k) : w(k,1.0), score(k,0.0), used(k,0), K(k) {}
+    explicit Destroyers(int k)
+        : w(k,1.0), score(k,0.0), used(k,0), totUsed(k,0), totImp(k,0), K(k) {}
     int pick() {
         double sm = 0; for (double v : w) sm += v;
         double r = std::uniform_real_distribution<double>(0, sm)(*rng);
@@ -55,6 +58,7 @@ struct Destroyers {
     }
     void update(double decay = 0.85) {
         for (int i = 0; i < K; i++) {
+            totUsed[i] += used[i];
             if (used[i]) w[i] = decay * w[i] + (1 - decay) * (score[i] / used[i]);
             w[i] = std::max(w[i], 0.05);
             score[i] = 0; used[i] = 0;
@@ -269,14 +273,17 @@ inline std::vector<int> pickRemoval(repair::Ctx& c, int kind, int q,
         for (int k : bestSet) out.push_back(k);
         c.tsBlk = b; c.tsBay = j; c.tsECap = es;
     } else if (kind == 10) {                          // 10: tardy-window repack
-        // Coordinated admission repair. frag_diag on the real boards: 52/53%
-        // (P4/P5) of tardy blocks' waiting days had enough free AREA -- the
-        // window is interlocked, and moving one block at a time cannot
-        // untangle it. Clear EVERYTHING in the tardy block's bay overlapping
-        // the interval it would occupy ON TIME, then let it claim that
-        // window first (op8-style handoff, bay free) and repack the rest.
-        // op9 is the scalpel (cheapest conflict set for one hole); this is
-        // the bulldozer.
+        // Coordinated admission repair, AREA-CERTIFIED. frag_diag on the
+        // real boards: 52/53% (P4/P5) of tardy blocks' waiting days had
+        // enough free AREA in some bay -- the window is geometrically
+        // interlocked, and moving one block at a time cannot untangle it.
+        // Pick a tardy block whose ON-TIME interval has area room in some
+        // bay RIGHT NOW (the frag certificate; without it the board is
+        // capacity-bound there and a bulldoze only reshuffles lateness --
+        // measured on P6: uncertified op10 was +1.8~4.4%), clear that bay's
+        // residents overlapping the interval, and let the block claim it
+        // first (op8-style handoff, bay forced). op9 is the scalpel
+        // (cheapest conflict set for one hole); this is the bulldozer.
         std::vector<std::pair<double,int>> t;
         for (int i : placedIds) {
             int es = std::max(pb.R[i], pb.D[i] - pb.P[i]);
@@ -285,18 +292,33 @@ inline std::vector<int> pickRemoval(repair::Ctx& c, int kind, int q,
         }
         if (t.empty()) return {};
         std::sort(t.begin(), t.end());
-        int b = t[c.rng() % std::min<size_t>(4, t.size())].second;
-        int es = std::max(pb.R[b], pb.D[b] - pb.P[b]);
-        int fs = es + pb.P[b];
-        int j = s.bay[b];
+        int b = -1, jT = -1, es = 0, fs = 0;
+        for (size_t ti = 0; ti < t.size() && ti < 8 && b < 0; ti++) {
+            int i = t[ti].second;
+            int es2 = std::max(pb.R[i], pb.D[i] - pb.P[i]);
+            int fs2 = es2 + pb.P[i];
+            const auto& g0 = pb.geo[i].orients[0];
+            double areaI = (g0.bb.x1 - g0.bb.x0) * (g0.bb.y1 - g0.bb.y0);
+            for (int j = 0; j < pb.m; j++) {
+                bool fits = false;
+                for (const auto& o : pb.geo[i].orients)
+                    if (o.bb.x1 - o.bb.x0 <= pb.bayW[j] &&
+                        o.bb.y1 - o.bb.y0 <= pb.bayH[j]) { fits = true; break; }
+                if (fits && repair::areaRoom(c, j, areaI, es2, fs2)) {
+                    b = i; jT = j; es = es2; fs = fs2;
+                    break;
+                }
+            }
+        }
+        if (b < 0) return {};                         // capacity-bound: no-op
         out.push_back(b);
-        for (int k : s.byBay[j]) {
+        for (int k : s.byBay[jT]) {
             if (k == b || !s.placed[k]) continue;
             if (!(s.e[k] < fs && es < s.f[k])) continue;
             out.push_back(k);
             if ((int)out.size() >= 2 * q + 2) break;  // bounded bulldozer
         }
-        c.tsBlk = b; c.tsBay = -1; c.tsECap = es;
+        c.tsBlk = b; c.tsBay = jT; c.tsECap = es;
     } else {                                          // 7: least-recently-touched
         std::vector<std::pair<double,int>> t;
         for (int i : placedIds)
@@ -313,6 +335,8 @@ struct RunParams {
     double hcFrac = 0.75;        // fraction of budget after which hill-climb
     double bigQProb = 0.04;      // probability of a large removal
     uint32_t opMask = 0x7FF;     // destroyer enable bits (11 ops)
+    long maxIters = 0;           // 0 = wall-clock only; >0 makes runs exactly
+                                 // reproducible (determinism tests, A/B)
 };
 
 inline RunStats run(repair::Ctx& c, double seconds, const RunParams& rp,
@@ -345,7 +369,8 @@ inline RunStats run(repair::Ctx& c, double seconds, const RunParams& rp,
     long sinceBest = 0;
     std::vector<long> lastTouch(pb.n, 0);
 
-    while (now() < seconds) {
+    while (now() < seconds &&
+           (rp.maxIters <= 0 || st.iters < rp.maxIters)) {
         st.iters++;
         bool hc = now() > rp.hcFrac * seconds;        // late phase: hill climbing
         // Mask-level habitat gate for op 8: when the preference term is not
@@ -432,7 +457,7 @@ inline RunStats run(repair::Ctx& c, double seconds, const RunParams& rp,
             for (int A : rem) lastTouch[A] = st.iters;
             if (nv < best - 1e-9) {
                 best = nv; bestSol = s; st.improved++; sinceBest = 0;
-                ds.score[kind] += 3.0;
+                ds.score[kind] += 3.0; ds.totImp[kind]++;
             } else { ds.score[kind] += (dlt < -1e-9 ? 1.0 : 0.3); sinceBest++; }
         } else {
             sinceBest++;
@@ -457,6 +482,15 @@ inline RunStats run(repair::Ctx& c, double seconds, const RunParams& rp,
     }
     s = bestSol;
     st.best = best;
+    if (getenv("SMAX_DEBUG")) {   // per-op economics: who fired, who earned
+        fprintf(stderr, "[ops]");
+        for (int i = 0; i < ds.K; i++)
+            fprintf(stderr, " %d:%ld/%ld", i,
+                    ds.totUsed[i] + ds.used[i], ds.totImp[i]);
+        fprintf(stderr, " iters=%ld acc=%.2f fail=%ld\n",
+                st.iters, st.accepted / (double)std::max(1L, st.iters),
+                st.failed);
+    }
     return st;
 }
 

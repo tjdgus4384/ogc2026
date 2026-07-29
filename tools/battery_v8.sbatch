@@ -24,7 +24,7 @@ for P in 1 2; do
 done
 echo "=== battery done ==="
 
-echo "=== (2) determinism: same seed twice (p27 reconstruct + 5s anneal) ==="
+echo "=== (2) determinism: same seed twice, FIXED 8000 iters (p27) ==="
 OGC_SOLVER=$ROOT/exp/v8win "$PY" - <<'PYEOF'
 import sys, json, os
 sys.path.insert(0, os.environ["OGC_SOLVER"])
@@ -34,11 +34,13 @@ prob = json.load(open(
 outs = []
 for rep in range(2):
     eng, _ = MA._seed_free(prob, diversify=False)
-    eng.run_alns(5.0, 0.05, 0.15, 0.002, 0.9995, 7, 0, 0.75, 0.06, 0x7FF)
+    r = eng.run_alns(600.0, 0.05, 0.15, 0.002, 0.9995, 7, 0, 0.75, 0.06,
+                     0x7FF, 8000)
+    assert int(r[0]) == 8000, f"iteration cap not hit: {int(r[0])}"
     outs.append(json.dumps(eng.get_solution(), sort_keys=True))
 same = outs[0] == outs[1]
-print(json.dumps({"determinism_same_seed": same}))
-assert same, "same-seed reruns diverged"
+print(json.dumps({"determinism_same_seed_8k_iters": same}))
+assert same, "same-seed fixed-iteration reruns diverged"
 PYEOF
 echo "=== (3) op10 exercise: p38 T60 explore persona, audit on ==="
 OGC_SOLVER=$ROOT/exp/v8win "$PY" - <<'PYEOF'

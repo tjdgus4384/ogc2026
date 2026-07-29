@@ -7,7 +7,9 @@ Any real solution satisfies this, so the CP bound is a TRUE lower bound on
 Z1 (total tardiness days). The incumbent shows what scheduling alone could
 reach if packing never binds beyond area.
 
-Usage: python z1bound.py <prob.json> [time_limit_s]
+Usage: python z1bound.py <prob.json> [time_limit_s] [plan_out.json]
+With plan_out: writes the incumbent's per-block {bay, entry} plan -- the
+area-feasible schedule a geometric packer can then try to realise.
 """
 import json
 import math
@@ -77,14 +79,24 @@ def main():
     sv.parameters.max_time_in_seconds = tl
     sv.parameters.num_search_workers = 4
     st = sv.Solve(md)
+    ok = st in (cp_model.OPTIMAL, cp_model.FEASIBLE)
     print(json.dumps({
         "inst": prob.get("name"),
         "status": sv.StatusName(st),
         "z1_lower_bound": sv.BestObjectiveBound(),
-        "z1_incumbent": sv.ObjectiveValue()
-        if st in (cp_model.OPTIMAL, cp_model.FEASIBLE) else None,
+        "z1_incumbent": sv.ObjectiveValue() if ok else None,
         "wall": round(sv.WallTime(), 1),
     }))
+    if ok and len(sys.argv) > 3:
+        plan = []
+        for i in range(n):
+            jsel = next(j for (j, y, iv) in B[i]["_iv"]
+                        if sv.BooleanValue(y))
+            e = next(sv.Value(iv.StartExpr()) for (j, y, iv) in B[i]["_iv"]
+                     if sv.BooleanValue(y))
+            plan.append({"bay": jsel, "entry": e})
+        with open(sys.argv[3], "w") as f:
+            json.dump(plan, f)
 
 
 if __name__ == "__main__":
