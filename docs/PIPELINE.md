@@ -85,6 +85,10 @@ first candidates for principled replacement.
 | construct noise | σ=3.0 | constructInitial | [자의] |
 | starts map | best/construct/2nd/3rd | _arm_free | [측정: 품질 중립 + 시드×페르소나 교호 강함 (v12: exploit 밑 10.66M vs explore 밑 12.52M)] |
 | horizon | (maxD+maxP+40)·hmul | _fresh | [유산] |
+| spec rule | m≤3 ∧ sat<1.0 → r2+pp0.85 | _spec_rule | [측정: 5시드 P3 −2.1/P4 −8.2, P5/P6 제외로 중립] |
+| gov rate table | (m,n)-실측 iters/s | _rate | [측정] (본선 새 인스턴스에서 재교정 대상) |
+| gov coefficient | 0.9·명목시간 | _arm_free | [측정-보정: 0.6→0.85→0.9 수렴] |
+| gov ext/margin | core/3, 1.15, rounds≤16 | runPortfolio | [자의] (확장은 거의 무득점 — 안전 여유) |
 
 ## The finals front (2026-07-29/30, real P1-P6 in data/preliminary_test)
 
