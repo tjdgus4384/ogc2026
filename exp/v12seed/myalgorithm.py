@@ -418,11 +418,12 @@ def _arm_free(p, deadline, seed=7, tl=None):
     R = [int(math.ceil(b["release_time"] - 1e-9)) for b in B]
     plan = _plan_seed(p, n, D, P, R)
     if seeds and plan is not None:
-        # ONLY the fresh-construction slot is replaced -- the insertion-seed
-        # slots stay exactly as v2.1's, isolating the plan seed's effect
-        # from slot-shuffle confounds (measured: demoting 2nd/3rd moved
-        # winners as much as the plan itself).
-        starts = [seeds[0], plan] + seeds[1:3]
+        # plan sits on tid2 -- the pure-exploit persona (q x1.5, no big
+        # jolts, ops 0-4). Measured interaction: as an explore thread's
+        # start the same plan collapses (P5-s7 10.66M at tid2-exploit vs
+        # 12.52M at tid1-explore) -- big jolts destroy the plan's structure,
+        # exploit polishes it.
+        starts = [seeds[0], [], plan] + seeds[1:2]
     else:
         starts = [seeds[0], []] + seeds[1:3] if seeds else []
     # The gate reserve scales with n: its rescue ladder is up to ~6 checker
