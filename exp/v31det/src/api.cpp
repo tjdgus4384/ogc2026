@@ -198,7 +198,7 @@ struct Engine {
         int chunks = 0;
         for (int r = 0; r < rounds; r++) {
             if (coreIters > 0 && r > 0 &&
-                elapsed() + 1.3 * lastRound > seconds)
+                elapsed() + 1.15 * lastRound > seconds)
                 break;                            // next round would not fit
             double roundT0 = elapsed();
             core::Sol roundStart = globalBest;
@@ -261,7 +261,12 @@ struct Engine {
                 rp.bigQProb = (tid % 2 == 0) ? 0.0
                               : (BQ >= 0 ? BQ : 0.06);
                 rp.opMask  = (tid % 2 == 0) ? 0x1F : 0x3FF; // exploit / explore+ejections
-                if (coreIters > 0) rp.maxIters = coreIters;
+                // round 0 = the full core; extensions run core/3 so the
+                // fit-check's waste is bounded by a THIRD of a round, not a
+                // whole one (measured: P4 threw away >50% of wall at 1x).
+                if (coreIters > 0)
+                    rp.maxIters = r == 0 ? coreIters
+                                         : std::max<long>(1, coreIters / 3);
                 auto st = alns::run(c2,
                     coreIters > 0 ? seconds - roundT0 : perRound, rp,
                                     seed + 1000003ULL * (r * 64 + tid + 1));
