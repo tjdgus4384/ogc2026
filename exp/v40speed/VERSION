@@ -1,0 +1,1 @@
+v40speed: kernel speed program. Contract: fixed-iteration trajectories BYTE-IDENTICAL to solver v3.0. Round 1 (snap-bypass in scanLocal) REFUTED by measurement: neutral-to-minus-10% -- no-hit candidates pay the full day-loop, and the dominant cost is vp's exact polygon tests, not the snap union. Round 2: rule-level vp instrumentation first, then optimize the measured top.
