@@ -105,6 +105,17 @@ area relaxation proves Z1=0 possible on ALL boards (tools/z1bound.py) — the
 binding constraint is GEOMETRY. frag_diag.py: 51.5%/53%/18.3% of tardy
 blocks' waiting days (P4/P5/P6) had enough free area somewhere.
 
+Speed program (07-30, byte-identity contract: fixed-iteration trajectories
+must equal the reference -- 6/6 batteries held): ADOPTED rb-cache + AVX2/LTO
+= x1.12-1.20 -> governance rates x1.15 -> real boards improve on both seeds
+(P4 -2.5%, P5 -2.3%, P6 -1%; cumulative P4-s7 -13.8% vs v2.1) = v3.1.
+REFUTED: snap-bypass (no-hit candidates pay full day loops, 0~-10%);
+flags-alone (+1-6%, memory-bound); two-sided pair-mask rule screens
+(sound + byte-identical but +0-1%: dense packings land in the exact-test
+gap). Cost map (measured): scan machinery ~55% (gen was ori-repeated
+resident scans -- fixed), vp 24-30% (r45 > r1 > r2 > r3), snap ~2%.
+NEXT: spatial/temporal indexing of resident loops (structural, ~x1.5-2?).
+
 Closed fronts (each refuted by controlled measurement, 07-29/30):
 - candidate-grain vp parallelism 0.69-0.76x; (bay,event)-grain reached
   1.38-2.0x but arms<4 lost the breadth (P4 +60%) — depth bet CLOSED.
