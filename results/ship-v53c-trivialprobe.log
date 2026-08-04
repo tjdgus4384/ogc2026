@@ -1,0 +1,4 @@
+train prob_11 feasible: True obj: 3270409054.0
+train_final prob_35 feasible: True obj: 138555017.0
+prelim prob_6 feasible: True obj: 4202392064.0
+TRIVIAL-PROBE PASS

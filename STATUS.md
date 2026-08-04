@@ -95,17 +95,17 @@ v40 합 77,801,408 → **v5.1 합 77,045,926 (−0.97%, 5W/3L)**, 둘 다 8/8 FE
 ## 캠페인 2 최종 상태 (08-04 심야)
 
 **목표(예선 P3-P6 모든-팀 최솟값) 미달.** 출하본은 v5.3 의미론 + 사망코드 제거이며
-shipcheck 전항목 통과. 제출 zip = `submissions/2026-08-04_v53-finals.zip`(404.8KB,
+shipcheck 전항목 통과. 제출 zip = `submissions/2026-08-04_v53-finals.zip`(414,709B,
 = `[OGC2026_AlgorithmCode]_MSGA.zip`, zip==repo 검증).
 
-| 판정 | 값 (출하 빌드 2f3358d 실측) |
-|---|---|
-| p36-from-zip (s7) | P3 83,640 / P4 3,026,444 / P5 10,547,647 / P6 29,516,938 — 4/4 feasible, 오버런 0 |
-| train_final 40-쌍 (v53 vs v51) | 20W/18L, 중앙 0.00%, p=0.87, 40/40 feasible |
-| shipcheck 하드샘플 10 | 10/10 feasible, 오버런 0, max wall 591.7/600s, rss 508.4MB |
-| no-ortools 폴백 / trivial 프로브 | 3/3 feasible / 3/3 PASS |
-| 카나리아(zip 추출본) | p1 1499 / p2 3690 정확 |
-| 서버 실측(v5.1) | 8/8 feasible, v40 대비 5W/3L, 합 −0.97% |
+| 판정 | 값 | 산출 빌드 |
+|---|---|---|
+| p36-from-zip (s7) | P3 83,640 / P4 3,026,444 / P5 10,547,647 / P6 29,516,938 — 4/4 feasible, 오버런 0 | **2f3358d** (results/ship-v53c-p36.json) |
+| train_final 40-쌍 (v53 vs v51) | 20W/18L, 중앙 0.00%, p=0.87, 40/40 feasible | 15e5a6a (results/tf-v53-t600.json) — 이후 차이는 사망코드 삭제+주석뿐 |
+| shipcheck 하드샘플 10 | 10/10 feasible, 오버런 0, max wall 591.7/600s, rss 508.4MB | **2f3358d** (results/ship-v53c-tf.json) |
+| no-ortools 폴백 / trivial 프로브 | 3/3 feasible / 3/3 PASS | **2f3358d** (results/ship-v53c-{noortools,trivialprobe}.log) |
+| 카나리아(zip 추출본) | p1 1499 / p2 3690 정확 | **2f3358d** (results/ship-v53c-canary.log) |
+| 서버 실측(v5.1) | 8/8 feasible, v40 대비 5W/3L, 합 −0.97% | v5.1 번들 (data/finals_server.json) |
 
 **다음 방향**: P3의 전역-MIP 값 71,420 > 목표 64,695 → 수확 어휘 안에서 (양방향 진입 여유를
 만족하는 보드 중에는) 목표 해가 없다. 어휘 생성이 필요조건이지만, 후보-쌍 절단은 격자
