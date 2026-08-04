@@ -1,0 +1,82 @@
+{
+ "meta": {
+  "data": "preliminary_test",
+  "pseed": 7,
+  "solver_commit": "4ce72ee",
+  "solver_dir": "solver",
+  "solver_dirty": true,
+  "tag": "p36-v58-s7",
+  "tls": [
+   240,
+   480,
+   600,
+   900
+  ]
+ },
+ "runs": {
+  "prob_3": {
+   "error": null,
+   "feasible": true,
+   "inst": "prob_3",
+   "m": 3,
+   "maxrss_mb": 305.3,
+   "n": 200,
+   "obj1": 0.0,
+   "obj2": 3279,
+   "obj3": 454.0,
+   "objective": 84495.0,
+   "overrun": false,
+   "solver": "solver",
+   "tl": 240.0,
+   "wall": 233.18
+  },
+  "prob_4": {
+   "error": null,
+   "feasible": true,
+   "inst": "prob_4",
+   "m": 3,
+   "maxrss_mb": 393.7,
+   "n": 150,
+   "obj1": 184.0,
+   "obj2": 2422,
+   "obj3": 4344.0,
+   "objective": 3121826.0,
+   "overrun": false,
+   "solver": "solver",
+   "tl": 480.0,
+   "wall": 470.18
+  },
+  "prob_5": {
+   "error": null,
+   "feasible": true,
+   "inst": "prob_5",
+   "m": 4,
+   "maxrss_mb": 427.1,
+   "n": 200,
+   "obj1": 739.0,
+   "obj2": 2542,
+   "obj3": 4400.0,
+   "objective": 10456081.0,
+   "overrun": false,
+   "solver": "solver",
+   "tl": 600.0,
+   "wall": 587.2
+  },
+  "prob_6": {
+   "error": null,
+   "feasible": true,
+   "inst": "prob_6",
+   "m": 3,
+   "maxrss_mb": 434.8,
+   "n": 250,
+   "obj1": 4217.0,
+   "obj2": 3243,
+   "obj3": 7305.0,
+   "objective": 29236433.0,
+   "overrun": false,
+   "solver": "solver",
+   "tl": 900.0,
+   "wall": 886.39
+  }
+ }
+}
