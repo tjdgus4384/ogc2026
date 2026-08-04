@@ -61,6 +61,7 @@ mkdir -p "$ROOT/runs/$TAG"
 
 cat > "$ROOT/runs/$TAG/META.json" <<EOF
 {"tag": "$TAG", "timelimit": $TL, "partition": "$PART", "instances": "$INSTSPEC",
+ "data": "${OGC_DATA:-train}",
  "solver_dir": "$(basename "$SOLVER")", "pseed": $PSEED,
  "solver_commit": "$(cd "$ROOT" && git rev-parse --short HEAD)",
  "solver_dirty": $(cd "$ROOT" && git diff --quiet HEAD -- solver && echo false || echo true),
