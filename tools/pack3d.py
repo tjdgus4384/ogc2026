@@ -70,7 +70,7 @@ WORKERS = int(sys.argv[4]) if len(sys.argv) > 4 else 8
 # FREE COORDINATES rather than over a harvested candidate vocabulary
 # (which is what every refuted CP re-placement arm did).
 BOARD = sys.argv[5] if len(sys.argv) > 5 else None
-BAYID = int(sys.argv[6]) if len(sys.argv) > 6 else -1
+BAYID = int(os.environ.get("P3D_BAY", sys.argv[6] if len(sys.argv) > 6 else -1))
 # ASSIGNMENT-FEASIBILITY MODE (P3D_ASGFILE): is a proposed assignment
 # actually realisable? A greedy constructor failing to honour it proves
 # nothing -- reconstruct_ordered is first-fit, so its failure measures
@@ -263,12 +263,12 @@ res = {"board": os.path.basename(prob_path), "n": n, "m": m,
 if ASGFILE:
     res.update({"mode": "assignment-feasibility", "bay": BAYID,
                 "punctual_hard": PUNCTUAL, "asg": os.path.basename(ASGFILE)})
-if BOARD:
+if BOARD and not ASGFILE:
     res.update({"mode": "bay-local", "bay": BAYID, "incumbent_tardiness": base_tard})
 if st in (cp.OPTIMAL, cp.FEASIBLE):
     res["model_obj"] = round(sv.ObjectiveValue() / SC)   # unscale
     res["bound"] = round(sv.BestObjectiveBound() / SC)
-    if BOARD:
+    if BOARD and not ASGFILE:
         res["packed_tardiness"] = sum(sv.Value(tard[i]) for i in range(n))
         if base_tard:
             res["tardiness_delta_pct"] = round(
