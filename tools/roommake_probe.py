@@ -164,11 +164,23 @@ for d, i, b in cands[:TOP]:
                                       c[4] + P[q], 1]
                     break
         eng.set_solution(new); eng.build_occ(hor)
-        bad = any(new[q*7+6] and not eng.vp_ok(q) for q in range(n))
+        badv = [q for q in range(n) if new[q*7+6] and not eng.vp_ok(q)]
         v = eng.objective()[3]
-        rows.append({**ok_row, "cp": sv.StatusName(st), "vp_bad": bad,
+        why = None
+        if badv:
+            # which rule does the CP model miss? ask the OFFICIAL checker
+            res = M._check(p, M._recs_to_sol(M._extract(eng, n)))
+            if res is not None and not res.get("feasible"):
+                why = str(res.get("violations", ["?"])[0])[:200]
+            freed_set = set(free)
+            why = {"n_bad": len(badv), "bad_in_freed":
+                   sum(1 for q in badv if q in freed_set),
+                   "bad_frozen": sum(1 for q in badv if q not in freed_set),
+                   "checker": why}
+        rows.append({**ok_row, "cp": sv.StatusName(st),
+                     "vp_bad": bool(badv), "why": why,
                      "dobj": round(v - best)})
-        if not bad and v < best - 1e-9:
+        if not badv and v < best - 1e-9:
             best = v; cur = new
         else:
             eng.set_solution(cur); eng.build_occ(hor)

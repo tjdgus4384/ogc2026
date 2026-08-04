@@ -292,6 +292,10 @@ struct Engine {
                 if (!bad) {
                     // vertical descent: the later entrant's layer k has
                     // to clear the resident's layers j >= k
+                    // equal entries: the day's ENTRY order is ours to
+                    // choose, so neither direction may be assumed -- the
+                    // pair conflicts if EITHER descent is blocked.
+                    const bool tie = (A[5] == B[5]);
                     const bool aLate = A[5] >= B[5];
                     const auto& gl = aLate ? ga : gb;
                     const auto& ge = aLate ? gb : ga;
@@ -303,6 +307,35 @@ struct Engine {
                         for (int j = k; j < ne && !bad; j++)
                             bad = crane::overlapsLay(gl, k, L[3], L[4],
                                                      ge, j, E[3], E[4]);
+                    if (!bad && tie)
+                        for (int k = 0; k < ne && !bad; k++)
+                            for (int j = k; j < nl && !bad; j++)
+                                bad = crane::overlapsLay(ge, k, E[3], E[4],
+                                                         gl, j, L[3], L[4]);
+                }
+                if (!bad) {
+                    // vertical ASCENT -- the half this model was missing.
+                    // Whichever block leaves FIRST sweeps up through the
+                    // other, which is still resident, so its layer k must
+                    // clear the stayer's layers j >= k. Simultaneous exits
+                    // resolve by LOCKSTEP (later entry leaves first,
+                    // invariant 7). Without it the CP arm proposed dense
+                    // rearrangements the checker then rejected -- measured
+                    // 08-04: every forced room-making solve came back
+                    // vp-infeasible, always on an exit sweep between two
+                    // FREED blocks (e.g. "block 56 exit obstructed by
+                    // block 88, kind=sweep"), never on a frozen one.
+                    const bool aFirst = (fa < fb) || (fa == fb && A[5] > B[5]);
+                    const auto& gx = aFirst ? ga : gb;      // exiter
+                    const auto& gs = aFirst ? gb : ga;      // stayer
+                    const int* X = aFirst ? A : B;
+                    const int* Y = aFirst ? B : A;
+                    const int nx = (int)gx.layers.size();
+                    const int ns = (int)gs.layers.size();
+                    for (int k = 0; k < nx && !bad; k++)
+                        for (int j = k; j < ns && !bad; j++)
+                            bad = crane::overlapsLay(gx, k, X[3], X[4],
+                                                     gs, j, Y[3], Y[4]);
                 }
                 if (bad) { out.push_back(a); out.push_back(b); }
             }
