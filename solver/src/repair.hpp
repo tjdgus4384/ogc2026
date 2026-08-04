@@ -317,7 +317,9 @@ inline bool insertGreedy(Ctx& c, int A, int eCap = -1) {
     // areaRoom.
     // orient-0 area, deliberately NOT the admissible min over
     // orientations. Making it admissible was tried 08-04 and REFUTED
-    // (p36 3 seeds: P4 +4.7%, all-board mean +1.4%): the screen is a
+    // (p36 3 seeds: P4 +4.7%, all-board mean +1.4% -- measured together
+    // with the per-arm prefP change, so the isolated cost of this one
+    // was never separated): the screen is a
     // SPEED device -- its false rejections are the pruning, and they
     // are what keeps the insertion from scanning every bay (the
     // comment on areaRoom measured 65% of P4's iteration budget lost
