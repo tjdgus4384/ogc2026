@@ -4,7 +4,7 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=16G
-#SBATCH --time=00:08:00
+#SBATCH --time=00:20:00
 # One probe, one board, one node -- kept under 5 minutes of solve so the
 # exploration loop stays fast. Args: <tool.py> <prob.json> <out> [tool args...]
 #
