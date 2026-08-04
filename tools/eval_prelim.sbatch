@@ -24,7 +24,7 @@ export OGC_SOLVER="$SOLVER"
 export OGC_DATA=preliminary_test
 export OMP_NUM_THREADS=4
 export OGC_DIAG=1
-export OGC_SEED=$PSEED
+if [ "$PSEED" != "auto" ]; then export OGC_SEED=$PSEED; fi
 export OGC_ARMS=$ARMS
 export OGC_QMUL=$QMUL
 export OGC_ROUNDS=$ROUNDS
@@ -32,6 +32,10 @@ export OGC_ROUNDS=$ROUNDS
 [ -n "${OGC_HCFRAC:-}" ] && export OGC_HCFRAC
 [ -n "${OGC_BIGQ:-}" ] && export OGC_BIGQ
 [ -n "${OGC_PREFP:-}" ] && export OGC_PREFP
+[ -n "${OGC_POP:-}" ] && export OGC_POP
+[ -n "${OGC_MARM:-}" ] && export OGC_MARM
+[ -n "${OGC_REFINE:-}" ] && export OGC_REFINE
+[ -n "${OGC_2PHASE:-}" ] && export OGC_2PHASE
 [ -n "${OGC_AREASLK:-}" ] && export OGC_AREASLK
 [ -n "${OGC_STRIDE:-}" ] && export OGC_STRIDE
 [ -n "${OGC_CNOISE:-}" ] && export OGC_CNOISE

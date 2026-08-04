@@ -20,6 +20,7 @@ OUT=$ROOT/runs/$TAG
 mkdir -p "$OUT"
 
 export OGC_SOLVER="$SOLVER"
+export OGC_DATA="${OGC_DATA:-train}"
 export OMP_NUM_THREADS=4
 export OGC_DIAG=1
 export OGC_SEED=$PSEED
