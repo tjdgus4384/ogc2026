@@ -1,0 +1,22 @@
+# P3 ASSIGNMENT FRONTIER PRICED UNDER A SOUND LOCK (2026-08-05)
+# probe build=builds/lockprobe (diff results/campaign3/lockprobe.patch), OGC_LOCKFRAC=1, 240s, 4 threads
+# jobs=63419-63422 nodes=alan,hamming,isaac,john repo_head=652f2eb
+# lock_viol_post=0 on every arm and realised Z2/Z3 equal the master targets exactly,
+# so for the first time these numbers price the ASSIGNMENT and not a drifting search.
+#
+# arm | changed | Z1  | Z2   | Z3  | real objective | master predicted (assumed Z1=0)
+# inc |    0    |   0 | 3308 | 424 |         80,140 |  80,140
+# r2  |    2    |  16 | 3712 | 316 |        350,408 |  65,960
+# r8  |    8    | 115 | 5307 | 104 |      2,086,605 |  42,135
+# opt |   13    | 210 | 6402 |  50 |      3,772,890 |  39,510
+#
+# VERDICT: the 39,510 assignment IS geometrically realisable -- every arm is official-checker
+# feasible -- but it cannot be scheduled punctually. The restricted master forced Z1=0 through
+# per-block release+duration<=due plus per-layer area cumulative rows, and that test is far too
+# weak: the real engine pays 210 tardiness units for it. w1 is ~17,800 per unit here, so even the
+# 2-block move pays 284k of Z1 to buy 14k of Z2+Z3.
+# The P3 assignment axis is therefore CLOSED by measurement, not by an inconclusive bbox UNSAT.
+{"board": "prob_3.json", "kind": "incumbent", "n": 200, "m": 3, "lock_viol_post": 0, "pre": {"constructed_obj": 1111264.0, "z1": 58.0, "z2": 3308.0, "z3": 424.0, "lock_viol": 0}, "hard_lock": true, "wall": 240.8, "objective": 80140.0, "z1": 0.0, "z2": 3308.0, "z3": 424.0, "placed": 200, "checker_feasible": true, "checker_obj": 80140.0}
+{"board": "prob_3.json", "kind": "file:/data_fast/home/tjdgus4384/priv/ogc2026/runs/asgopt/p3_r2.json", "n": 200, "m": 3, "lock_viol_post": 0, "pre": {"constructed_obj": 2217098.0, "z1": 121.0, "z2": 3712.0, "z3": 316.0, "lock_viol": 0}, "hard_lock": true, "wall": 240.9, "objective": 350408.0, "z1": 16.0, "z2": 3712.0, "z3": 316.0, "placed": 200, "checker_feasible": true, "checker_obj": 350408.0}
+{"board": "prob_3.json", "kind": "file:/data_fast/home/tjdgus4384/priv/ogc2026/runs/asgopt/p3_r8.json", "n": 200, "m": 3, "lock_viol_post": 0, "pre": {"constructed_obj": 5926653.0, "z1": 331.0, "z2": 5307.0, "z3": 104.0, "lock_viol": 0}, "hard_lock": true, "wall": 240.9, "objective": 2086605.0, "z1": 115.0, "z2": 5307.0, "z3": 104.0, "placed": 200, "checker_feasible": true, "checker_obj": 2086605.0}
+{"board": "prob_3.json", "kind": "file:/data_fast/home/tjdgus4384/priv/ogc2026/results/campaign3/asgopt_p3_v3_assignment.json", "n": 200, "m": 3, "lock_viol_post": 0, "pre": {"constructed_obj": 10635198.0, "z1": 596.0, "z2": 6402.0, "z3": 50.0, "lock_viol": 0}, "hard_lock": true, "wall": 240.8, "objective": 3772890.0, "z1": 210.0, "z2": 6402.0, "z3": 50.0, "placed": 200, "checker_feasible": true, "checker_obj": 3772890.0}

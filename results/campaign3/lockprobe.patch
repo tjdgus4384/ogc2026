@@ -1,5 +1,5 @@
 --- solver/src/alns.hpp	2026-08-04 17:51:47.706008211 +0900
-+++ builds/lockprobe/src/alns.hpp	2026-08-05 02:02:43.339050595 +0900
++++ builds/lockprobe/src/alns.hpp	2026-08-05 02:20:48.498958639 +0900
 @@ -416,10 +416,20 @@
      while (now() < seconds &&
             (rp.maxIters <= 0 || st.iters < rp.maxIters)) {
@@ -44,7 +44,7 @@
                      int aB=s.bay[A], aX=s.x[A], aY=s.y[A], aE=s.e[A];
                      int bB=s.bay[B], bX=s.x[B], bY=s.y[B], bE=s.e[B];
                      c.oc->stamp(pb, s, A, false);
-@@ -623,8 +644,14 @@
+@@ -623,9 +644,19 @@
          if ((kind == 8 || kind == 9) && c.tsBlk >= 0) {
              // the upgrader claims the freed space first: forced into its
              // preferred bay at an on-time entry, then the evicted go free.
@@ -55,11 +55,17 @@
 +            // override is additive.
              thread_local std::vector<int> fbv;
 -            fbv.assign(pb.n, -1);
+-            fbv[c.tsBlk] = c.tsBay;
 +            if (c.forcedBay) fbv.assign(c.forcedBay, c.forcedBay + pb.n);
 +            else fbv.assign(pb.n, -1);
-             fbv[c.tsBlk] = c.tsBay;
++            // ops 8/9 force tsBlk into tsBay, which is itself a violation
++            // when that block is locked to another bay. Honour the lock.
++            fbv[c.tsBlk] = (c.forcedBay && c.forcedBay[c.tsBlk] >= 0)
++                               ? c.forcedBay[c.tsBlk]
++                               : c.tsBay;
              const int* save = c.forcedBay;
              c.forcedBay = fbv.data();
+             ok = repair::insertGreedy(c, c.tsBlk, c.tsECap);
 --- solver/src/api.cpp	2026-08-04 17:51:47.710008162 +0900
 +++ builds/lockprobe/src/api.cpp	2026-08-05 01:52:51.833803415 +0900
 @@ -196,7 +196,11 @@

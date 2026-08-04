@@ -106,15 +106,22 @@ if eng is None:
     print(json.dumps(res)); raise SystemExit
 hor = max(int(round(b["due_date"])) for b in B) \
     + max(int(math.ceil(b["processing_time"] - 1e-9)) for b in B) + 40
-# _seed_free only locks the assignment during CONSTRUCTION; the anneal
-# then runs free and drifts off it. Measuring the construction point
-# separately is the only way to tell "geometry rejected this assignment"
-# apart from "the search walked away from it".
+# LOCK VIOLATION COUNTERS. Z3 is a pure function of the assignment, so a
+# realised Z3 that differs from the locked one proves the lock leaked.
+# Counting violators before and after the portfolio says WHICH stage leaks.
+def _viol(engine):
+    if asg is None:
+        return None
+    flat = engine.get_solution()
+    return sum(1 for i in range(n)
+               if asg[i] >= 0 and flat[i*7+6] and flat[i*7] != asg[i])
 z0 = eng.objective()
-res_pre = {"constructed_obj": z0[3], "z1": z0[0], "z2": z0[1], "z3": z0[2]}
+res_pre = {"constructed_obj": z0[3], "z1": z0[0], "z2": z0[1], "z3": z0[2],
+           "lock_viol": _viol(eng)}
 if HARD and asg is not None:
     eng.set_assignment_lock(list(asg))      # persistent: threads inherit it
 eng.run_portfolio(4, SEC, 1, 0.05, 0.15, 0.002, 0.9995, 7, len(seeds), seeds)
+res["lock_viol_post"] = _viol(eng)
 z = eng.objective()
 res.update({"pre": res_pre, "hard_lock": HARD,
             "wall": round(time.time() - t0, 1), "objective": z[3],
