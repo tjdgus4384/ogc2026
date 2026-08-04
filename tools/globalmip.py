@@ -99,6 +99,32 @@ if EXTRA > 0:
         eng.set_solution(part); eng.build_occ(hor)
         raw = eng.feasible_positions(i, EXTRA, 0)
         CAND[i] += [tuple(raw[q:q+5]) for q in range(0, len(raw), 5)]
+GRID = int(os.environ.get("GM_GRID", "0"))
+if GRID > 0:
+    # DENSE VOCABULARY. The lazy separation means we never have to
+    # materialise the quadratic conflict set, so the vocabulary can be
+    # generated instead of harvested: for a few entry days (punctual
+    # first) and every orientation, walk a stride-GRID lattice of the
+    # bay and keep the positions that are individually containable.
+    # Pairwise legality is the model's job, not the generator's.
+    for i in range(n):
+        pun = max(int(math.ceil(B[i]["release_time"] - 1e-9)), D[i] - P[i])
+        ents = sorted({pun, max(0, pun - 1), pun + 1,
+                       int(math.ceil(B[i]["release_time"] - 1e-9))})
+        for j in range(m):
+            Wb, Hb = bays[j]["width"], bays[j]["height"]
+            for oi, sh in enumerate(B[i]["shape"]):
+                xs = [v[0] for lay in sh["layers"] for v in lay]
+                ys = [v[1] for lay in sh["layers"] for v in lay]
+                x0, x1 = min(xs), max(xs); y0, y1 = min(ys), max(ys)
+                lo_x = int(math.ceil(-x0)); hi_x = int(math.floor(Wb - x1))
+                lo_y = int(math.ceil(-y0)); hi_y = int(math.floor(Hb - y1))
+                if hi_x < lo_x or hi_y < lo_y:
+                    continue
+                for xx in range(lo_x, hi_x + 1, GRID):
+                    for yy in range(lo_y, hi_y + 1, GRID):
+                        for e in ents:
+                            CAND[i].append((j, oi, xx, yy, e))
 for i in range(n):
     CAND[i] = sorted(set(CAND[i]))
 
