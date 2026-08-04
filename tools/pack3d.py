@@ -7,13 +7,25 @@ separation never converges: 700-1,100 cuts per round and vp_bad stuck at
 whole no-overlap requirement is one disjunction per block PAIR -- ~11k
 rows at n=150 instead of hundreds of millions.
 
-    per block i:  bay j_i, orientation o_i, left edge x_i, bottom edge
-                  y_i, entry e_i;  occupancy = the 3D box
-                  (x_i, y_i, [e_i, e_i + P_i))
+    per block i:  bay j_i, orientation o_i, REFERENCE POINT X_i, Y_i
+                  (integers -- exactly what the solution format and the
+                  checker consume), entry e_i; the occupied span is
+                  [S*X_i + x0(o_i), S*X_i + x1(o_i)] in S-scaled units,
+                  where x0/x1 are the orientation's polygon extents
     per pair i<k: different bay  OR  x-separated  OR  y-separated
                   OR  time-separated
     unary:        containment  0 <= x, x + w <= W(bay)  (same for y)
                   release      e_i >= R_i
+
+The reference point, not the left edge, is the decision variable. A
+first version optimised the left edge and recovered the reference point
+by rounding at output; the checker rounds coordinates too, so that
+rounding shifted blocks by up to half a unit and broke exactly the
+separation the model had proven (measured: P1 OPTIMAL yet 46 vp
+violations). Extents are pre-scaled by S=10000 (the spec allows four
+decimal digits), with the left/bottom extent floored and the
+right/top ceiled, so every separation the solver proves is still true
+after the checker's integer rounding.
 
 Soundness (why any solution is checker-feasible by construction):
 bbox separation implies same-layer polygon separation, so rule 1 holds;
@@ -64,16 +76,17 @@ HOR = max(D) + max(P) + 40
 
 # integer bbox extents per (block, orientation): width, height, and the
 # offset from the reference point to the left/bottom edge
+S = 10000                      # spec: up to four decimal digits
 EXT = []
 for i in range(n):
     per = []
     for sh in B[i]["shape"]:
         xs = [v[0] for lay in sh["layers"] for v in lay]
         ys = [v[1] for lay in sh["layers"] for v in lay]
-        x0, x1, y0, y1 = min(xs), max(xs), min(ys), max(ys)
-        per.append({"w": int(math.ceil(x1 - x0 - 1e-9)),
-                    "h": int(math.ceil(y1 - y0 - 1e-9)),
-                    "ox": x0, "oy": y0})
+        per.append({"x0": int(math.floor(S * min(xs))),
+                    "x1": int(math.ceil(S * max(xs))),
+                    "y0": int(math.floor(S * min(ys))),
+                    "y1": int(math.ceil(S * max(ys)))})
     EXT.append(per)
 NORI = [len(e) for e in EXT]
 BW = [int(math.floor(b["width"] + 1e-9)) for b in bays]
@@ -83,26 +96,36 @@ maxW, maxH = max(BW), max(BH)
 mdl = cp.CpModel()
 bay = [mdl.NewIntVar(0, m - 1, f"bay{i}") for i in range(n)]
 ori = [mdl.NewIntVar(0, NORI[i] - 1, f"ori{i}") for i in range(n)]
-x = [mdl.NewIntVar(0, maxW, f"x{i}") for i in range(n)]
-y = [mdl.NewIntVar(0, maxH, f"y{i}") for i in range(n)]
+X = [mdl.NewIntVar(-maxW, 2 * maxW, f"X{i}") for i in range(n)]   # ref point
+Y = [mdl.NewIntVar(-maxH, 2 * maxH, f"Y{i}") for i in range(n)]
 e = [mdl.NewIntVar(R[i], HOR - P[i], f"e{i}") for i in range(n)]
-wx = [mdl.NewIntVar(1, maxW, f"wx{i}") for i in range(n)]
-hy = [mdl.NewIntVar(1, maxH, f"hy{i}") for i in range(n)]
-bw = [mdl.NewIntVar(1, maxW, f"bw{i}") for i in range(n)]
-bh = [mdl.NewIntVar(1, maxH, f"bh{i}") for i in range(n)]
 inbay = [[mdl.NewBoolVar(f"b{i}_{j}") for j in range(m)] for i in range(n)]
+# S-scaled occupied span, exact under the checker's integer coordinates
+xlo = [mdl.NewIntVar(-10**9, 10**9, f"xlo{i}") for i in range(n)]
+xhi = [mdl.NewIntVar(-10**9, 10**9, f"xhi{i}") for i in range(n)]
+ylo = [mdl.NewIntVar(-10**9, 10**9, f"ylo{i}") for i in range(n)]
+yhi = [mdl.NewIntVar(-10**9, 10**9, f"yhi{i}") for i in range(n)]
 
 for i in range(n):
     mdl.AddExactlyOne(inbay[i])
     for j in range(m):
         mdl.Add(bay[i] == j).OnlyEnforceIf(inbay[i][j])
         mdl.Add(bay[i] != j).OnlyEnforceIf(inbay[i][j].Not())
-    mdl.AddElement(ori[i], [EXT[i][o]["w"] for o in range(NORI[i])], wx[i])
-    mdl.AddElement(ori[i], [EXT[i][o]["h"] for o in range(NORI[i])], hy[i])
-    mdl.AddElement(bay[i], BW, bw[i])
-    mdl.AddElement(bay[i], BH, bh[i])
-    mdl.Add(x[i] + wx[i] <= bw[i])          # unary: bay containment
-    mdl.Add(y[i] + hy[i] <= bh[i])          # (release is the e[i] domain)
+    for tag, lo, hi, k0, k1 in (("x", xlo, xhi, "x0", "x1"),
+                                ("y", ylo, yhi, "y0", "y1")):
+        off_lo = mdl.NewIntVar(-10**9, 10**9, f"{tag}o0_{i}")
+        off_hi = mdl.NewIntVar(-10**9, 10**9, f"{tag}o1_{i}")
+        mdl.AddElement(ori[i], [EXT[i][o][k0] for o in range(NORI[i])], off_lo)
+        mdl.AddElement(ori[i], [EXT[i][o][k1] for o in range(NORI[i])], off_hi)
+        base = X[i] if tag == "x" else Y[i]
+        mdl.Add(lo[i] == S * base + off_lo)
+        mdl.Add(hi[i] == S * base + off_hi)
+    # unary: bay containment (release is already the e[i] domain)
+    for j in range(m):
+        mdl.Add(xlo[i] >= 0).OnlyEnforceIf(inbay[i][j])
+        mdl.Add(xhi[i] <= S * BW[j]).OnlyEnforceIf(inbay[i][j])
+        mdl.Add(ylo[i] >= 0).OnlyEnforceIf(inbay[i][j])
+        mdl.Add(yhi[i] <= S * BH[j]).OnlyEnforceIf(inbay[i][j])
 
 # pairwise separation: different bay OR x OR y OR time
 for i in range(n):
@@ -112,10 +135,10 @@ for i in range(n):
         mdl.Add(bay[i] != bay[k]).OnlyEnforceIf(db)
         mdl.Add(bay[i] == bay[k]).OnlyEnforceIf(db.Not())
         lits.append(db)
-        for (a, b2, va, vb, wa) in ((i, k, x, x, wx), (k, i, x, x, wx),
-                                    (i, k, y, y, hy), (k, i, y, y, hy)):
+        for (a, b2, hi, lo) in ((i, k, xhi, xlo), (k, i, xhi, xlo),
+                                (i, k, yhi, ylo), (k, i, yhi, ylo)):
             lit = mdl.NewBoolVar("")
-            mdl.Add(va[a] + wa[a] <= vb[b2]).OnlyEnforceIf(lit)
+            mdl.Add(hi[a] <= lo[b2]).OnlyEnforceIf(lit)
             lits.append(lit)
         for (a, b2) in ((i, k), (k, i)):
             lit = mdl.NewBoolVar("")
@@ -163,10 +186,7 @@ if st in (cp.OPTIMAL, cp.FEASIBLE):
     flat = [0] * (n * 7)
     for i in range(n):
         o = sv.Value(ori[i])
-        # the checker translates the RAW polygon by (x,y): recover the
-        # reference-point coordinate from the left/bottom edge
-        rx = int(round(sv.Value(x[i]) - EXT[i][o]["ox"]))
-        ry = int(round(sv.Value(y[i]) - EXT[i][o]["oy"]))
+        rx, ry = sv.Value(X[i]), sv.Value(Y[i])   # already the ref point
         ee = sv.Value(e[i])
         flat[i*7:i*7+7] = [sv.Value(bay[i]), o, rx, ry, ee, ee + P[i], 1]
     eng = M._build_engine(p)
