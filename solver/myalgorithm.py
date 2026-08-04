@@ -467,18 +467,22 @@ def _population_search(p, eng, seed, sec, starts, base_asg):
     if not pop:
         return
     pop.sort(key=lambda t: t[0])
-    # evolve: consensus-lock children replace the worst
-    while time.time() + burst <= t_end:
+    # evolve: consensus-lock children replace the worst. The FINAL burst
+    # shrinks to the remaining wall instead of being dropped (the old
+    # "remaining < burst -> stop" rule wasted up to burst-1 seconds --
+    # measured 28s of P3's 240s TL, the pop path's whole under-use).
+    while t_end - time.time() >= 8.0:
         rs += 1
+        bsec = min(burst, t_end - time.time() - 0.5)
         if len(pop) >= 2:
             pa, pb = pop[0][1], pop[1][1]
             locks = [-1] * n
             for i in range(n):
                 if pa[i * 7 + 6] and pb[i * 7 + 6]                         and pa[i * 7] == pb[i * 7]:
                     locks[i] = pa[i * 7]
-            child = anneal(pa, locks, burst, rs)
+            child = anneal(pa, locks, bsec, rs)
         else:
-            child = anneal(pop[0][1], None, burst, rs)
+            child = anneal(pop[0][1], None, bsec, rs)
         if child[0] < pop[-1][0]:
             pop[-1] = child
             pop.sort(key=lambda t: t[0])
@@ -773,26 +777,42 @@ def _arm_free(p, deadline, seed=7, tl=None):
     _pref_polish(p, eng, deadline)
     # The gate consumes the portfolio's candidate SET, best first. Whether a
     # layout carries a measure-zero checker artifact is an independent
-    # lottery per candidate, so trying the runner-ups on gate failure drops
-    # the tail multiplicatively and rescues at runner-up quality (measured:
-    # p22@T60 one draw returned a fresh-seed 1.47M while a clean 743k
-    # candidate sat discarded).
+    # lottery per candidate, so runner-ups are auditioned in two cases:
+    #  - the incumbent's gate FAILED outright (historical p22@T60: a clean
+    #    743k candidate sat discarded while a fresh-seed 1.47M shipped);
+    #  - the incumbent's gate succeeded only via an EXPENSIVE rescue
+    #    (measured 08-04, tf-v50-s7 prob_22: move-stage relocation paid
+    #    3.9x objective while three sibling candidates at ~2.8k sat
+    #    unused). Rescue cost > 2% => audition, keep the CHECKER-measured
+    #    cheapest feasible board. Deadline-guarded like every gate call.
+    pre = eng.objective()[3]
     sol, res = _gate(p, eng, n, deadline)
-    if sol is not None:
+    if sol is not None and res is None:
+        return sol, res                  # checker unusable -> trust kernel
+    best_obj = res.get("objective", float("inf")) if (sol is not None
+                                                      and res) else float("inf")
+    if sol is not None and best_obj <= pre * 1.02 + 1e-9:
         return sol, res
+    best_sol, best_res = sol, res
+    B = p["blocks"]
+    hor = (max(int(round(b["due_date"])) for b in B)
+           + max(max(1, int(math.ceil(b["processing_time"] - 1e-9)))
+                 for b in B) + 40)
     for k, flat in enumerate(eng.get_candidates()[1:4]):
         if time.time() > deadline - 1.0 - 0.01 * n:
             break
         eng.set_solution(flat)
-        B = p["blocks"]
-        eng.build_occ(max(int(round(b["due_date"])) for b in B)
-                      + max(max(1, int(math.ceil(b["processing_time"] - 1e-9)))
-                            for b in B) + 40)
+        eng.build_occ(hor)
+        if eng.objective()[3] >= best_obj:
+            continue                     # cannot beat the incumbent even ungated
         _diag("gate", stage=f"cand{k+1}")
-        sol, res = _gate(p, eng, n, deadline)
-        if sol is not None:
-            return sol, res
-    return None, res
+        s2, r2 = _gate(p, eng, n, deadline)
+        if s2 is not None and r2 is None:
+            return s2, r2
+        if s2 is not None and r2.get("objective", float("inf")) < best_obj:
+            best_sol, best_res = s2, r2
+            best_obj = r2["objective"]
+    return best_sol, best_res
 
 
 def _trivial(p):
