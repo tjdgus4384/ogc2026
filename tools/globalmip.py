@@ -85,6 +85,23 @@ def load(path):
     return flat
 
 
+def _report_gain(res, sol, best_obj, final_obj, chk, out_path):
+    """Gain and board emission share ONE gate: the official checker.
+
+    vp-clean is only a conservative mirror of the byte-authority checker, so
+    neither an advertised improvement nor a persisted board may outrun
+    check_feasibility agreeing. A None verdict (checker unusable) is treated
+    as failure, not as permission.
+    """
+    res["final_obj"] = final_obj
+    res["checker_feasible"] = None if chk is None else bool(chk.get("feasible"))
+    if res["checker_feasible"]:
+        res["gain_vs_best_input_pct"] = round(
+            100 * (best_obj - final_obj) / best_obj, 3)
+        json.dump(sol, open(out_path, "w"))
+    else:
+        res["gain_vs_best_input_pct"] = None
+
 boards = [load(s) for s in sources]
 eng = M._build_engine(p)
 hor = max(D) + max(P) + 40
@@ -251,18 +268,7 @@ if SOLVER == "cpsat":
         eng.set_solution(sol_flat); eng.build_occ(hor)
         sol = M._recs_to_sol(M._extract(eng, n))
         chk = M._check(p, sol)
-        res["final_obj"] = eng.objective()[3]
-        res["checker_feasible"] = None if chk is None else bool(chk.get("feasible"))
-        # vp-clean is only a CONSERVATIVE mirror of the byte-authority
-        # checker, so a gain must not be reported -- nor a board written --
-        # until check_feasibility itself agrees. Without this the tool could
-        # advertise an improvement on a board the grader would reject.
-        if res["checker_feasible"]:
-            res["gain_vs_best_input_pct"] = round(
-                100 * (best_obj - res["final_obj"]) / best_obj, 3)
-            json.dump(sol, open(out_path, "w"))
-        else:
-            res["gain_vs_best_input_pct"] = None
+        _report_gain(res, sol, best_obj, eng.objective()[3], chk, out_path)
     print(json.dumps(res))
     raise SystemExit
 
@@ -396,11 +402,8 @@ if CB:
         if out["vp_bad"] == 0:
             sol = M._recs_to_sol(M._extract(eng, n))
             chk = M._check(p, sol)
-            out["checker_feasible"] = None if chk is None else bool(chk.get("feasible"))
             out["checker_obj"] = None if chk is None else chk.get("objective")
-            out["gain_vs_best_input_pct"] = round(
-                100 * (best_obj - out["engine_obj"]) / best_obj, 3)
-            json.dump(sol, open(out_path, "w"))
+            _report_gain(out, sol, best_obj, out["engine_obj"], chk, out_path)
     print(json.dumps(out))
     raise SystemExit
 
@@ -454,10 +457,6 @@ if sol_flat is not None:
     eng.set_solution(sol_flat); eng.build_occ(hor)
     sol = M._recs_to_sol(M._extract(eng, n))
     chk = M._check(p, sol)
-    res["final_obj"] = eng.objective()[3]
-    res["checker_feasible"] = None if chk is None else bool(chk.get("feasible"))
     res["checker_obj"] = None if chk is None else chk.get("objective")
-    res["gain_vs_best_input_pct"] = round(
-        100 * (best_obj - res["final_obj"]) / best_obj, 3)
-    json.dump(sol, open(out_path, "w"))
+    _report_gain(res, sol, best_obj, eng.objective()[3], chk, out_path)
 print(json.dumps(res))
