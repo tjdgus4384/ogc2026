@@ -1,106 +1,33 @@
-# OGC 2026 — Grand Shipyard Puzzle
+# OGC2026 — MSGA
 
-Assign every block to a bay, place it (position + orientation), and choose its
-ENTRY/EXIT days. Minimise `w1·Z1 + w2·Z2 + w3·Z3` (tardiness / workload
-imbalance / preference regret). Full statement: `problem/problem_statement.md`.
-Rigorous restatement with the facts we rely on: `docs/MODEL.md`.
+조선소 블록 배치(공간 일정계획) 결선 저장소.
 
-## What matters about the scoring
+## 목표
+결선 히든 P3-P6에서 예선 모든-팀 최솟값급 이하. 기준선은
+`data/prelim_refs.json`의 §3 전-제출 최솟값(P3 64,695 / P4 1,908,043 /
+P5 7,718,486 / P6 25,452,695). `data/leaderboard.json`(§5 최종-제출
+순위표)은 등수 환산 전용 — 최솟값 판정에 쓰지 말 것.
 
-The leaderboard is **rank-based per instance**: a feasible solution scores
-`R − n_b` where `n_b` is how many teams beat it on *that* instance (§3.3). So
-the currency is **how many instances you beat how many teams on**, not the size
-of any single improvement. A change that gains 2% on twelve instances is worth
-far more than one that gains 30% on one. Infeasible scores nothing, so the
-never-crash / never-overrun hardening in `solver/myalgorithm.py` is load-bearing.
+## 구조
+- `solver/`        커널(C++ `src/` + `sscore*.so`) + 드라이버 `myalgorithm.py`. 유일한 솔버 트리. (v4.1)
+- `submissions/`   제출 zip. 대표본 = `2026-08-03_v41-finals.zip` (= `[OGC2026_AlgorithmCode]_MSGA.zip`),
+                   포트폴리오 변형 = `v41-{nfp2,sh45,noslice,k60}`, 이정표 = v21/v22b/v30/v31/v31d4/v40.
+- `docs/`          기술 보고서(`TECHREPORT.md` → PDF), 설계 문서(PIPELINE/UNDERSTANDING/MODEL/EXACT_DESIGN),
+                   예선 최종 보고서 PDF(권위 소스).
+- `data/`          `preliminary_test/`(6) · `train_final/`(40, 결선 판정용) · `train/`(40, 구) ·
+                   `prelim_refs.json`(목표 기준선) · `leaderboard.json`(등수 환산) · `instances.json`.
+- `tools/`         활성 하니스만: 빌드 배터리, 평가(eval_p36/eval/eval_prelim + submit_eval/collect/run_instance),
+                   하한(z1lb/z3lb), 진단(census/coalition/frag_diag), 등수 환산(rankcheck),
+                   게이트(test_driver, preflight).
+- `runs/`          실행 로그(transient, gitignore; 수시 정리). 보존 근거는 `results/`·`archive/`에.
+- `results/`       동결된 스윕 결과 JSON.
+- `archive/`       역사 전부: 판정-종료 프로브(`tools-probes/`), 실험 트리(`exp/`), 초기 문서, 근거 로그, best 보드.
+- `problem/`       문제 서술.
 
-Final placement also weighs a technical report and a presentation, and the
-committee explicitly rewards novel ideas even when they don't win benchmarks.
-
-## Grading environment (what we must match)
-
-| | |
-|---|---|
-| CPU | AMD Ryzen Threadripper PRO 9955WX, **at most 4 cores** (`cpulimit` 400%) |
-| Memory | **16 GB** |
-| OS / python | Ubuntu 24.04, python **3.12** |
-| Network | blocked (`firejail`) |
-| Time limit | per-instance, undisclosed, "a few minutes to half an hour", wall-clock |
-| Submission | zip ≤ 15 MB, `myalgorithm.py` at root, `utils.py` overwritten by the server, **12 h cooldown** |
-
-## Layout
-
-```
-solver/       THE engine. myalgorithm.py + sscore .so + src/ (C++ kernel).
-              utils.py here is the competition's own -- never edit it.
-tools/        Slurm evaluation harness (submit -> collect -> freeze).
-docs/         MODEL.md (problem truth), KERNEL_SPEC.md (196-section research
-              log from the offline campaign), KNOBS_AUDIT.md (which knobs are
-              actually live -- read before touching any parameter).
-patches/      8 measured-but-unshipped kernel patches + 4 analysis tools.
-data/train/   the 40 training instances.
-baseline/     competition-provided alg_tester + baseline + env yml.
-results/      frozen eval snapshots. NEVER overwritten.
-runs/         raw Slurm output (gitignored); collect.py promotes it to results/.
-archive/      superseded June work: the python engine, its tools, its ledger.
-```
-
-## Rules of engagement
-
-1. **Never run the solver on the gateway.** It is a shared login node. Every
-   measurement goes through Slurm: `tools/submit_eval.sh`.
-2. **At most 4 of our node-jobs at once, and no Slurm dependency queuing.**
-   This is a shared cluster: pending `(Dependency)` jobs clutter everyone's
-   queue, so `submit_eval.sh` refuses to submit while any of our jobs are
-   queued. Run evals back to back by waiting, then submitting the next.
-3. **Never overwrite a frozen `results/<tag>.json`.** Comparisons read frozen
-   files; re-running a prior version to compare it is how you end up comparing
-   noise.
-4. **Versions are git tags, not directories.** `v0` is the imported engine.
-   The previous campaign produced 37 loose `smaxNN-vNN.zip` artifacts and all
-   of them were lost; that is what this rule exists to prevent.
-5. **`utils.py` is not ours.** The server overwrites it. Any behaviour we rely
-   on must hold against the version in `solver/utils.py` verbatim.
-
-## Environment
-
-Local conda env (gitignored, rebuildable):
-
-```bash
-.miniforge/bin/conda create -y -n ogc2026 -c conda-forge \
-    python=3.12 'shapely>=2.1.0' numpy pybind11
-.miniforge/envs/ogc2026/bin/pip install ortools==9.15.6755
-```
-
-Python 3.12 is required: the shipped `sscore` extension is a cpython-312 build
-and will not import on 3.10.
-
-## Build and evaluate
-
-```bash
-solver/build.sh                              # rebuild sscore from solver/src/
-
-tools/submit_eval.sh <tag> <timelimit_sec>   # full 40, 4 cores, 1 at a time
-tools/submit_eval.sh probe 120 dept 1,2,22,28,38      # quick subset
-squeue -u $USER
-python3 tools/collect.py <tag> --vs <older_tag>
-```
-
-`dept` is 8×40 cores and `titan` 15×~48, both with `OverSubscribe=NO`, so a
-`--cpus-per-task=4` task gets four dedicated cores — the grading envelope.
-A full-40 array is 160 cores and fits on `dept` alone.
-
-## State
-
-`solver/` is **v1** (tag `v1`): the offline campaign's end point (`v0`,
-ex-"smax78-v82") rewritten for full inspectability and hardened at the
-checker gate. Distributional verdict vs a same-toolchain v0 rebuild:
-quality parity (3-seed means −0.71%), same draw variance (~10%/instance),
-and the v0 pipeline's collapse mode (prob_29 → `_trivial`, a ~4000× loss,
-2 of 5 draws) eliminated. `solver/VERSION` carries the full evidence trail;
-`docs/KERNEL_SPEC.md` the 196-section history behind v0.
-
-Baselines frozen in `results/`: `v1e-t300` (seeds 7/8/9), `v1e-t900`,
-`v0rb-*` controls. Judge engine changes distributionally (`SEED=` on
-`tools/submit_eval.sh`); single draws differ by ~10% per instance on
-unconverged boards.
+## 사용
+- 빌드+카나리아: `sbatch tools/battery.sbatch` (기대 p1 1499 / p2 3690)
+- 판단용 평가(P3–P6, 공식 TL 240/480/600/900): `sbatch tools/eval_p36.sbatch TAG SOLVERDIR SEED`
+- train_final 40 스윕: `OGC_DATA=train_final SOLVER=$PWD/solver tools/submit_eval.sh TAG 600 titan`
+- 등수 환산: `python tools/rankcheck.py P3 P4 P5 P6`
+- 규칙: 게이트웨이 계산 금지(Slurm만) · 동시 잡 ≤8, 대기열 캠핑 금지 · 시드 7 고정(다중 시드는 측정 대조 전용)
+  · 판정: train_final 40-쌍 부호검정 1차, eval_p36 갭 2차, 1%-급 변동은 노이즈.

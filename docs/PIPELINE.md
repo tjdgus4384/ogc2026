@@ -54,6 +54,101 @@ alns::run: pick destroyer (adaptive weights, habitat masks) → remove →
    kills overruns): portfolio reserve, room(), budgeted fallback.
 6. Z2/Z3 depend on assignment only (F1); ops that keep bays fixed cannot
    change them — the basis of priced-ejection gating and bay-local moves.
+   (Executable framework, both directions of a change:
+    BEFORE implementing -- `python tools/preflight.py <class>` prints
+    the law-derived prediction and required validation chain for
+    kernel-semantics / kernel-speed / driver / knob / zip changes.
+    AFTER implementing -- `python tools/test_driver.py` asserts the
+    dispatch table, spec gate, env precedence, and invariant 7's driver
+    half in seconds; tools/battery.sbatch is the kernel half: build,
+    audits, canaries 1499/3690, fixed-iteration determinism.)
+7. Simultaneous-exit LOCKSTEP: _recs_to_sol emits same-day EXITs later-
+   entry-first (myalgorithm sort key -e), and vp assumes exactly that in
+   rule 3 (f[k]==fN -> obstacle iff e[k]<eN) and rule 5 (f[k2]==t ->
+   obstacle iff e[k2]<e[k]). Change either side alone and vp diverges
+   from the checker: moves get accepted that the gate then rejects
+   (rescue churn, budget loss), or legal moves get vetoed (quality loss).
+
+## Architecture boundary decisions (declined on principle, 07-30)
+
+- C++ knobs live in src/knobs.hpp (one file, layer-grouped accessors,
+  magic-static once-per-run semantics) -- the consolidation that buys
+  at-a-glance mastery at zero hot-path cost. Going further to a plumbed
+  per-layer parameter STRUCT was declined: it would thread state through
+  RunParams/Ctx for zero behavioural gain and touch every hot signature
+  days before finals (pure L2 risk, no score).
+- Replacing _spec_rule's (m<=3, sat<1.0) gate with a direct Z3-share
+  gate was declined as CIRCULAR: Z3-share is a property of the solved
+  board; (m, sat) is the runtime-computable predictor of it, and it is
+  what the 5-seed measurements judged. The Z3-share alignment is the
+  gate's EXPLANATION, not an implementable replacement.
+- STRIDE/phase-3 stays despite being unreached at official TLs: it is
+  the reachable last-resort on short-TL/small boards (train canaries),
+  i.e. a safety net, not dead code.
+
+## Change-prediction laws (what happens if you touch X)
+
+L1 REJECT-FREE SCAN: a prefetched linear resident scan rejects at
+   ~1-2ns/entry — visit-reduction schemes (indexes, masks, memos,
+   screens) are bounded by that ~0 and were all measured/derived dead.
+   vp cost = qualifying work only: restOverlap on truly-overlapping
+   pairs, pres rebuilds, entryOK/exitOK conjunctions (r45>r1>r2>r3
+   because rules 4/5 pay a FULL pres rebuild + crane check per
+   qualifying entrant/exiter). Any future speed idea must attack
+   qualifying geometry, and memoizing it already measured cache-thrash.
+L2 (VALIDATED 07-30 on live surgery: single-decision _spec_rule
+   refactor + layer map -> canaries 1499/3690 exact, full s8 official-TL
+   run byte-matched a prior draw on all four boards)
+   SEED IS A LOTTERY, ENGINE IS THE DISTRIBUTION: any change that
+   alters RNG consumption order, byBay order, or float rounding
+   reshuffles every trajectory (draw spread ±5-8%/instance). Judgment
+   therefore needs multi-seed distributions; byte-identity at fixed
+   iters is the ONLY valid equivalence test for refactors. Corollary:
+   semantics-preserving speedups convert to quality ONLY through the
+   governance rate table (measured: x1.15 rates -> -0.4..-8.2%).
+L3 INSERTION-ORDER KNOBS TRADE Z3 vs Z1: their sign per board is
+   predicted by Z3-share of the objective (>=23% helps, <=7% hurts);
+   _spec_rule's (m<=3, sat<1.0) is that variable's proxy on these six
+   boards. STRIDE/phase-3 knobs sit on paths that never fire at
+   official TLs (str3 byte-identical) — touching them does nothing.
+L4 DESTROY-MIX KNOBS act only through the adaptive weights: masked ops
+   (persona 0x1F) still leak ~5% via rejection-loops; decay/floor
+   reshape the mix slowly (60-iter credit). Uniform or rarely-chosen
+   op changes wash (op10 five-seed 0 new-bests). P5 (the one 4-bay
+   board) is the mix-sensitive canary — check it first.
+L5 GOVERNANCE: trajectory = f(seed, chunk count); machines only choose
+   the chunk count (monotone in effective thread speed — dept=2core
+   basin 92.9k, 4core 91k, server above). More iterations via rounds
+   restart from best and never regress; extensions rarely gain (sticky
+   optima). Rate-table errors only truncate at the wall, never break
+   correctness.
+L6 GATE IS BYTE-AUTHORITY: vp is a conservative mirror, not the truth.
+   Loosening vp admits checker-rejects (rescue churn); tightening vp
+   vetoes legal moves (search loss). Either way the OBJECTIVE moves,
+   feasibility never breaks (invariant 4). The rescue ladder ordering
+   (nudge -> retime -> move) is least-destructive-first on purpose:
+   retime +1 day is free geometrically, relocation pays Z1/Z3.
+
+## Knob causal graph (mechanism layers; census rows map here)
+
+CONSTRUCTION (seed orders, cnoise, pref-first/PREFP, area screen,
+  stride, horizon) -> initial layouts + portfolio starts. Acts once per
+  round; interacts with personas via the starts map (seed x persona
+  interaction is strong: exploit vs explore basins differ 18% on P5).
+DESTROY/REPAIR MIX (10 ops, weights/decay/floor, masks, q ranges,
+  bigQProb, pick noise, op2/8/9 params) -> which blocks churn. Personas
+  = mask+q+T0 splits; L4 governs.
+ACCEPTANCE (T0, cooling, reheat) -> exploration depth; scale-free in
+  obj (T0 = 0.002*obj); q and T0 interact (bigger ruins need higher T).
+GOVERNANCE (rate table, 0.9 coeff, rounds, spec rule, slack/reserve)
+  -> how many iterations and restarts fit; L2/L5 govern; spec rule is
+  the Z3-share proxy (L3).
+GATE/RESCUE (candidate width, ladder, fallback budget) -> converts the
+  portfolio's top boards into a checker-feasible answer; L6 governs.
+Cross-layer edges that matter: speed->rates (L2), seed->starts->persona
+(L2/L4), PREFP->spec-rule (fires only when the rule does), rounds->
+per-round core (halves), exit-order<->vp rules 3/5 (invariant 7).
+
 
 ## Knob census — provenance-classified
 
@@ -105,6 +200,24 @@ area relaxation proves Z1=0 possible on ALL boards (tools/z1bound.py) — the
 binding constraint is GEOMETRY. frag_diag.py: 51.5%/53%/18.3% of tardy
 blocks' waiting days (P4/P5/P6) had enough free area somewhere.
 
+Objective decomposition (v31d4 boards, w1*Z1 + w2*Z2 + w3*Z3, exact):
+  P3 = 0 + 16,580 (19%) + 69,150 (81%)      -- preference board, Z1=0
+  P4 = 2,226,611 (76%) + 26,810 + 681,750 (23%)
+  P5 = 9,759,756 (93.5%) + 18,508 + 661,143 (6.3%)
+  P6 = 31,474,507 (96.7%) + 15,024 + 1,071,300 (3.3%)
+This grounds the _spec_rule/PREFP phase rule causally: pref-first
+probability trades Z3 against Z1 through insertion order, and its
+measured sign per board aligns EXACTLY with Z3-share -- boards at
+>=23% Z3-share improved (P3 -2.8%, P4 -6.9%), boards at <=7% worsened
+(P5 +5.8%, P6 +1.5%). The (m<=3 AND sat<1.0) gate is a proxy that
+coincides with the Z3-share threshold on these six boards; weights are
+known at runtime, so a Z3-share gate is the principled successor IF a
+new instance ever breaks the proxy (re-judge before changing -- the
+proxy is what was measured). It also names the rank-1 frontier per
+board: P3 is a pure Z3 packing-preference problem; P4/P5/P6 are pure
+tardiness (geometry-bound Z1 days), where CP-SAT proves area allows
+Z1=0 -- the gap is geometric realizability, not assignment.
+
 Speed program (07-30, byte-identity contract: fixed-iteration trajectories
 must equal the reference -- 6/6 batteries held): ADOPTED rb-cache + AVX2/LTO
 = x1.12-1.20 -> governance rates x1.15 -> real boards improve on both seeds
@@ -121,6 +234,62 @@ internal nb loops (the 26-34% block) via a Sol-level per-bay time-bucket
 index -- pop (60-100) -> overlappers (15-30) per pass; consumers are
 order-insensitive so byte-identity holds. rbCollect/fev variants of the
 same idea REFUTED-by-measurement first (they are only 2-7%).
+Attempt 1 (stay-interval buckets + epoch dedup) REFUTED by battery
+57693: byte-identical 6/6 but 0.946-0.980x -- stays are long vs TB=16,
+so a full-stay span revisits each long-stay resident span/16 times and
+scattered epoch writes beat byBay's linear prefetch. Attempt 2
+(zero-duplicate, exp/v40speed): each vp rule is one of three query
+shapes with a no-dup structure -- stab(t) "present at t" = tbk[t/16]
+one bucket; "e in [lo,hi)" = ebk[e/16] one home; "f in [lo,hi)" =
+fbk[(f-1)/16] one home. Rule 1 = stab(eN) + enter(eN+1,fN), provably
+disjoint, so NO dedup state exists. Maintenance split stands:
+addIdx/delIdx (byBay+buckets) at legacy placement sites; addTbk/delTbk
+(buckets only) at e/f retime sites (compactLeft, retimeBlock) --
+retimes never touched byBay in the reference and a del/add cycle would
+swap-reorder it, which IS trajectory-relevant. entryOK/exitOK are pure
+conjunctions over the obstacle set, so bucket-order pres fill is
+byte-safe. retimeBlock's wrap is mutation-tight (neighbour vp(k) must
+see i at NEW times). audit code 5 = index rebuild-and-compare.
+VERDICT (battery 57694): byte-identical 6/6 but p27 1.034x / p38 0.983x
+/ real-P4 1.011x -- REFUTED at adoption threshold.
+CORRECTED CAUSAL MODEL (derived from the v31d4 solutions, replacing the
+first "dense tiling, pop ~ overlappers" guess which the data refutes):
+measured rule-1 overlap fractions are only 0.17 (P3) / 0.45 (P4) / 0.52
+(P5) / 0.31 (P6) -- the zero-dup index really did cut visits by
+~55-75%, yet time moved ~1%. Therefore the REJECT path (2 int compares
+on a prefetched linear scan) costs ~1-2ns amortized == free, and vp's
+11.2us/call lives almost entirely in QUALIFYING work: restOverlap on
+actually-overlapping pairs, pres pushes, entryOK/exitOK conjunctions
+(r45 > r1 > r2 > r3 cost order == where per-qualifier work is largest).
+No visit-reduction scheme can remove qualifying work, so EVERY index
+flavour was doomed a priori -- this derivation, not the battery, is
+what closes the front. It also re-derives the earlier refutations:
+masks/memo/pair-screens all targeted reject cost that was already ~0.
+The kernel sits at its qualifying-work floor; the only theoretical vp
+lever left is caching qualifying GEOMETRY outcomes, and memoization
+already measured as cache-thrash. 5x-10x by constants: NO, derived.
+exp/v40speed kept as the archive, NOT folded.
+
+Per-instance seed dispatch (OBSOLETE + REMOVED 07-30: the finals use NEW hidden instances, so a content-hash table can never match; code deleted from myalgorithm.py, v31d* zips are archive only. History for the record):
+_SEED_BY_SIG maps content-hash(prob_info) -> best locally-measured seed
+(15-seed official-TL sweep, runs/seedsweep-s*): P3->s5 86625, P4->s12
+3010900, P5->s1 10610896, P6->s9 32652585; P1/P2 seed-invariant.
+Governed trajectories reproduce on the server, so the menu transfers.
+OGC_SEED env overrides (all harnesses set it -> batteries/canaries
+byte-stable); unmatched instances fall back to 7. eval_prelim.sbatch
+PSEED=auto exercises the dispatch path. Mining CLOSED at 35 seeds
+(stop rule: 2 consecutive dry rounds); final table P3 s25 85,730 /
+P4 s12 2,935,171 / P5 s28 10,439,407 / P6 s20 32,561,231; canonical
+artifact 2026-07-30_v31d4-finals.zip, shipcheck-verified TOT
+46,064,187 = -3.1% vs the best single seed. The menu is
+config-specific: re-sweep before shipping any engine change.
+
+Knob panel CLOSED (07-30, jobs 57696-99, +/-2% rule vs same-seed v3.1
+draws): slk105-s8 mixed noise (P5 +5~7%, P6 -2%); str3-s8 byte-identical
+to baseline -- the phase-3 dense-fallback it gates never fires on these
+boards at official TLs (unreached-path no-op); dec95-s8 P5 +1.3~2.8%
+(the -7.4% one-seed signal was a lottery draw); dec95-s9 P4 +9.1%.
+ALL REFUTED -- v3.1 defaults stand, the knob census is complete.
 
 Closed fronts (each refuted by controlled measurement, 07-29/30):
 - candidate-grain vp parallelism 0.69-0.76x; (bay,event)-grain reached
