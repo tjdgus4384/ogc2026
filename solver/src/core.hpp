@@ -88,10 +88,6 @@ inline bool restOverlap(const Problem& pb, const Sol& s, int a, int b) {
 // pre-existing -- impossible. Exact, not a heuristic (sec 171). The early-out
 // is only valid while every placement passes through this function; an
 // operator writing placements directly must re-verify them (sec 176).
-// counting twin of vpConservative: how many pairwise constraints does A
-// violate right now (rest overlaps + crane blockings vs bay residents).
-// Used by the overlap-tolerant annealing mode as its penetration proxy.
-inline int vpViolCount(const Problem& pb, const Sol& s, int A);
 
 inline bool vpConservative(const Problem& pb, const Sol& s, int A) {
     int jT = s.bay[A], eN = s.e[A], fN = s.f[A];
@@ -172,84 +168,6 @@ inline bool vpConservative(const Problem& pb, const Sol& s, int A) {
         if (pres.size() > 1 && !crane::exitOK(pres, 0)) return false;
     }
     return true;
-}
-
-// Counting twin of vpConservative for the overlap-tolerant mode: same
-// five rules, but instead of failing fast it counts how many of A's
-// pairwise constraints are violated. Rule granularity: rule 1 counts
-// per overlapping resident; rules 2-5 count 1 per failed crane check.
-inline int vpViolCount(const Problem& pb, const Sol& s, int A) {
-    int jT = s.bay[A], eN = s.e[A], fN = s.f[A];
-    const OrientGeom& gA = pb.geo[A].orients[s.ori[A]];
-    double W = pb.bayW[jT], H = pb.bayH[jT];
-    const std::vector<int>& nb = s.byBay[jT];
-    int v = 0;
-    for (int k : nb) {
-        if (k == A || !s.placed[k]) continue;
-        if (!(s.e[k] < fN && eN < s.f[k])) continue;
-        if (restOverlap(pb, s, A, k)) v++;
-    }
-    thread_local std::vector<Placement> pres;
-    {
-        pres.clear();
-        for (int k : nb) {
-            if (k == A || !s.placed[k]) continue;
-            if (s.e[k] <= eN && eN < s.f[k])
-                pres.push_back({&pb.geo[k].orients[s.ori[k]],
-                                (double)s.x[k], (double)s.y[k]});
-        }
-        if (!crane::entryOK(W, H, pres, gA, s.x[A], s.y[A])) v++;
-    }
-    {
-        pres.clear();
-        pres.push_back({&gA, (double)s.x[A], (double)s.y[A]});
-        for (int k : nb) {
-            if (k == A || !s.placed[k]) continue;
-            if (s.e[k] < fN && (s.f[k] > fN || (s.f[k] == fN && s.e[k] < eN)))
-                pres.push_back({&pb.geo[k].orients[s.ori[k]],
-                                (double)s.x[k], (double)s.y[k]});
-        }
-        if (!crane::exitOK(pres, 0)) v++;
-    }
-    for (int k : nb) {
-        if (k == A || !s.placed[k]) continue;
-        int t = s.e[k];
-        if (!(eN <= t && t < fN)) continue;
-        if (!crane::bboxOverlapOff(gA.bb, s.x[A], s.y[A],
-                                   pb.geo[k].orients[s.ori[k]].bb,
-                                   s.x[k], s.y[k])) continue;
-        pres.clear();
-        pres.push_back({&gA, (double)s.x[A], (double)s.y[A]});
-        for (int k2 : nb) {
-            if (k2 == A || k2 == k || !s.placed[k2]) continue;
-            if (s.e[k2] <= t && t < s.f[k2])
-                pres.push_back({&pb.geo[k2].orients[s.ori[k2]],
-                                (double)s.x[k2], (double)s.y[k2]});
-        }
-        const OrientGeom& gk = pb.geo[k].orients[s.ori[k]];
-        if (!crane::entryOK(W, H, pres, gk, s.x[k], s.y[k])) v++;
-    }
-    for (int k : nb) {
-        if (k == A || !s.placed[k]) continue;
-        int t = s.f[k], ek = s.e[k];
-        if (!(eN < t && t <= fN)) continue;
-        if (!crane::bboxOverlapOff(gA.bb, s.x[A], s.y[A],
-                                   pb.geo[k].orients[s.ori[k]].bb,
-                                   s.x[k], s.y[k])) continue;
-        pres.clear();
-        pres.push_back({&pb.geo[k].orients[s.ori[k]],
-                        (double)s.x[k], (double)s.y[k]});
-        if (fN > t || (fN == t && eN < ek))
-            pres.push_back({&gA, (double)s.x[A], (double)s.y[A]});
-        for (int k2 : nb) {
-            if (k2 == A || k2 == k || !s.placed[k2]) continue;
-            if (s.e[k2] < t && (s.f[k2] > t || (s.f[k2] == t && s.e[k2] < ek)))
-                pres.push_back({&pb.geo[k2].orients[s.ori[k2]],
-                                (double)s.x[k2], (double)s.y[k2]});
-        }
-        if (pres.size() > 1 && !crane::exitOK(pres, 0)) v++;
-    }
-    return v;
 }
 
 struct Objective { double z1, z2, z3, total; };
