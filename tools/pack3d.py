@@ -76,7 +76,14 @@ HOR = max(D) + max(P) + 40
 
 # integer bbox extents per (block, orientation): width, height, and the
 # offset from the reference point to the left/bottom edge
-S = 10000                      # spec: up to four decimal digits
+# Extents are rounded OUTWARD to integers (lo floored, hi ceiled), so a
+# separation the solver proves stays true under the checker's integer
+# coordinates. Scaling by 10000 to keep the polygon's four decimals was
+# tried first and made the model unsolvable -- coordinate domains blew
+# out to +-1e9 and CP-SAT returned UNKNOWN on P1 in 100 s where the
+# integer version solves in seconds. Outward rounding costs at most one
+# unit of density per side; correctness never depended on the decimals.
+S = 1
 EXT = []
 for i in range(n):
     per = []
@@ -101,10 +108,10 @@ Y = [mdl.NewIntVar(-maxH, 2 * maxH, f"Y{i}") for i in range(n)]
 e = [mdl.NewIntVar(R[i], HOR - P[i], f"e{i}") for i in range(n)]
 inbay = [[mdl.NewBoolVar(f"b{i}_{j}") for j in range(m)] for i in range(n)]
 # S-scaled occupied span, exact under the checker's integer coordinates
-xlo = [mdl.NewIntVar(-10**9, 10**9, f"xlo{i}") for i in range(n)]
-xhi = [mdl.NewIntVar(-10**9, 10**9, f"xhi{i}") for i in range(n)]
-ylo = [mdl.NewIntVar(-10**9, 10**9, f"ylo{i}") for i in range(n)]
-yhi = [mdl.NewIntVar(-10**9, 10**9, f"yhi{i}") for i in range(n)]
+xlo = [mdl.NewIntVar(0, maxW, f"xlo{i}") for i in range(n)]
+xhi = [mdl.NewIntVar(0, maxW, f"xhi{i}") for i in range(n)]
+ylo = [mdl.NewIntVar(0, maxH, f"ylo{i}") for i in range(n)]
+yhi = [mdl.NewIntVar(0, maxH, f"yhi{i}") for i in range(n)]
 
 for i in range(n):
     mdl.AddExactlyOne(inbay[i])
@@ -113,8 +120,8 @@ for i in range(n):
         mdl.Add(bay[i] != j).OnlyEnforceIf(inbay[i][j].Not())
     for tag, lo, hi, k0, k1 in (("x", xlo, xhi, "x0", "x1"),
                                 ("y", ylo, yhi, "y0", "y1")):
-        off_lo = mdl.NewIntVar(-10**9, 10**9, f"{tag}o0_{i}")
-        off_hi = mdl.NewIntVar(-10**9, 10**9, f"{tag}o1_{i}")
+        off_lo = mdl.NewIntVar(-4 * maxW, 4 * maxW, f"{tag}o0_{i}")
+        off_hi = mdl.NewIntVar(-4 * maxW, 4 * maxW, f"{tag}o1_{i}")
         mdl.AddElement(ori[i], [EXT[i][o][k0] for o in range(NORI[i])], off_lo)
         mdl.AddElement(ori[i], [EXT[i][o][k1] for o in range(NORI[i])], off_hi)
         base = X[i] if tag == "x" else Y[i]
