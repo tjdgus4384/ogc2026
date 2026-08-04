@@ -1,0 +1,53 @@
+Build note (for code review)
+============================
+sscore.cpython-312-x86_64-linux-gnu.so is compiled from src/ (7 files, C++17):
+
+  g++ -O3 -std=c++17 -funroll-loops -fopenmp -march=x86-64-v3 -ffp-contract=off -flto -shared -fPIC \
+      $(python3 -m pybind11 --includes) src/api.cpp \
+      -o sscore$(python3-config --extension-suffix)
+
+Built with g++ 11.4 / pybind11 3.0 against python 3.12. utils.py is the
+competition-provided checker, unmodified.
+
+Runtime dependencies
+--------------------
+myalgorithm.py needs only the Python standard library plus this extension.
+It will ALSO use ortools (cp_model) if the interpreter has it -- the import
+is guarded and a failure is silent, so the solver runs unchanged without it.
+No license and no network are required: ortools' CP-SAT is used, not a
+commercial solver. Verified against ortools 9.15.6755, the version present
+on the grading image.
+
+What the last revision changed
+------------------------------
+1. Acceptance: all threads anneal with SA (OGC_MIXACC default off). The
+   half-LAHC variant was adopted briefly on preliminary-instance evidence
+   and then reverted when the 40-instance paired sign test on the final
+   training set showed OFF wins 26-14 (p=0.04, mean -2.34%).
+
+2. Engine::pairConflicts (src/api.cpp, exposed as pair_conflicts): exact
+   pairwise conflicts between candidate placements -- same-layer resting
+   collision plus the vertical-descent crane sweep. 104,717 conflict pairs
+   over 1,336 candidates in 0.09 s.
+
+3. Slice refinement (myalgorithm.py _slice_refine, env OGC_SLICE, default on
+   -- deliberately NOT the older OGC_REFINE, which gates a different pass).
+   The tail of the time limit is cut into slices; each goes to whichever of
+   two arms earned more per second on its previous slice:
+     - anneal: re-run the portfolio from the incumbent
+     - polish: free ~25 blocks seeded on a tardy one and re-place them
+       OPTIMALLY with CP-SAT against the frozen rest
+   Both are verified with the same vp oracle before acceptance, and the pass
+   stops at deadline-minus-reserve so the checker gate keeps its repair
+   budget. It is skipped entirely on the memetic path, whose boards are
+   punctual (nothing for the polish to rescue) and whose search already uses
+   the budget better.
+
+   Motivation, measured: CP-SAT proves these boards already optimal over ANY
+   20-30 block rearrangement (corner and arbitrary-grid candidates alike), so
+   improvements can only come from a larger neighbourhood with an exact
+   repair -- which is what this pass supplies.
+
+   Effect on the official time limits, means over 3 seeds, against the same
+   engine without it: P3 +1.9%, P4 -10.6%, P5 -3.6%, P6 -3.4%; no time-limit
+   overruns and no checker-gate failures.

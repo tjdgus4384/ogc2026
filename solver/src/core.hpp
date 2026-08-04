@@ -19,6 +19,19 @@ struct Problem {
     std::vector<double> Smax;              // per block
     std::vector<double> bayW, bayH, u;     // u_j = avgArea / (W_j*H_j)
     double w1 = 0, w2 = 0, w3 = 0;
+    // achievable polygon density: mean polygon/bbox fill of this
+    // instance's pieces. With polygon-area accounting the screener
+    // must compare against what polygons can ACTUALLY reach in a bay
+    // (bbox packing tops out near 100%, so polygons top out near this
+    // ratio) -- otherwise it never rejects and every insertion scans
+    // every bay (measured: 65% of the iteration budget lost on P4).
+    double fillRatio = 1.0;
+    // per-day mandatory demand / total bay area: blocks whose
+    // [release, punctual-entry] window covers a day MUST occupy space
+    // somewhere that day. Days where this exceeds what polygons can
+    // actually reach are provably contended -- a slack-rich block
+    // entering there displaces someone who has no alternative.
+    std::vector<double> dayLoad;
 };
 
 struct Sol {
@@ -51,6 +64,9 @@ inline bool restOverlap(const Problem& pb, const Sol& s, int a, int b) {
     const OrientGeom& gb = pb.geo[b].orients[s.ori[b]];
     if (!crane::bboxOverlapOff(ga.bb, s.x[a], s.y[a], gb.bb, s.x[b], s.y[b]))
         return false;
+    bool hit;
+    if (crane::pairMemo(ga, s.x[a], s.y[a], gb, s.x[b], s.y[b], 0, hit))
+        return hit;
     int L = std::min(ga.layers.size(), gb.layers.size());
     for (int l = 0; l < L; l++)
         if (crane::overlapsLay(ga, l, s.x[a], s.y[a],
@@ -72,6 +88,11 @@ inline bool restOverlap(const Problem& pb, const Sol& s, int a, int b) {
 // pre-existing -- impossible. Exact, not a heuristic (sec 171). The early-out
 // is only valid while every placement passes through this function; an
 // operator writing placements directly must re-verify them (sec 176).
+// counting twin of vpConservative: how many pairwise constraints does A
+// violate right now (rest overlaps + crane blockings vs bay residents).
+// Used by the overlap-tolerant annealing mode as its penetration proxy.
+inline int vpViolCount(const Problem& pb, const Sol& s, int A);
+
 inline bool vpConservative(const Problem& pb, const Sol& s, int A) {
     int jT = s.bay[A], eN = s.e[A], fN = s.f[A];
     const OrientGeom& gA = pb.geo[A].orients[s.ori[A]];
@@ -153,7 +174,156 @@ inline bool vpConservative(const Problem& pb, const Sol& s, int A) {
     return true;
 }
 
+// Counting twin of vpConservative for the overlap-tolerant mode: same
+// five rules, but instead of failing fast it counts how many of A's
+// pairwise constraints are violated. Rule granularity: rule 1 counts
+// per overlapping resident; rules 2-5 count 1 per failed crane check.
+inline int vpViolCount(const Problem& pb, const Sol& s, int A) {
+    int jT = s.bay[A], eN = s.e[A], fN = s.f[A];
+    const OrientGeom& gA = pb.geo[A].orients[s.ori[A]];
+    double W = pb.bayW[jT], H = pb.bayH[jT];
+    const std::vector<int>& nb = s.byBay[jT];
+    int v = 0;
+    for (int k : nb) {
+        if (k == A || !s.placed[k]) continue;
+        if (!(s.e[k] < fN && eN < s.f[k])) continue;
+        if (restOverlap(pb, s, A, k)) v++;
+    }
+    thread_local std::vector<Placement> pres;
+    {
+        pres.clear();
+        for (int k : nb) {
+            if (k == A || !s.placed[k]) continue;
+            if (s.e[k] <= eN && eN < s.f[k])
+                pres.push_back({&pb.geo[k].orients[s.ori[k]],
+                                (double)s.x[k], (double)s.y[k]});
+        }
+        if (!crane::entryOK(W, H, pres, gA, s.x[A], s.y[A])) v++;
+    }
+    {
+        pres.clear();
+        pres.push_back({&gA, (double)s.x[A], (double)s.y[A]});
+        for (int k : nb) {
+            if (k == A || !s.placed[k]) continue;
+            if (s.e[k] < fN && (s.f[k] > fN || (s.f[k] == fN && s.e[k] < eN)))
+                pres.push_back({&pb.geo[k].orients[s.ori[k]],
+                                (double)s.x[k], (double)s.y[k]});
+        }
+        if (!crane::exitOK(pres, 0)) v++;
+    }
+    for (int k : nb) {
+        if (k == A || !s.placed[k]) continue;
+        int t = s.e[k];
+        if (!(eN <= t && t < fN)) continue;
+        if (!crane::bboxOverlapOff(gA.bb, s.x[A], s.y[A],
+                                   pb.geo[k].orients[s.ori[k]].bb,
+                                   s.x[k], s.y[k])) continue;
+        pres.clear();
+        pres.push_back({&gA, (double)s.x[A], (double)s.y[A]});
+        for (int k2 : nb) {
+            if (k2 == A || k2 == k || !s.placed[k2]) continue;
+            if (s.e[k2] <= t && t < s.f[k2])
+                pres.push_back({&pb.geo[k2].orients[s.ori[k2]],
+                                (double)s.x[k2], (double)s.y[k2]});
+        }
+        const OrientGeom& gk = pb.geo[k].orients[s.ori[k]];
+        if (!crane::entryOK(W, H, pres, gk, s.x[k], s.y[k])) v++;
+    }
+    for (int k : nb) {
+        if (k == A || !s.placed[k]) continue;
+        int t = s.f[k], ek = s.e[k];
+        if (!(eN < t && t <= fN)) continue;
+        if (!crane::bboxOverlapOff(gA.bb, s.x[A], s.y[A],
+                                   pb.geo[k].orients[s.ori[k]].bb,
+                                   s.x[k], s.y[k])) continue;
+        pres.clear();
+        pres.push_back({&pb.geo[k].orients[s.ori[k]],
+                        (double)s.x[k], (double)s.y[k]});
+        if (fN > t || (fN == t && eN < ek))
+            pres.push_back({&gA, (double)s.x[A], (double)s.y[A]});
+        for (int k2 : nb) {
+            if (k2 == A || k2 == k || !s.placed[k2]) continue;
+            if (s.e[k2] < t && (s.f[k2] > t || (s.f[k2] == t && s.e[k2] < ek)))
+                pres.push_back({&pb.geo[k2].orients[s.ori[k2]],
+                                (double)s.x[k2], (double)s.y[k2]});
+        }
+        if (pres.size() > 1 && !crane::exitOK(pres, 0)) v++;
+    }
+    return v;
+}
+
 struct Objective { double z1, z2, z3, total; };
+
+inline Objective evaluate(const Problem& pb, const Sol& s);
+// GLS penalties (guided local search): optional per-block tardiness
+// multipliers. The anneal optimizes the PENALIZED objective while the
+// caller keeps its incumbent by the TRUE one, so the search is pushed
+// out of deep local optima without changing what "better" means.
+// Null pointer = classic behaviour, bit-identical.
+inline const double*& glsPen() {
+    static thread_local const double* p = nullptr;
+    return p;
+}
+
+// SLACK SURROGATE (env OGC_SLACKW): the true objective only counts
+// tardy DAYS, so every on-time block looks identical to the search --
+// a block finishing the day before its due date scores the same as
+// one with 20 days of room, and the anneal cannot see that it is
+// walking toward a cliff. Adding a small term for consumed slack
+// (f - D when negative) gives the classic scheduling gradient that
+// steers away from brittle boards. Kept OUT of the accepted-solution
+// comparison (that stays exact) -- this only shapes the walk.
+inline double& slackW() {
+    static thread_local double w = 0.0;
+    return w;
+}
+
+inline Objective evaluatePen(const Problem& pb, const Sol& s) {
+    const double* pen = glsPen();
+    const double sw = slackW();
+    if (sw > 0.0) {
+        double z1 = 0, z3 = 0, sl = 0;
+        std::vector<double> load(pb.m, 0.0);
+        for (int i = 0; i < pb.n; i++) {
+            if (!s.placed[i]) continue;
+            int d = s.f[i] - pb.D[i];
+            z1 += std::max(0, d);
+            if (d < 0) {
+                double room = (double)(-d);
+                double span = std::max(1.0, (double)(pb.D[i]
+                                                     - pb.R[i]));
+                sl += 1.0 - std::min(1.0, room / span);
+            } else sl += 1.0;
+            z3 += pb.Smax[i] - pb.pref[i][s.bay[i]];
+            load[s.bay[i]] += pb.workload[i];
+        }
+        double z2 = 0;
+        for (int a = 0; a < pb.m; a++)
+            for (int b = a + 1; b < pb.m; b++)
+                z2 = std::max(z2, std::fabs(pb.u[a]*load[a]
+                                            - pb.u[b]*load[b]));
+        z2 = std::floor(z2);
+        double base = pb.w1*z1 + pb.w2*z2 + pb.w3*z3;
+        return {z1, z2, z3, base + sw * pb.w1 * sl};
+    }
+    if (!pen) return evaluate(pb, s);
+    double z1 = 0, z3 = 0, z1p = 0;
+    std::vector<double> load(pb.m, 0.0);
+    for (int i = 0; i < pb.n; i++) {
+        if (!s.placed[i]) continue;
+        double t = std::max(0, s.f[i] - pb.D[i]);
+        z1 += t;
+        z1p += t * (1.0 + pen[i]);
+        z3 += pb.Smax[i] - pb.pref[i][s.bay[i]];
+        load[s.bay[i]] += pb.workload[i];
+    }
+    double z2 = 0;
+    for (int a = 0; a < pb.m; a++)
+        for (int b = a + 1; b < pb.m; b++)
+            z2 = std::max(z2, std::fabs(pb.u[a]*load[a] - pb.u[b]*load[b]));
+    z2 = std::floor(z2);
+    return {z1, z2, z3, pb.w1*z1p + pb.w2*z2 + pb.w3*z3};
+}
 
 inline Objective evaluate(const Problem& pb, const Sol& s) {
     double z1 = 0, z3 = 0;

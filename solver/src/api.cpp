@@ -62,12 +62,69 @@ struct Engine {
             g.layers.push_back(std::move(p));
         }
         g.bb = bb;
+        // true footprint = max polygon area over layers (layers stack
+        // vertically, so the footprint is the widest single layer)
+        double pa = 0.0;
+        for (auto& P : g.layers) {
+            double s2 = 0.0;
+            for (size_t k = 0; k < P.size(); k++) {
+                const auto& p1 = P[k];
+                const auto& p2 = P[(k + 1) % P.size()];
+                s2 += p1.x * p2.y - p2.x * p1.y;
+            }
+            pa = std::max(pa, std::fabs(s2) * 0.5);
+        }
+        g.parea = pa;
         pb.geo[i].orients.push_back(std::move(g));
+    }
+
+    // derive the instance's achievable polygon density once all
+    // geometry is loaded (called from build())
+    void computeFill() {
+        double sp = 0.0, sb = 0.0;
+        for (int i = 0; i < pb.n; i++) {
+            double bp = 1e18, bb2 = 1e18;
+            for (const auto& g : pb.geo[i].orients) {
+                double a = (g.bb.x1-g.bb.x0)*(g.bb.y1-g.bb.y0);
+                if (a < bb2) { bb2 = a; bp = g.parea; }
+            }
+            if (bb2 < 1e17) { sp += bp; sb += bb2; }
+        }
+        double fill = (sb > 0.0) ? std::min(1.0, sp / sb) : 1.0;
+        // The cap can never sit below what the instance REQUIRES: on
+        // any day, blocks whose [release, due) window covers that day
+        // must be somewhere, so their polygon area over total bay area
+        // is a hard lower bound on the density a punctual board needs.
+        // Saturated instances (P3-class) therefore relax the screener
+        // automatically instead of having their dense packings
+        // rejected, while roomy ones keep the tight, fast filter.
+        double capArea = 0.0;
+        for (int j = 0; j < pb.m; j++) capArea += pb.bayW[j]*pb.bayH[j];
+        int Tmax = 0;
+        for (int i = 0; i < pb.n; i++) Tmax = std::max(Tmax, pb.D[i]);
+        std::vector<double> need((size_t)Tmax + 2, 0.0);
+        for (int i = 0; i < pb.n; i++) {
+            double a = 1e18;
+            for (const auto& g : pb.geo[i].orients)
+                a = std::min(a, g.parea > 0 ? g.parea :
+                             (g.bb.x1-g.bb.x0)*(g.bb.y1-g.bb.y0));
+            int lo = pb.R[i], hi = std::max(pb.R[i], pb.D[i] - pb.P[i]);
+            for (int t = lo; t <= hi && t <= Tmax; t++) need[t] += a;
+        }
+        double req = 0.0;
+        pb.dayLoad.assign((size_t)Tmax + 2, 0.0);
+        for (int t = 0; t <= Tmax; t++) {
+            double u = need[t] / std::max(1e-9, capArea);
+            pb.dayLoad[t] = u;
+            req = std::max(req, u);
+        }
+        pb.fillRatio = std::min(1.0, std::max(fill, req));
     }
 
     // occupancy grid over [0, horizon); stamps whatever is already placed
     void buildOcc(int horizon) {
         horizon_ = horizon;
+        if (pb.fillRatio >= 1.0) computeFill();
         sol.rebuildIdx(pb.m);           // defensive: never trust caller sync
         oc.build(pb, horizon);
         for (int i = 0; i < pb.n; i++)
@@ -116,9 +173,25 @@ struct Engine {
     // assignment lock: persistent forcedBay for the whole engine -> repairs
     // keep every block in its locked bay, freezing Z2/Z3 at the locked
     // assignment's values so the search optimizes pure Z1 geometry.
+    std::vector<int> capVec;
     std::vector<int> lockVec;
     int lastChunks_ = 0;                 // rounds completed by the last
     int lastChunks() const { return lastChunks_; }   // portfolio call
+    double phaseNs_[4] = {0, 0, 0, 0};   // remove/insert/eval/samples
+    double opUsed_[10] = {0}, opImp_[10] = {0};
+    double totIters_ = 0, totFailed_ = 0;
+    std::vector<double> lastStats() const {
+        return {totIters_, totFailed_};
+    }
+    std::vector<double> lastOps() const {
+        std::vector<double> v;
+        for (int k = 0; k < 10; k++) v.push_back(opUsed_[k]);
+        for (int k = 0; k < 10; k++) v.push_back(opImp_[k]);
+        return v;
+    }
+    std::vector<double> lastPhase() const {
+        return {phaseNs_[0], phaseNs_[1], phaseNs_[2], phaseNs_[3]};
+    }
     // insert ONE unplaced block with an entry cap and an optional forced
     // bay -- the primitive for chasing an external plan (plan seeds,
     // tools/plan_pack.py).
@@ -131,9 +204,118 @@ struct Engine {
         ctx.forcedBay = save;
         return ok;
     }
+    // enumerate up to k vp-feasible placements of UNPLACED block A at its
+    // earliest feasible entry per bay (probe primitive for placement-depth
+    // experiments): returns flat rows [bay, ori, x, y, e] x k.
+    std::vector<int> feasiblePositions(int A, int k, int eMin = 0) {
+        std::vector<int> out;
+        if (sol.placed[A]) return out;
+        std::vector<int> xs, ys, oris;
+        for (size_t o = 0; o < pb.geo[A].orients.size(); o++)
+            oris.push_back((int)o);
+        for (int j = 0; j < pb.m && (int)out.size() / 5 < k; j++) {
+            for (int e = std::max(pb.R[A], eMin); e + pb.P[A] <= horizon_; e++) {
+                int f = e + pb.P[A];
+                occ::OccIndex::Snap sn;
+                oc.buildSnap(j, e, f, sn);
+                thread_local std::vector<repair::RB> rbs;
+                repair::rbCollect(ctx, j, e, f, rbs);
+                bool any = false;
+                for (int oi : oris) {
+                    repair::cornerSetsRB(ctx, A, oi, j, rbs, xs, ys);
+                    for (int y : ys) { for (int x : xs) {
+                        if (oc.hitsSnap(sn, A, oi, x, y)) continue;
+                        sol.bay[A]=j; sol.ori[A]=oi; sol.x[A]=x;
+                        sol.y[A]=y; sol.e[A]=e; sol.f[A]=f;
+                        sol.placed[A]=1;
+                        bool ok = core::vpConservative(pb, sol, A);
+                        sol.placed[A]=0;
+                        if (ok) {
+                            out.insert(out.end(), {j, oi, x, y, e});
+                            any = true;
+                            if ((int)out.size() / 5 >= k) return out;
+                        }
+                    } }
+                }
+                if (any) break;      // earliest feasible day per bay only
+            }
+        }
+        return out;
+    }
+    // vp-verified commit of A at an explicit placement (probe primitive).
+    bool placeAt(int A, int bay, int ori, int x, int y, int e) {
+        if (sol.placed[A]) return false;
+        sol.bay[A]=bay; sol.ori[A]=ori; sol.x[A]=x; sol.y[A]=y;
+        sol.e[A]=e; sol.f[A]=e + pb.P[A]; sol.placed[A]=1;
+        if (!core::vpConservative(pb, sol, A)) { sol.placed[A]=0; return false; }
+        sol.addIdx(A);
+        oc.stamp(pb, sol, A, true);
+        return true;
+    }
+    // EXACT PAIRWISE CONFLICTS between candidate placements.
+    // The CP-SAT sub-solve (tools/cpsat_loop.py) is the one mechanism
+    // measured to improve boards that local search provably cannot --
+    // 20-30 block neighbourhoods come back OPTIMAL and unchanged, yet
+    // random K-subsets re-placed exactly gave P6 -1.5% at K=15 and
+    // -2.6% at K=25. Its only blocker is cost, and the cost is not
+    // CP-SAT (0.2-0.7s per solve) but building the conflict clauses in
+    // python/shapely (2-3s). Every step that made an iteration cheaper
+    // moved the verdict: candidates 30 -> 14 -> 8 took the polish from
+    // +0.55% to -0.21% to -0.37% against a full anneal. This does the
+    // same test with the engine's own geometry, which is where the
+    // remaining order of magnitude is.
+    // cand = flat [block, bay, ori, x, y, entry] * N.
+    // returns flat pairs (a, b) of conflicting candidate indices.
+    int horizonValue() const { return horizon_; }
+    std::vector<int> pairConflicts(const std::vector<int>& cand) {
+        const int N = (int)cand.size() / 6;
+        std::vector<int> out;
+        for (int a = 0; a < N; a++) {
+            const int* A = &cand[a * 6];
+            const auto& ga = pb.geo[A[0]].orients[A[2]];
+            const int fa = A[5] + pb.P[A[0]];
+            for (int b = a + 1; b < N; b++) {
+                const int* B = &cand[b * 6];
+                if (A[0] == B[0]) continue;      // same block, handled by
+                if (A[1] != B[1]) continue;      // exactly-one; other bay
+                const int fb = B[5] + pb.P[B[0]];
+                if (!(A[5] < fb && B[5] < fa)) continue;   // disjoint stays
+                const auto& gb = pb.geo[B[0]].orients[B[2]];
+                if (!crane::bboxOverlapOff(ga.bb, A[3], A[4],
+                                           gb.bb, B[3], B[4])) continue;
+                bool bad = false;
+                const int La = (int)ga.layers.size();
+                const int Lb = (int)gb.layers.size();
+                for (int l = 0; l < std::min(La, Lb) && !bad; l++)
+                    bad = crane::overlapsLay(ga, l, A[3], A[4],
+                                             gb, l, B[3], B[4]);
+                if (!bad) {
+                    // vertical descent: the later entrant's layer k has
+                    // to clear the resident's layers j >= k
+                    const bool aLate = A[5] >= B[5];
+                    const auto& gl = aLate ? ga : gb;
+                    const auto& ge = aLate ? gb : ga;
+                    const int* L = aLate ? A : B;
+                    const int* E = aLate ? B : A;
+                    const int nl = (int)gl.layers.size();
+                    const int ne = (int)ge.layers.size();
+                    for (int k = 0; k < nl && !bad; k++)
+                        for (int j = k; j < ne && !bad; j++)
+                            bad = crane::overlapsLay(gl, k, L[3], L[4],
+                                                     ge, j, E[3], E[4]);
+                }
+                if (bad) { out.push_back(a); out.push_back(b); }
+            }
+        }
+        return out;
+    }
     void setAssignmentLock(std::vector<int> v) {
         lockVec = std::move(v);
         ctx.forcedBay = lockVec.empty() ? nullptr : lockVec.data();
+    }
+    void setEntryLock(std::vector<int> v) {
+        capVec = std::move(v);
+        ctx.entryCap = capVec.empty() ? nullptr : capVec.data();
     }
 
     // ------------------------------------------------------------ annealing
@@ -197,6 +379,7 @@ struct Engine {
         long lastIters = coreIters;
         const bool dbgRounds = (getenv("SMAX_DEBUG") != nullptr);
         int chunks = 0;
+
         for (int r = 0; r < rounds; r++) {
             long thisIters = (coreIters > 0 && r > 0)
                 ? std::max<long>(1, coreIters / 3) : coreIters;
@@ -208,6 +391,24 @@ struct Engine {
             double roundT0 = elapsed();
             core::Sol roundStart = globalBest;
             double roundEnterBest = bestObj;
+            // learned persona fleet (env OGC_PERSONA="a,b,c,d"):
+            // remap each thread's SEARCH PERSONA (q-mult / T0 / SA-mix
+            // / op-mask) while keeping tid for seeds and starts.
+            // Unset = identity (grading default unchanged).
+            int perMap[64];
+            for (int q = 0; q < 64; q++) perMap[q] = q;
+            if (const char* pv = getenv("OGC_PERSONA")) {
+                int idx = 0, val = -1;
+                for (const char* c = pv; ; c++) {
+                    if (*c >= '0' && *c <= '9')
+                        val = (val < 0 ? 0 : val * 10) + (*c - '0');
+                    else {
+                        if (val >= 0 && idx < 64) perMap[idx++] = val;
+                        val = -1;
+                        if (!*c) break;
+                    }
+                }
+            }
             #pragma omp parallel num_threads(threads)
             {
                 int tid = 0;
@@ -218,7 +419,9 @@ struct Engine {
                 occ::OccIndex oc2; oc2.build(pb, horizon_);
                 repair::Ctx c2; c2.pb = &pb; c2.s = &s2; c2.oc = &oc2;
                 c2.horizon = horizon_;
+                c2.densMode = knobs::mixDens() ? (tid % 2) : -1;
                 c2.forcedBay = ctx.forcedBay;   // assignment lock -> threads
+                c2.entryCap = ctx.entryCap;     // entry lock -> threads
                 bool constructed = false;
                 if (r == 0 && !starts.empty()) {
                     const auto& st0 = starts[tid % (int)starts.size()];
@@ -250,24 +453,45 @@ struct Engine {
                         if (s2.placed[i]) oc2.stamp(pb, s2, i, true);
                 }
                 alns::RunParams rp;
-                double mult = (tid % 3 == 0 ? 0.6 : (tid % 3 == 1 ? 1.0 : 1.5));
+                const int pid = perMap[tid];
+                double mult = (pid % 3 == 0 ? 0.6 : (pid % 3 == 1 ? 1.0 : 1.5));
                 rp.qloF = qlo * mult; rp.qhiF = qhi * mult;
-                rp.T0mul = T0mul * ((tid/3) % 3 == 0 ? 0.5 :
-                                    ((tid/3) % 3 == 1 ? 1.0 : 2.0));
+                rp.T0mul = T0mul * ((pid/3) % 3 == 0 ? 0.5 :
+                                    ((pid/3) % 3 == 1 ? 1.0 : 2.0));
                 rp.cooling = cooling;
                 // judgment screeners ([유산] re-judgment): env-gated persona
                 // overrides, inert when unset (grading server).
-                static const double HCF = [] { const char* v =
-                    getenv("OGC_HCFRAC"); return v ? atof(v) : -1.0; }();
-                static const double BQ = [] { const char* v =
-                    getenv("OGC_BIGQ"); return v ? atof(v) : -1.0; }();
+                const double HCF = knobs::hcFrac();
+                const double BQ = knobs::bigQ();
                 rp.hcFrac  = HCF >= 0 ? HCF
-                             : ((tid % 2 == 0) ? 1.0 : 0.75); // half pure-SA
-                rp.bigQProb = (tid % 2 == 0) ? 0.0
+                             : ((pid % 2 == 0) ? 1.0 : 0.75); // half pure-SA
+                rp.bigQProb = (pid % 2 == 0) ? 0.0
                               : (BQ >= 0 ? BQ : 0.06);
-                rp.opMask  = (tid % 2 == 0) ? 0x1F : 0x3FF; // exploit / explore+ejections
+                rp.opMask  = (pid % 2 == 0) ? 0x1F : 0x3FF; // exploit / explore+ejections
+                // HETEROGENEOUS ACCEPTANCE (env OGC_MIXACC, default
+                // on): half the threads anneal with SA, half with
+                // self-scaled LAHC. Measured 08-02, LAHC wins P3/P5/P6
+                // but loses P4 -- and no clean structural gate
+                // separates them on four boards without overfitting.
+                // Running both rules in the same portfolio lets the
+                // instance decide, which is also what the min-of-
+                // parallel law says: diversity beats a single choice.
+                if (knobs::mixAcc())
+                    rp.lahcLen = (tid % 2 == 0) ? 0 : -1;
+                // Split on tid/2, ORTHOGONAL to the tid%2 axis that
+                // already carries the exploit/explore persona (op mask,
+                // hill-climb fraction, big-q, acceptance rule). Keying
+                // both on the same parity put every shift-off thread on
+                // the exploit persona, so the configuration that wins
+                // P5 by 5.2% was never actually run.
+                if (knobs::shiftSplit())
+                    rp.shiftPP = (tid / 2 == 0) ? knobs::shiftP() : 0;
                 // round 0 = the full core; extensions run core/3 (fit-check
-                // scales the duration estimate by the iteration ratio)
+                // scales the duration estimate by the iteration ratio) and
+                // CONTINUE the thread's anneal temperature: a T0 restart
+                // re-melts the board and core/3 iterations cannot re-anneal
+                // it (the measured extensions-rarely-gain), while continued
+                // depth is where P4-class boards keep earning (longtl 07-30).
                 if (coreIters > 0) rp.maxIters = thisIters;
                 auto st = alns::run(c2,
                     coreIters > 0 ? seconds - roundT0 : perRound, rp,
@@ -280,11 +504,23 @@ struct Engine {
                         if (s2.placed[i]) oc2.stamp(pb, s2, i, true);
                     repair::Ctx c3; c3.pb=&pb; c3.s=&s2; c3.oc=&oc2;
                     c3.horizon=horizon_;
+                    if (knobs::sCompact() > 0)
+                        alns::spatialCompact(c3, knobs::sCompact());
                     alns::compactLeft(c3, 3);
                 }
                 #pragma omp critical
                 {
                     totIters += st.iters;
+                    totIters_ += (double)st.iters;
+                    totFailed_ += (double)st.failed;
+                    for (int k = 0; k < 10; k++) {
+                        opUsed_[k] += (double)st.opUsed[k];
+                        opImp_[k]  += (double)st.opImp[k];
+                    }
+                    phaseNs_[0] += (double)st.tRemove;
+                    phaseNs_[1] += (double)st.tInsert;
+                    phaseNs_[2] += (double)st.tEval;
+                    phaseNs_[3] += (double)st.tSamples;
                     double o2 = core::evaluate(pb, s2).total;
                     threadBest[tid] = o2;
                     candSols[tid].reserve((size_t)pb.n * 7);
@@ -452,6 +688,51 @@ struct Engine {
         return true;
     }
 
+    // Exchange two blocks' slots. moveBlock cannot help on a saturated
+    // board -- there is no free space to move INTO -- but a swap needs
+    // none, which is exactly why the same move is the anneal's biggest
+    // win. Exposed so the preference polish can trade assignments
+    // instead of giving up when a bay is full. Returns false and
+    // restores everything if the exchange is not legal.
+    bool swapBlocks(int i, int j) {
+        if (i == j || !sol.placed[i] || !sol.placed[j]) return false;
+        int aB=sol.bay[i], aX=sol.x[i], aY=sol.y[i], aE=sol.e[i];
+        int bB=sol.bay[j], bX=sol.x[j], bY=sol.y[j], bE=sol.e[j];
+        oc.stamp(pb, sol, i, false);
+        oc.stamp(pb, sol, j, false);
+        int nAe = std::max(pb.R[i], bE), nBe = std::max(pb.R[j], aE);
+        sol.bay[i]=bB; sol.x[i]=bX; sol.y[i]=bY;
+        sol.e[i]=nAe; sol.f[i]=nAe+pb.P[i];
+        sol.bay[j]=aB; sol.x[j]=aX; sol.y[j]=aY;
+        sol.e[j]=nBe; sol.f[j]=nBe+pb.P[j];
+        sol.rebuildIdx(pb.m);
+        oc.stamp(pb, sol, i, true);
+        oc.stamp(pb, sol, j, true);
+        bool ok = core::vpConservative(pb, sol, i)
+               && core::vpConservative(pb, sol, j);
+        if (ok)
+            for (int b2 : {aB, bB}) {
+                for (int k : sol.byBay[b2]) {
+                    if (k == i || k == j || !sol.placed[k]) continue;
+                    if (!core::vpConservative(pb, sol, k)) { ok=false; break; }
+                }
+                if (!ok) break;
+            }
+        if (!ok) {
+            oc.stamp(pb, sol, i, false);
+            oc.stamp(pb, sol, j, false);
+            sol.bay[i]=aB; sol.x[i]=aX; sol.y[i]=aY;
+            sol.e[i]=aE; sol.f[i]=aE+pb.P[i];
+            sol.bay[j]=bB; sol.x[j]=bX; sol.y[j]=bY;
+            sol.e[j]=bE; sol.f[j]=bE+pb.P[j];
+            sol.rebuildIdx(pb.m);
+            oc.stamp(pb, sol, i, true);
+            oc.stamp(pb, sol, j, true);
+            return false;
+        }
+        return true;
+    }
+
     int compactLeft(int maxPasses) { return alns::compactLeft(ctx, maxPasses); }
 
     // The portfolio's candidate SET, objective-ascending. The checker gate
@@ -502,6 +783,7 @@ PYBIND11_MODULE(sscore, m) {
         .def("nudge_block", &Engine::nudgeBlock)
         .def("retime_block", &Engine::retimeBlock)
         .def("move_block", &Engine::moveBlock)
+        .def("swap_blocks", &Engine::swapBlocks)
         // ---- experiment tools (probes, arm-level A/B, state I/O) ----
         .def("run_alns", &Engine::runALNS,
              py::arg("seconds"), py::arg("qlo"), py::arg("qhi"),
@@ -511,8 +793,17 @@ PYBIND11_MODULE(sscore, m) {
              py::arg("maxIters") = 0)
         .def("reconstruct_assigned", &Engine::reconstructAssigned)
         .def("insert_capped", &Engine::insertCapped)
+        .def("feasible_positions", &Engine::feasiblePositions,
+             py::arg("A"), py::arg("k"), py::arg("eMin") = 0)
+        .def("place_at", &Engine::placeAt)
         .def("last_chunks", &Engine::lastChunks)
+        .def("last_phase", &Engine::lastPhase)
+        .def("last_ops", &Engine::lastOps)
+        .def("last_stats", &Engine::lastStats)
+        .def("horizon", [](Engine& e){ return e.horizonValue(); })
+        .def("pair_conflicts", &Engine::pairConflicts)
         .def("set_assignment_lock", &Engine::setAssignmentLock)
+        .def("set_entry_lock", &Engine::setEntryLock)
         .def("compact_left", &Engine::compactLeft)
         .def("set_block", &Engine::setBlock)
         .def("finalize_load", &Engine::finalizeLoad)

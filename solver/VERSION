@@ -1,30 +1,15 @@
-v1 (final -- distributional verdict passed 2026-07-28)
+v4.1 (finals canonical, 2026-08-03; zip = submissions/2026-08-03_v41-finals.zip)
 
-The engine formerly "smax78-v82" (tagged v0), rewritten so the whole solver
-is inspectable: one insertion algorithm, one prefilter semantic per role,
-zero dead knobs, kernel 1594 lines, every line reachable. Validated
-DISTRIBUTIONALLY against a same-toolchain v0 rebuild (3 portfolio seeds x
-full-40 @T300 each, plus T900):
+Lineage: v0 smax78-v82 (prelim best) -> v1 full rewrite (inspectable kernel,
+hardened gate ladder) -> v2.1 priced ejections + portfolio candidate gate ->
+v3.0 iteration governance (trajectory = f(seed, chunks), cross-node
+byte-identity) -> v3.1 rb-cache + AVX2/LTO x1.12-1.20 -> v4.0 adopted-lever
+set + slice refinement (tail 30% of TL: anneal-burst vs CP-SAT re-placement,
+per-second earnings split) -> v4.1 mixAcc reverted to 0 (train_final 40-pair
+sign test: OFF wins 26-14, p=0.04).
 
-  quality    3-seed means: v1 -0.71% (parity; medians ~0)
-  variance   seed-to-seed per-instance spread ~9-10% both engines
-  tail       v0 collapsed prob_29 to _trivial (1.53e9, ~4000x) in 2 of 5
-             draws; v1: zero collapses in 5 draws -- the hardened gate
-             (nudge -> retime -> tight/loose move, deadline-aware, seed
-             floor) removed the failure mode
-  canary     prob_1 1499 / prob_2 3690 preserved
-  anneal     +32% iterations, -2.9% quality from identical seeds (controlled)
+Judgment discipline: train_final 40-instance paired sign tests primary,
+prelim-6 secondary; multi-seed for engine changes; canaries p1 1499 / p2 3690.
 
-Single-draw A/Bs between engine families compare lottery tickets, not
-engines: a kernel change reshuffles the RNG stream once, and the fixed
-portfolio seed then freezes that redraw (v1c/v1d/v1e produced byte-identical
-objectives on the same instances). Judge engine changes on multi-seed
-distributions (OGC_SEED) or accept only differences far outside the ~10%
-per-instance draw band.
-
-Deliberate deviations from v0, each measured: unified seeder path (seed A/B
-40/40: parity), post-compaction portfolio merge (strictly better-informed),
-8 destroyer slots (mixture drift real but quality-neutral), crane-aware
-hits() kept in the dense fallback as placement policy, gate ladder +
-reserve + seed floor (the robustness win), OGC_DIAG/OGC_SEED env hooks
-(inert on the grading server).
+Off-by-default experiment modules still in tree (judged by the simplification
+pass): boxlns.py (OGC_BOXLNS), baysplit.py (OGC_BAYSPLIT).
