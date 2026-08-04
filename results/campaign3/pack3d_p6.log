@@ -1,0 +1,2 @@
+# build 94c9b4a job 63240 2026-08-04T21:24:40+09:00 tool=tools/pack3d.py prob=data/preliminary_test/prob_6.json
+{"board": "prob_6.json", "n": 250, "m": 3, "status": "UNKNOWN", "wall": 240.3, "model_obj": null, "bound": null}

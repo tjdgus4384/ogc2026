@@ -1,0 +1,2 @@
+# build 94c9b4a job 63239 2026-08-04T21:24:40+09:00 tool=tools/pack3d.py prob=data/preliminary_test/prob_5.json
+{"board": "prob_5.json", "n": 200, "m": 4, "status": "FEASIBLE", "wall": 240.4, "model_obj": 70282093, "bound": 5302, "engine_obj": 70281908.0, "vp_bad": 0, "checker_feasible": true, "checker_obj": 70281908.0}
