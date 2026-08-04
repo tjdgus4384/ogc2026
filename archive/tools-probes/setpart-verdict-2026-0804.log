@@ -1,0 +1,5 @@
+{"board": "prob_3.json", "columns": 63, "status": 2, "sol_count": 2, "recombined_obj": 78705.0, "vp_violations": 0, "best_input": 78705.0, "checker_feasible": true, "checker_obj": 78705.0, "gain_vs_best_input_pct": 0.0}
+{"board": "prob_4.json", "columns": 61, "status": 2, "sol_count": 2, "recombined_obj": 2870735.0, "vp_violations": 0, "best_input": 2870735.0, "checker_feasible": true, "checker_obj": 2870735.0, "gain_vs_best_input_pct": 0.0}
+{"board": "prob_5.json", "columns": 76, "status": 2, "sol_count": 3, "recombined_obj": 9776893.0, "vp_violations": 0, "best_input": 9776893.0, "checker_feasible": true, "checker_obj": 9776893.0, "gain_vs_best_input_pct": 0.0}
+{"board": "prob_6.json", "columns": 63, "status": 2, "sol_count": 2, "recombined_obj": 28082532.0, "vp_violations": 0, "best_input": 28082532.0, "checker_feasible": true, "checker_obj": 28082532.0, "gain_vs_best_input_pct": 0.0}
+SETPART2-DONE
