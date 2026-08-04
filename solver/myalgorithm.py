@@ -730,35 +730,6 @@ def _arm_free(p, deadline, seed=7, tl=None):
     # With fewer distinct seeds the pattern cycles, which keeps at least one
     # construction slot and never duplicates a basin needlessly.
     starts = [seeds[0], []] + seeds[1:3] if seeds else []
-    # BASIN DIVERSITY AT THE ASSIGNMENT LAYER. The four arms used to
-    # differ only in RNG stream and persona, i.e. they all start from
-    # the SAME assignment structure -- and the assignment is what the
-    # anneal almost never revisits wholesale (measured 08-04: every
-    # single-move assignment gain on the prelim boards is blocked by
-    # "no punctual room in the wanted bay", and even an exact
-    # room-making re-pack nets +2,065 on P3). So the weakest start (the
-    # 3rd-best seed layout) is replaced by a board built under a
-    # BALANCE prior: workload-descending blocks pinned to the bay that
-    # is least loaded in NORMALISED terms, which is exactly the Z2
-    # direction no operator targets. Construction-only bias -- the
-    # anneal runs unlocked from it.
-    if len(p["bays"]) >= 2 and starts:
-        try:
-            bl = p["blocks"]
-            ar = [b["width"] * b["height"] for b in p["bays"]]
-            uu = [(sum(ar) / len(ar)) / a for a in ar]
-            load = [0.0] * len(ar)
-            bpri = [-1] * len(bl)
-            for i in sorted(range(len(bl)), key=lambda q: -bl[q]["workload"]):
-                j = min(range(len(ar)), key=lambda q: uu[q] * load[q])
-                bpri[i] = j
-                load[j] += bl[i]["workload"]
-            _eb, _sb = _seed_free(p, asg=bpri)
-            if _eb is not None and _sb:
-                starts = (starts[:3] + [_sb[0]])[:4]
-                _diag("prior", kind="balance")
-        except Exception:
-            pass
     # The gate reserve scales with n: its rescue ladder is up to ~6 checker
     # calls, and a checker call grows with instance size. Without the reserve
     # the gate ran in the last ~2.5s before the hard deadline -- on the
