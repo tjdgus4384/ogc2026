@@ -39,8 +39,17 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "solver"))
 os.chdir(ROOT)
 import myalgorithm as M  # noqa: E402
-import gurobipy as gp  # noqa: E402
-from gurobipy import GRB  # noqa: E402
+SOLVER = os.environ.get("GM_SOLVER", "gurobi")
+if SOLVER == "cpsat":
+    # CP-SAT backend: the Gurobi WLS academic licence caps concurrent
+    # sessions (two runs died on an overage), and ortools has no such
+    # limit. Same model, same separation loop -- CP-SAT has no lazy
+    # callback, so it uses the outer round loop, which is exactly what
+    # the round-based path already does.
+    from ortools.sat.python import cp_model as _cp
+else:
+    import gurobipy as gp  # noqa: E402
+    from gurobipy import GRB  # noqa: E402
 
 prob_path, out_path = sys.argv[1], sys.argv[2]
 sources = sys.argv[3:]
@@ -146,6 +155,77 @@ if os.environ.get("GM_LAZY", "0") != "1":
         if a[0] != b[0]:
             pairs.add((a, b))
 conf_time = time.time() - t0
+
+if SOLVER == "cpsat":
+    res = {"board": os.path.basename(prob_path), "solver": "cpsat",
+           "candidates": sum(len(CAND[i]) for i in range(n)),
+           "best_input": best_obj, "rounds": []}
+    m2 = _cp.CpModel()
+    Z = {(i, q): m2.NewBoolVar("z%d_%d" % (i, q))
+         for i in range(n) for q in range(len(CAND[i]))}
+    for i in range(n):
+        m2.AddExactlyOne([Z[i, q] for q in range(len(CAND[i]))])
+    cost = {}
+    for i in range(n):
+        for q, c in enumerate(CAND[i]):
+            cost[i, q] = int(w1 * max(0, c[4] + P[i] - D[i])
+                             + w3 * (SMAX[i] - PREF[i][c[0]]))
+    m2.Minimize(sum(cost[k] * Z[k] for k in Z))     # Z2 omitted: <= w2*range
+    known = set()
+    sol_flat = None
+    for rnd in range(ROUNDS):
+        sv = _cp.CpSolver()
+        sv.parameters.max_time_in_seconds = TL
+        sv.parameters.num_search_workers = 8
+        st = sv.Solve(m2)
+        if st not in (_cp.OPTIMAL, _cp.FEASIBLE):
+            res["rounds"].append({"r": rnd, "status": sv.StatusName(st)})
+            break
+        flat = [0] * (n * 7)
+        chosen = []
+        for i in range(n):
+            for q, c in enumerate(CAND[i]):
+                if sv.Value(Z[i, q]):
+                    flat[i*7:i*7+7] = [c[0], c[1], c[2], c[3], c[4],
+                                       c[4] + P[i], 1]
+                    chosen.append((i, q, c))
+                    break
+        eng.set_solution(flat); eng.build_occ(hor)
+        bad = [i for i in range(n) if not eng.vp_ok(i)]
+        res["rounds"].append({"r": rnd, "obj": round(sv.ObjectiveValue()),
+                              "bound": round(sv.BestObjectiveBound()),
+                              "engine_obj": eng.objective()[3],
+                              "vp_bad": len(bad)})
+        if not bad:
+            sol_flat = flat
+            break
+        sub, sidx = [], []
+        for i, q, c in chosen:
+            sub += [i, c[0], c[1], c[2], c[3], c[4]]
+            sidx.append((i, q))
+        eng.set_solution([0] * (n * 7)); eng.build_occ(hor)
+        pr2 = eng.pair_conflicts(sub)
+        added = 0
+        for t in range(0, len(pr2), 2):
+            a, b = sidx[pr2[t]], sidx[pr2[t + 1]]
+            if a[0] == b[0] or (a, b) in known:
+                continue
+            known.add((a, b)); known.add((b, a))
+            m2.AddBoolOr([Z[a].Not(), Z[b].Not()]); added += 1
+        res["rounds"][-1]["cuts_added"] = added
+        if added == 0:
+            break
+    if sol_flat is not None:
+        eng.set_solution(sol_flat); eng.build_occ(hor)
+        sol = M._recs_to_sol(M._extract(eng, n))
+        chk = M._check(p, sol)
+        res["final_obj"] = eng.objective()[3]
+        res["checker_feasible"] = None if chk is None else bool(chk.get("feasible"))
+        res["gain_vs_best_input_pct"] = round(
+            100 * (best_obj - res["final_obj"]) / best_obj, 3)
+        json.dump(sol, open(out_path, "w"))
+    print(json.dumps(res))
+    raise SystemExit
 
 mdl = gp.Model(env=gp.Env(params={"OutputFlag": 0}))
 z = {(i, q): mdl.addVar(vtype=GRB.BINARY)
