@@ -157,12 +157,18 @@ for j in range(m):
     ld = gp.quicksum(u[j] * L[i] * z[i, q] for i in range(n)
                      for q, c in enumerate(CAND[i]) if c[0] == j)
     mdl.addConstr(zmax >= ld); mdl.addConstr(zmin <= ld)
-# VALID INEQUALITIES: per (bay, day) area capacity. Blocks resident in
-# bay j on day t cannot exceed its area -- true for every feasible board
-# (it is the area relaxation, already used as a lower-bound model), and
-# it is exactly the global structure the pairwise conflict set expresses
-# only implicitly. A few hundred rows that tighten the LP everywhere.
-if os.environ.get("GM_AREA", "1") == "1":
+# AREA CAPACITY ROWS -- **NOT VALID FOR THIS PROBLEM**, default OFF.
+# The intuition (residents of a bay on a day cannot exceed its area) is
+# false here: non-overlap is required only between the SAME LAYER of
+# two blocks, so interlocking non-convex pieces legally overlap in the
+# top view. This repo measured exactly that -- bbox utilisation 103%
+# while polygon utilisation is 58-65% (repair.hpp) -- i.e. feasible
+# boards DO exceed the bbox-area sum. Switching it on cut off the
+# incumbent itself (P3 and P4 both returned sol_count 0, 08-04).
+# Kept behind a flag only as a documented dead end; a valid version
+# would need per-LAYER polygon areas, not bbox areas, and would still
+# only be tight for boards without interlock.
+if os.environ.get("GM_AREA", "0") == "1":      # INVALID here -- see below
     # The coefficient must be a LOWER bound on the block's true
     # footprint, otherwise the cut is not valid and can cut off the
     # incumbent itself -- measured 08-04: with orientation-0 areas both

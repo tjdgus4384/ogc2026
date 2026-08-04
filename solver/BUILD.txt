@@ -30,7 +30,12 @@ What the last revision changed (v5.3, 2026-08-04)
    solution emits) and both descent directions when two candidates
    share an entry day. Verified tight (feeding an incumbent board as
    its own candidate set yields zero conflicts on 3 boards) and sound
-   (1,047 accepted pairs sampled, zero oracle violations).
+   AGAINST THE ENGINE'S OWN vp ORACLE (1,047 accepted pairs sampled,
+   zero violations). Scope of that claim: pairs whose entry AND exit
+   days are both identical are resolved by a tie-break that the model,
+   the oracle and the emitted operation order do not all share, so the
+   oracle cannot certify that class; the official checker gate plus the
+   rescue ladder remain the authority that decides what ships.
 1'. Assignment polish replaced by an exact-delta descent: the balance
    (Z2), preference (Z3) and mover-tardiness (Z1) deltas of a relocate
    or swap are closed-form, so candidates are ranked exactly and the
