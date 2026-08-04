@@ -1,0 +1,4 @@
+{"prob": 4, "incumbent": 2986177.0, "decode_incumbent_order": 9786007.0, "decode_gap_pct": 227.71, "edd": 10252662.0, "slack": 17385817.0, "hard": 17705809.0, "best_sampled": 6652752.0, "best_gap_pct": 122.78, "samples": 300, "wall": 17.5}
+{"prob": 5, "incumbent": 11102874.0, "decode_incumbent_order": 21275953.0, "decode_gap_pct": 91.63, "edd": 27342468.0, "slack": 41288786.0, "hard": 38222196.0, "best_sampled": 18716017.0, "best_gap_pct": 68.57, "samples": 300, "wall": 26.9}
+{"prob": 6, "incumbent": 28760341.0, "decode_incumbent_order": Infinity, "decode_gap_pct": Infinity, "edd": Infinity, "slack": Infinity, "hard": Infinity, "best_sampled": Infinity, "best_gap_pct": Infinity, "samples": 300, "wall": 45.8}
+BAYORDER-DONE
