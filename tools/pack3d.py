@@ -73,6 +73,7 @@ BOARD = sys.argv[5] if len(sys.argv) > 5 else None
 BAYID = int(sys.argv[6]) if len(sys.argv) > 6 else -1
 
 p = json.load(open(prob_path))
+p_full, keep, board_ops = p, None, None
 base_tard = None
 if BOARD:
     ops = json.load(open(BOARD))["operations"]
@@ -84,6 +85,7 @@ if BOARD:
     keep.sort()
     dd = [int(round(p["blocks"][i]["due_date"])) for i in keep]
     base_tard = sum(max(0, ext[i][0] - d) for i, d in zip(keep, dd))
+    board_ops = (ent, ext)
     p = {"bays": [p["bays"][BAYID]],
          "blocks": [{**p["blocks"][i],
                      "bay_preferences": [p["blocks"][i]["bay_preferences"][BAYID]]}
@@ -223,6 +225,35 @@ if st in (cp.OPTIMAL, cp.FEASIBLE):
         if base_tard:
             res["tardiness_delta_pct"] = round(
                 100 * (res["packed_tardiness"] - base_tard) / base_tard, 2)
+        # A win only counts once it survives the official checker as a WHOLE
+        # board: splice the repacked bay back into the incumbent (invariant 6
+        # says the other bays are untouched) and re-verify end to end.
+        if base_tard is not None and res["packed_tardiness"] < base_tard:
+            ent, ext = board_ops
+            nf = len(p_full["blocks"])
+            Pf = [max(1, int(math.ceil(b["processing_time"] - 1e-9)))
+                  for b in p_full["blocks"]]
+            flat = [0] * (nf * 7)
+            for gi, (t, o) in ent.items():
+                flat[gi*7:gi*7+7] = [o["bay_id"], o["orient_idx"], o["x"],
+                                     o["y"], t, ext[gi][0], 1]
+            for li, gi in enumerate(keep):
+                oo = sv.Value(ori[li]); ee = sv.Value(e[li])
+                flat[gi*7:gi*7+7] = [BAYID, oo, sv.Value(X[li]), sv.Value(Y[li]),
+                                     ee, ee + Pf[gi], 1]
+            engf = M._build_engine(p_full)
+            horf = max(int(round(b["due_date"])) for b in p_full["blocks"]) \
+                + max(Pf) + 40
+            engf.build_occ(horf); engf.set_solution(flat); engf.build_occ(horf)
+            res["merged_vp_bad"] = sum(1 for i in range(nf) if not engf.vp_ok(i))
+            solf = M._recs_to_sol(M._extract(engf, nf))
+            chkf = M._check(p_full, solf)
+            res["merged_checker_feasible"] = (
+                None if chkf is None else bool(chkf.get("feasible")))
+            res["merged_objective"] = (
+                None if chkf is None else chkf.get("objective"))
+            if chkf is not None and chkf.get("feasible") and out_path != "/dev/null":
+                json.dump(solf, open(out_path, "w"))
     flat = [0] * (n * 7)
     for i in range(n):
         o = sv.Value(ori[i])
