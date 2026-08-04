@@ -25,3 +25,10 @@
 {"inst": "prob_34", "solver": "shipv55", "tl": 600.0, "wall": 582.92, "overrun": false, "maxrss_mb": 363.2, "n": 300, "m": 5, "error": null, "feasible": true, "objective": 206237.0, "obj1": 0.0, "obj2": 2602, "obj3": 1525.0}
 {"inst": "prob_38", "solver": "shipv55", "tl": 600.0, "wall": 591.14, "overrun": false, "maxrss_mb": 489.1, "n": 200, "m": 4, "error": null, "feasible": true, "objective": 8994899.0, "obj1": 532.0, "obj2": 3767, "obj3": 6630.0}
 {"inst": "prob_40", "solver": "shipv55", "tl": 600.0, "wall": 581.25, "overrun": false, "maxrss_mb": 437.7, "n": 300, "m": 2, "error": null, "feasible": true, "objective": 10127998.0, "obj1": 2470.0, "obj2": 544, "obj3": 2368.0}
+
+# REBUILD VERIFICATION after the boundary-review doc/comment edits
+# repo_head=890162d dirty=3 date=2026-08-05T05:20:53+09:00
+# zip==repo 12/12 byte-identical, size 414,975 B; job 63478
+{"inst": "prob_1", "solver": "shipv55", "tl": 20.0, "wall": 16.91, "overrun": false, "maxrss_mb": 351.2, "n": 100, "m": 2, "error": null, "feasible": true, "objective": 1499.0, "obj1": 0.0, "obj2": 157, "obj3": 2.0}
+{"inst": "prob_2", "solver": "shipv55", "tl": 20.0, "wall": 16.09, "overrun": false, "maxrss_mb": 352.5, "n": 100, "m": 3, "error": null, "feasible": true, "objective": 3690.0, "obj1": 0.0, "obj2": 144, "obj3": 15.0}
+{"inst": "prob_3", "solver": "shipv55", "tl": 240.0, "wall": 227.71, "overrun": false, "maxrss_mb": 305.2, "n": 200, "m": 3, "error": null, "feasible": true, "objective": 78705.0, "obj1": 0.0, "obj2": 3171, "obj3": 419.0}
