@@ -170,7 +170,9 @@ if SOLVER == "cpsat":
         for q, c in enumerate(CAND[i]):
             cost[i, q] = int(w1 * max(0, c[4] + P[i] - D[i])
                              + w3 * (SMAX[i] - PREF[i][c[0]]))
-    m2.Minimize(sum(cost[k] * Z[k] for k in Z))     # Z2 omitted: <= w2*range
+    # NOTE: Z2 is omitted here, so "bound" in this backend bounds
+    # w1*Z1 + w3*Z3 only (the omission is worth <= w2 * spread).
+    m2.Minimize(sum(cost[k] * Z[k] for k in Z))
     known = set()
     sol_flat = None
     for rnd in range(ROUNDS):
@@ -249,11 +251,8 @@ for j in range(m):
 # would need per-LAYER polygon areas, not bbox areas, and would still
 # only be tight for boards without interlock.
 if os.environ.get("GM_AREA", "0") == "1":      # INVALID here -- see below
-    # The coefficient must be a LOWER bound on the block's true
-    # footprint, otherwise the cut is not valid and can cut off the
-    # incumbent itself -- measured 08-04: with orientation-0 areas both
-    # P3 and P4 returned sol_count 0, i.e. even the warm start was
-    # excluded. Use the minimum bbox area over orientations.
+    # NOTE: see the header -- min-over-orientations does NOT rescue this
+    # cut either; bbox areas are the wrong currency entirely.
     areaOf = []
     for i in range(n):
         best = None
