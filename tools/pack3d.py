@@ -71,11 +71,29 @@ WORKERS = int(sys.argv[4]) if len(sys.argv) > 4 else 8
 # (which is what every refuted CP re-placement arm did).
 BOARD = sys.argv[5] if len(sys.argv) > 5 else None
 BAYID = int(sys.argv[6]) if len(sys.argv) > 6 else -1
+# ASSIGNMENT-FEASIBILITY MODE (P3D_ASGFILE): is a proposed assignment
+# actually realisable? A greedy constructor failing to honour it proves
+# nothing -- reconstruct_ordered is first-fit, so its failure measures
+# the constructor, not the instance. With the bay fixed the problem
+# decomposes exactly, and asking "is there a PUNCTUAL packing of this
+# bay's blocks" is a pure decision problem: hard e_i + P_i <= D_i, no
+# objective. CP-SAT proves UNSAT or exhibits a witness; either answer is
+# a real answer, unlike a greedy miss.
+ASGFILE = os.environ.get("P3D_ASGFILE", "")
+PUNCTUAL = os.environ.get("P3D_PUNCTUAL", "0") == "1"
 
 p = json.load(open(prob_path))
 p_full, keep, board_ops = p, None, None
 base_tard = None
-if BOARD:
+if ASGFILE:
+    asg = json.load(open(ASGFILE))
+    keep = [i for i in range(len(p["blocks"])) if asg[i] == BAYID]
+    p = {"bays": [p["bays"][BAYID]],
+         "blocks": [{**p["blocks"][i],
+                     "bay_preferences": [p["blocks"][i]["bay_preferences"][BAYID]]}
+                    for i in keep],
+         "weights": p["weights"]}
+elif BOARD:
     ops = json.load(open(BOARD))["operations"]
     ent, ext = {}, {}
     for t, day in ops.items():
@@ -209,6 +227,8 @@ if os.environ.get("P3D_CUMUL", "1") == "1":
 tard = [mdl.NewIntVar(0, HOR, f"t{i}") for i in range(n)]
 for i in range(n):
     mdl.Add(tard[i] >= e[i] + P[i] - D[i])
+    if PUNCTUAL:
+        mdl.Add(e[i] + P[i] <= D[i])       # decision problem, not an objective
 reg = [mdl.NewIntVar(0, int(max(SMAX)) + 1, f"r{i}") for i in range(n)]
 for i in range(n):
     mdl.AddElement(bay[i], [int(round(SMAX[i] - PREF[i][j])) for j in range(m)],
@@ -240,6 +260,9 @@ st = sv.Solve(mdl)
 res = {"board": os.path.basename(prob_path), "n": n, "m": m,
        "status": sv.StatusName(st), "wall": round(time.time() - t0, 1),
        "model_obj": None, "bound": None}
+if ASGFILE:
+    res.update({"mode": "assignment-feasibility", "bay": BAYID,
+                "punctual_hard": PUNCTUAL, "asg": os.path.basename(ASGFILE)})
 if BOARD:
     res.update({"mode": "bay-local", "bay": BAYID, "incumbent_tardiness": base_tard})
 if st in (cp.OPTIMAL, cp.FEASIBLE):
