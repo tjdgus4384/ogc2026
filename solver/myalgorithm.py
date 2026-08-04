@@ -2,9 +2,9 @@
 
   algorithm(prob, TL) never raises; worst case returns the always-feasible
   trivial constructor. Pipeline: kernel-native seeding (6 insertion orders,
-  top-3 distinct layouts) -> 4-persona portfolio ALNS on iteration-governed
-  rounds (trajectory = f(seed, round count); machine speed only decides the
-  count, monotone in best-so-far) -> _slice_refine tail (anneal bursts race
+  top-3 distinct layouts) -> 4-persona portfolio ALNS on wall-budget rounds
+  (each round restarts every thread from the round's best; faster machines
+  anneal deeper on the same trajectory) -> _slice_refine tail (anneal bursts race
   CP-SAT exact re-placement) -> checker gate with a least-destructive
   rescue ladder over the portfolio's candidate set -> deadline-guarded
   fallback ladder.
@@ -376,51 +376,108 @@ def _gate(p, eng, n, deadline=None):
     return None, res
 
 
-def _pref_polish(p, eng, deadline):
-    """Engine-verified preference polish on the merged best board. The
-    anneal's entry-times are exactly rigid at convergence (probe 07-30),
-    but ASSIGNMENT moves are not: a tight move_block into a better-
-    preferred bay kept 88570 -> 85490 on P3 (-3.5%) in one verified
-    move. Greedy chain, objective-guarded (revert on worse), deadline-
-    guarded; the checker gate still judges the result afterwards."""
-    pref = [b["bay_preferences"] for b in p["blocks"]]
-    n = len(pref)
-    improved = True
-    while improved and time.time() < deadline - 3.0:
-        improved = False
-        cands = []
-        B = p["blocks"]
+def _assign_descent(p, eng, deadline):
+    """Exact-delta assignment descent (relocate + swap) on w2*Z2 + w3*Z3.
+
+    Z2 and Z3 are functions of the ASSIGNMENT ALONE (invariant 6), so a
+    relocate's or a swap's delta in those two terms is exact arithmetic
+    -- no geometry, no sampling. Only geometric feasibility needs the
+    engine, so every candidate is ranked perfectly up front and engine
+    time is paid only for the promising ones. Each trial is snapshot-
+    guarded: the full objective (Z1 included) decides, so a move that
+    buys balance by adding tardiness is rejected automatically.
+
+    All THREE terms are priced exactly in the ranking: Z2 and Z3 by
+    their closed-form deltas, Z1 by the mover's own tardiness (a TIGHT
+    move lands it at a punctual entry or fails, so its tardiness either
+    goes to zero or the move never happens). The score is therefore an
+    exact upper bound on the improvement of that single move.
+
+    This supersedes the preference-only polish, which ranked candidates
+    by PREFERENCE GAIN alone and skipped tardy blocks outright, so it
+    could see neither a move trading a little regret for a lot of
+    balance nor a move that rescues a tardy block into another bay.
+    Measured share of w2*Z2 where it matters: prelim P3 = 16,310 of
+    82,610 (20% of the objective), and no operator ever targeted it --
+    op8 prices its ejections in w3*Z3 alone.
+    """
+    B = p["blocks"]; bays = p["bays"]; W = p["weights"]
+    n = len(B); m = len(bays)
+    if m < 2:
+        return
+    L = [float(b["workload"]) for b in B]
+    pref = [b["bay_preferences"] for b in B]
+    areas = [bb["width"] * bb["height"] for bb in bays]
+    u = [(sum(areas) / m) / a for a in areas]
+    w1 = float(W["w1"]); w2 = float(W["w2"]); w3 = float(W["w3"])
+    D = [int(round(b["due_date"])) for b in B]
+    hor = eng.horizon()
+
+    def z2_of(S):
+        V = [u[j] * S[j] for j in range(m)]
+        return math.floor(max(V) - min(V))
+
+    moves = 0
+    while time.time() < deadline - 3.0:
+        blk = [eng.get_block(i) for i in range(n)]
+        asg = [b[0] if b[6] else -1 for b in blk]
+        tard = [max(0.0, blk[i][5] - D[i]) if blk[i][6] else 0.0
+                for i in range(n)]
+        S = [0.0] * m
         for i in range(n):
-            b = eng.get_block(i)
-            if not b[6]:
+            if asg[i] >= 0:
+                S[asg[i]] += L[i]
+        z2 = z2_of(S)
+        cands = []
+        for i in range(n):
+            a = asg[i]
+            if a < 0:
                 continue
-            dcap = (int(round(B[i]["due_date"]))
-                    - max(1, int(math.ceil(B[i]["processing_time"] - 1e-9))))
-            if b[4] > dcap:
-                continue          # tardy block: a tight revert could fail
-            order = sorted(range(len(pref[i])), key=lambda j: -pref[i][j])
-            for tb in order:
-                if tb == b[0]:
-                    break                 # already at best remaining bay
-                cands.append((pref[i][tb] - pref[i][b[0]], i, tb))
-        cands.sort(reverse=True)
-        for gain, i, tb in cands:
-            if gain <= 0 or time.time() > deadline - 3.0:
+            for b in range(m):
+                if b == a:
+                    continue
+                S2 = list(S); S2[a] -= L[i]; S2[b] += L[i]
+                d = (w2 * (z2_of(S2) - z2)
+                     + w3 * (pref[i][a] - pref[i][b])
+                     - w1 * tard[i])          # tight move ends its tardiness
+                if d < -1e-9:
+                    cands.append((d, 0, i, b))
+        byb = {}
+        for i in range(n):
+            if asg[i] >= 0:
+                byb.setdefault(asg[i], []).append(i)
+        for a in range(m):
+            for b in range(a + 1, m):
+                for i in byb.get(a, ()):
+                    for k in byb.get(b, ()):
+                        dz3 = ((pref[i][a] - pref[i][b])
+                               + (pref[k][b] - pref[k][a]))
+                        S2 = list(S)
+                        S2[a] += L[k] - L[i]; S2[b] += L[i] - L[k]
+                        d = (w2 * (z2_of(S2) - z2) + w3 * dz3
+                             - w1 * (tard[i] + tard[k]))
+                        if d < -1e-9:
+                            cands.append((d, 1, i, k))
+        if not cands:
+            break
+        cands.sort(key=lambda c: c[0])
+        improved = False
+        for tried, (d, kind, i, t) in enumerate(cands):
+            if tried >= 150 or time.time() > deadline - 3.0:
                 break
-            ob = eng.get_block(i)[0]
             before = eng.objective()[3]
-            # A preference SWAP was tried here (trade places with a
-            # resident of the wanted bay, which needs no free space).
-            # Measured worse, mean +1.6%, and P3's regret barely moved
-            # (424 -> 421): the partner loses exactly what the mover
-            # gains, so the trade rarely pays. Plain moves only.
-            if not eng.move_block(i, tb, True, 7):
-                continue
-            if eng.objective()[3] < before:
+            snap = eng.get_solution()
+            ok = (eng.move_block(i, t, True, 7) if kind == 0
+                  else eng.swap_blocks(i, t))
+            if ok and eng.objective()[3] < before - 1e-9:
                 improved = True
-            else:
-                eng.move_block(i, ob, True, 7)
-    _diag("prefpolish", obj=eng.objective()[3])
+                moves += 1
+                break                      # re-rank from the new state
+            eng.set_solution(snap)
+            eng.build_occ(hor)
+        if not improved:
+            break
+    _diag("assign", moves=moves, obj=eng.objective()[3])
 
 
 def _population_search(p, eng, seed, sec, starts, base_asg):
@@ -446,7 +503,7 @@ def _population_search(p, eng, seed, sec, starts, base_asg):
         eng.set_assignment_lock(locks if locks is not None else
                                 (base_asg or []))
         eng.run_portfolio(_THR, bsec, 1, 0.05, 0.15, 0.002, 0.9995,
-                          rseed, 1, [eng.get_solution()], 0)
+                          rseed, 1, [eng.get_solution()])
         eng.set_assignment_lock(base_asg or [])
         return eng.objective()[3], eng.get_solution()
 
@@ -561,7 +618,7 @@ def _slice_refine(p, eng, seed, until, hor):
         if arm == "a":
             eng.set_solution(cur); eng.build_occ(hor)
             eng.run_portfolio(_THR, max(1.0, end - t1), 1, 0.05, 0.15,
-                              0.002, 0.9995, seed + rounds, 1, [cur], 0)
+                              0.002, 0.9995, seed + rounds, 1, [cur])
             v = eng.objective()[3]
             if v < best:
                 best, cur = v, eng.get_solution()
@@ -731,7 +788,7 @@ def _arm_free(p, deadline, seed=7, tl=None):
                                       # the portfolio diag has no row here
     else:
         r = eng.run_portfolio(_THR, sec, rounds, 0.05, 0.15, 0.002,
-                              0.9995, seed, 1, starts, 0)
+                              0.9995, seed, 1, starts)
     if asg is not None:
         eng.set_assignment_lock([])
     try:
@@ -770,7 +827,7 @@ def _arm_free(p, deadline, seed=7, tl=None):
               thread_best=[round(x) for x in r[3:]])
     else:
         _diag("population", best=round(eng.objective()[3]))
-    _pref_polish(p, eng, deadline)
+    _assign_descent(p, eng, deadline)
     # The gate consumes the portfolio's candidate SET, best first. Whether a
     # layout carries a measure-zero checker artifact is an independent
     # lottery per candidate, so runner-ups are auditioned in two cases:

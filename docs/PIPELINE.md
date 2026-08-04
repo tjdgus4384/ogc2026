@@ -106,11 +106,16 @@ L3 INSERTION-ORDER KNOBS TRADE Z3 vs Z1: sign per board is predicted by
 L4 DESTROY-MIX KNOBS act only through the adaptive weights; masked ops
    still leak ~5% via rejection-loops. P5 (the one 4-bay board) is the
    mix-sensitive canary — check it first.
-L5 GOVERNANCE: trajectory = f(seed, chunk count); machines only choose
-   the chunk count (monotone in effective thread speed). More iterations
-   via rounds restart from best and never regress; extensions rarely
-   gain. Rate-table errors only truncate at the wall, never break
-   correctness.
+L5 WALL BUDGET (v5 correction): the shipped path is wall-clock, not
+   iteration-governed -- v3.x carried a governed mode, the v4 driver
+   stopped feeding it a core budget, and the v5 audit deleted the
+   unreachable branch. Consequence: FASTER MACHINES GET DEEPER
+   ANNEALING on the same trajectory (the grading server outruns every
+   node we own), and local values are server LOWER BOUNDS. The cost is
+   machine-dependent trajectories -- accepted deliberately: governance
+   would convert the server's speed into extra rounds instead, and
+   extra rounds measured "rarely gain" (sticky optima). Rounds still
+   restart from best and never regress.
 L6 GATE IS BYTE-AUTHORITY: vp is a conservative mirror, not the truth.
    Loosening vp admits checker-rejects (rescue churn); tightening vp
    vetoes legal moves (search loss). Either way the OBJECTIVE moves,

@@ -5,13 +5,14 @@ its own area for that long in SOME bay; shapes are relaxed to pure
 area against each bay's daily capacity. Every real board satisfies
 this, so the optimum is a valid floor: it separates the tardiness that
 the instance forces from the tardiness our packing adds.
-Usage: z1lb.py <pnum> <seconds>
+Usage: z1lb.py <prob.json path | prelim pnum> <seconds>
 """
 import json, math, sys
 from ortools.sat.python import cp_model
 
-pn = int(sys.argv[1]); TL = float(sys.argv[2]) if len(sys.argv) > 2 else 300
-p = json.load(open(f"data/preliminary_test/prob_{pn}.json"))
+arg = sys.argv[1]; TL = float(sys.argv[2]) if len(sys.argv) > 2 else 300
+path = arg if arg.endswith(".json") else f"data/preliminary_test/prob_{arg}.json"
+p = json.load(open(path))
 B, bays = p["blocks"], p["bays"]
 n, m = len(B), len(bays)
 
@@ -49,6 +50,7 @@ sv.parameters.max_time_in_seconds = TL
 sv.parameters.num_search_workers = 8
 r = sv.Solve(mdl)
 ok = r in (cp_model.OPTIMAL, cp_model.FEASIBLE)
-print(json.dumps({"P": pn, "status": sv.StatusName(r),
+print(json.dumps({"board": path.split("/")[-1][:-5],
+                  "set": path.split("/")[-2], "status": sv.StatusName(r),
                   "Z1_lower_bound": sv.BestObjectiveBound(),
                   "Z1_relaxed": sv.ObjectiveValue() if ok else None}))
