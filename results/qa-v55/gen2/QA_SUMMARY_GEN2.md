@@ -1,3 +1,8 @@
+> ADDENDUM (frozen after the fact): the blocker reported below was closed by commit efc1977,
+> which lifted the checker gate into `_report_gain` so the cpsat, GM_CB and default Gurobi
+> paths all share it. Generation 3 re-verified the fix under execution (results/qa-v55/gen3/)
+> and returned PASS with no blockers. Read the status line as "FAIL at 1e1d545, closed in efc1977".
+
 # Boundary QA gen2 (delta-only) — base 53201b3 → head 1e1d545
 
 sourceHash sha256:56701e9ed5368f9110509c63e98d7e3ad22ef5acb6d87391d3bfa2ead28fb9ff
