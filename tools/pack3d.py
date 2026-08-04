@@ -61,8 +61,34 @@ from ortools.sat.python import cp_model as cp  # noqa: E402
 prob_path, out_path = sys.argv[1], sys.argv[2]
 SEC = float(sys.argv[3]) if len(sys.argv) > 3 else 300.0
 WORKERS = int(sys.argv[4]) if len(sys.argv) > 4 else 8
+# BAY-LOCAL MODE: pack3d.py <prob> <out> <sec> <workers> <board.sol.json> <bay>
+# Whole boards at n>=150 are hopeless for this encoding (measured), but a
+# single bay holds 50-83 blocks -- the size it solved to proven optimality
+# on P1 in 69 s -- and invariant 6 says a better arrangement of one bay
+# merges exactly into the board. The assignment is frozen to the board's,
+# so Z2/Z3 are constant and this is pure tardiness minimisation, run in
+# FREE COORDINATES rather than over a harvested candidate vocabulary
+# (which is what every refuted CP re-placement arm did).
+BOARD = sys.argv[5] if len(sys.argv) > 5 else None
+BAYID = int(sys.argv[6]) if len(sys.argv) > 6 else -1
 
 p = json.load(open(prob_path))
+base_tard = None
+if BOARD:
+    ops = json.load(open(BOARD))["operations"]
+    ent, ext = {}, {}
+    for t, day in ops.items():
+        for o in day:
+            (ent if o["type"] == "ENTRY" else ext)[o["block_id"]] = (int(t), o)
+    keep = [i for i, (_, o) in ent.items() if o["bay_id"] == BAYID]
+    keep.sort()
+    dd = [int(round(p["blocks"][i]["due_date"])) for i in keep]
+    base_tard = sum(max(0, ext[i][0] - d) for i, d in zip(keep, dd))
+    p = {"bays": [p["bays"][BAYID]],
+         "blocks": [{**p["blocks"][i],
+                     "bay_preferences": [p["blocks"][i]["bay_preferences"][BAYID]]}
+                    for i in keep],
+         "weights": p["weights"]}
 B, bays, W = p["blocks"], p["bays"], p["weights"]
 n, m = len(B), len(bays)
 R = [int(math.ceil(b["release_time"] - 1e-9)) for b in B]
@@ -187,9 +213,16 @@ st = sv.Solve(mdl)
 res = {"board": os.path.basename(prob_path), "n": n, "m": m,
        "status": sv.StatusName(st), "wall": round(time.time() - t0, 1),
        "model_obj": None, "bound": None}
+if BOARD:
+    res.update({"mode": "bay-local", "bay": BAYID, "incumbent_tardiness": base_tard})
 if st in (cp.OPTIMAL, cp.FEASIBLE):
     res["model_obj"] = round(sv.ObjectiveValue() / SC)   # unscale
     res["bound"] = round(sv.BestObjectiveBound() / SC)
+    if BOARD:
+        res["packed_tardiness"] = sum(sv.Value(tard[i]) for i in range(n))
+        if base_tard:
+            res["tardiness_delta_pct"] = round(
+                100 * (res["packed_tardiness"] - base_tard) / base_tard, 2)
     flat = [0] * (n * 7)
     for i in range(n):
         o = sv.Value(ori[i])
