@@ -45,6 +45,6 @@ if st in (cp.OPTIMAL, cp.FEASIBLE):
                       "z2": z2, "z3": round(z3,2),
                       "z2z3_objective": round(w2*z2 + w3*z3),
                       "asg_hist": [asg.count(j) for j in range(m)]}))
-    json.dump(asg, open(f'/tmp/asgopt_p{P}.json','w'))
+    json.dump(asg, open(f'runs/asgopt/p{P}.json','w'))
 else:
     print(json.dumps({"P": P, "status": sv.StatusName(st)}))
