@@ -7,7 +7,7 @@ board can score on those two terms. On a board where Z1 is already zero
 (P3) that bound is the whole objective, so it says exactly how much room
 the assignment alone still holds.
 """
-import json, math, os, sys
+import json, math, os, sys, time
 from ortools.sat.python import cp_model as cp
 P = sys.argv[1]
 p = json.load(open(f'data/preliminary_test/prob_{P}.json'))
@@ -163,9 +163,22 @@ sv = cp.CpSolver()
 sv.parameters.max_time_in_seconds = 120
 sv.parameters.num_search_workers = 4
 cuts = 0
+rounds = 0
+# The cores below pin start <= due - duration, so they are PUNCTUALITY-derived:
+# valid only for a master that also forces Z1=0. Refuse the unsound pairing
+# instead of silently generating cuts that can exclude a true optimum.
+if BENDERS and not PUNCTUAL:
+    raise SystemExit('ASGOPT_AREA_BENDERS=1 requires ASGOPT_PUNCTUAL=1: the '
+                     'area cores are punctuality-derived and are not valid '
+                     'cuts for a master that allows tardiness')
+MAXROUNDS = int(os.environ.get('ASGOPT_MAXROUNDS', '25'))
+DEADLINE = time.time() + float(os.environ.get('ASGOPT_WALL', '1800'))
 while True:
     st = sv.Solve(mdl)
+    rounds += 1
     if st not in (cp.OPTIMAL, cp.FEASIBLE) or not BENDERS:
+        break
+    if rounds >= MAXROUNDS or time.time() > DEADLINE:
         break
     candidate = [next(j for j in range(m) if sv.Value(y[i][j]))
                  for i in range(n)]
@@ -199,7 +212,7 @@ if st in (cp.OPTIMAL, cp.FEASIBLE):
                       "model_z2": model_z2,
                       "z2_agrees_with_model": bool(model_z2 == z2),
                       "asg_hist": [asg.count(j) for j in range(m)],
-                      "area_benders_cuts": cuts,
+                      "area_benders_cuts": cuts, "benders_rounds": rounds,
                       "scale": SC}))
     json.dump(asg, open(f'runs/asgopt/p{P}{TAG}.json','w'))
 else:

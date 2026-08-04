@@ -248,6 +248,12 @@ for j in range(m):
     load = sum(int(round(L[i])) * inbay[i][j] for i in range(n))
     mdl.Add(zmax >= uu[j] * load)
     mdl.Add(zmin <= uu[j] * load)
+# SURROGATE SLACK: workloads and regrets are rounded to integers and the
+# balance term uses the CONTINUOUS range where the scorer uses floor(range).
+# So model_obj is a surrogate: on P1 it read 11,307 while the engine/checker
+# scored the SAME board 11,360. Always compare with the checker value.
+# tools/asgopt.py shows the exact-floor treatment if this ever needs to be
+# tight rather than merely directionally right.
 mdl.Minimize(SC * int(w1) * sum(tard) + SC * int(w3) * sum(reg)
              + int(w2) * (zmax - zmin))
 

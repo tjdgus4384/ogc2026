@@ -184,8 +184,14 @@ if SOLVER == "cpsat":
                  for i in range(n) for q, c in enumerate(CAND[i]) if c[0] == j)
         m2.Add(zhi >= ld)
         m2.Add(zlo <= ld)
+    # SURROGATE SLACK: this minimises the CONTINUOUS range, while the scorer
+    # uses floor(range). The reported obj/bound can therefore sit up to w2
+    # above the engine's own score -- visible in the frozen logs as 82,615 vs
+    # 82,610. tools/asgopt.py models the floor exactly; if this backend is
+    # ever used for a claim finer than w2, port z2f from there.
     m2.Minimize(ZSC * sum(cost[k] * Z[k] for k in Z)
                 + int(w2) * (zhi - zlo))
+    res["surrogate_slack"] = f"obj/bound may exceed the scored objective by up to w2={int(w2)} (continuous range vs floor)"
     known = set()
     # SEED THE MODEL WITH THE PRE-GENERATED CONFLICTS. These were already
     # computed in bulk by the C++ pair oracle above; leaving them out made
@@ -247,9 +253,16 @@ if SOLVER == "cpsat":
         chk = M._check(p, sol)
         res["final_obj"] = eng.objective()[3]
         res["checker_feasible"] = None if chk is None else bool(chk.get("feasible"))
-        res["gain_vs_best_input_pct"] = round(
-            100 * (best_obj - res["final_obj"]) / best_obj, 3)
-        json.dump(sol, open(out_path, "w"))
+        # vp-clean is only a CONSERVATIVE mirror of the byte-authority
+        # checker, so a gain must not be reported -- nor a board written --
+        # until check_feasibility itself agrees. Without this the tool could
+        # advertise an improvement on a board the grader would reject.
+        if res["checker_feasible"]:
+            res["gain_vs_best_input_pct"] = round(
+                100 * (best_obj - res["final_obj"]) / best_obj, 3)
+            json.dump(sol, open(out_path, "w"))
+        else:
+            res["gain_vs_best_input_pct"] = None
     print(json.dumps(res))
     raise SystemExit
 
