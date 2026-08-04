@@ -7,10 +7,11 @@
 // 40-instance harness or the official-TL boards; provenance next to
 // each value -- plus the one internal driver channel.
 //
-// The driver-side env surface: OGC_SEED / OGC_DIAG / OGC_SLICE
-// (myalgorithm.py) + SMAX_DEBUG (kernel dump hook, diagnostics only).
+// The kernel now reads NO environment at all: the last channel
+// (OGC_PREFP) became a per-thread Ctx field so the portfolio can run
+// both configurations at once. Driver-side surface: OGC_SEED /
+// OGC_DIAG / OGC_SLICE + SMAX_DEBUG (diagnostics only).
 #pragma once
-#include <cstdlib>
 
 namespace knobs {
 // ---- adopted constants (semantics live at the call sites) ----------
@@ -29,15 +30,4 @@ inline constexpr int    stride() { return 6; }
 // small-neighbourhood destroy cap: 3% of n (min 8).
 inline constexpr int    qFrac() { return 3; }
 
-// ---- driver channel ------------------------------------------------
-// pref-first insertion probability. The DRIVER sets OGC_PREFP=0.85 for
-// spec boards (m<=3 and under-saturated, _spec_rule); unset means the
-// measured regime split 0.92 (prefStrong) / 0.70.
-inline double prefP() {
-    static const double v = [] {
-        const char* q = std::getenv("OGC_PREFP");
-        return q ? atof(q) : -1.0;
-    }();
-    return v;
-}
 } // namespace knobs

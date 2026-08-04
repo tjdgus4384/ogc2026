@@ -428,6 +428,15 @@ struct Engine {
                 repair::Ctx c2; c2.pb = &pb; c2.s = &s2; c2.oc = &oc2;
                 c2.horizon = horizon_;
                 c2.densMode = tid % 2;
+                // CONFIGURATION PORTFOLIO. The driver used to pick the
+                // pref-first probability from an instance-feature rule
+                // (m<=3 and under-saturated -> 0.85). A hardcoded
+                // classifier is exactly the construct that failed
+                // leave-one-instance-out before, and the finals run on
+                // unseen instances. Running BOTH settings in different
+                // arms costs nothing (the merge already takes the best)
+                // and needs no rule at all.
+                c2.prefP = (tid % 2 == 0) ? 0.85 : -1.0;
                 c2.forcedBay = ctx.forcedBay;   // assignment lock -> threads
                 c2.entryCap = ctx.entryCap;     // entry lock -> threads
                 bool constructed = false;

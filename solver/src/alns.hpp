@@ -454,7 +454,7 @@ inline RunStats run(repair::Ctx& c, double seconds, const RunParams& rp,
             int hi = std::max(8, (int)(knobs::qFrac() * 0.01 * pb.n));
             q = lo + (int)(c.rng() % (uint32_t)(hi - lo + 1));
         }
-        // SHIFT IN PLACE (env OGC_SHIFTP = per-mille): moving a block
+        // SHIFT IN PLACE (adopted, 10% of iterations): moving a block
         // today means remove + reinsert, which is expensive AND needs
         // free space. Sliding a resident to another (x,y) in its own
         // bay at its own entry keeps the schedule and costs one vp
@@ -510,7 +510,7 @@ inline RunStats run(repair::Ctx& c, double seconds, const RunParams& rp,
             }
             continue;
         }
-        // SWAP MOVE (env OGC_SWAPP = per-mille probability): every
+        // SWAP MOVE (adopted, 2% of iterations): every
         // neighbourhood we have is remove-then-reinsert, which needs
         // free space -- but the boards are bbox-saturated (103%), so
         // that is exactly what is missing. Exchanging two blocks'
