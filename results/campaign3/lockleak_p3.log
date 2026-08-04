@@ -1,0 +1,25 @@
+# ASSIGNMENT LOCK IS NOT AN INVARIANT (P3, 2026-08-05)
+# probe build=builds/lockprobe (diff: results/campaign3/lockprobe.patch)
+# jobs=63403-63407 nodes=alan,carl,hamming,isaac,quant repo_head=e794de9
+# detector: Z3 is a PURE function of the assignment, so realised Z3 != target Z3 proves the lock leaked.
+# canaries on the probe build stayed 1499 / 3690, so the guards are behaviour-neutral by default.
+#
+# leaks found and closed in the probe build, in order:
+#  1. myalgorithm._seed_free replays the winning insertion order with [-1]*n, discarding the lock
+#  2. alns::run releases the lock at 60% of the budget (OGC_LOCKFRAC)
+#  3. alns ops 8/9 swap in an all-free forcedBay vector for their repair window
+#  4. api insertCapped and the cross-bay move primitive do the same
+#  5. the atomic SWAP move writes s.bay[] directly and never consults forcedBay
+# after all five, the lock STILL leaks -- at least one more path remains unidentified.
+#
+# arm | realised obj | realised Z3 | target Z3 | lock held
+# inc | 80,140       | 424         | 424       | yes
+# r8  | 98,150       | 571         | 104       | NO
+# opt | 129,815      | 753         | 50        | NO
+#
+# CONSEQUENCE: no assignment can currently be priced by this engine, so every historical
+# "assignment lock refuted" / "prior refuted" result measured an unlocked search, and the
+# restricted-master P3 value 39,510 remains NEITHER confirmed NOR refuted.
+{"board": "prob_3.json", "kind": "incumbent", "n": 200, "m": 3, "pre": {"constructed_obj": 1111264.0, "z1": 58.0, "z2": 3308.0, "z3": 424.0}, "hard_lock": true, "wall": 240.8, "objective": 80140.0, "z1": 0.0, "z2": 3308.0, "z3": 424.0, "placed": 200, "checker_feasible": true, "checker_obj": 80140.0}
+{"board": "prob_3.json", "kind": "file:/data_fast/home/tjdgus4384/priv/ogc2026/runs/asgopt/p3_r8.json", "n": 200, "m": 3, "pre": {"constructed_obj": 5926653.0, "z1": 331.0, "z2": 5307.0, "z3": 104.0}, "hard_lock": true, "wall": 240.9, "objective": 98150.0, "z1": 0.0, "z2": 2500.0, "z3": 571.0, "placed": 200, "checker_feasible": true, "checker_obj": 98150.0}
+{"board": "prob_3.json", "kind": "file:/data_fast/home/tjdgus4384/priv/ogc2026/results/campaign3/asgopt_p3_v3_assignment.json", "n": 200, "m": 3, "pre": {"constructed_obj": 10635198.0, "z1": 596.0, "z2": 6402.0, "z3": 50.0}, "hard_lock": true, "wall": 240.9, "objective": 129815.0, "z1": 0.0, "z2": 3373.0, "z3": 753.0, "placed": 200, "checker_feasible": true, "checker_obj": 129815.0}

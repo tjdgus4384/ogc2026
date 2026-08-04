@@ -28,7 +28,9 @@ import sys
 import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, os.path.join(ROOT, "solver"))
+# Probe builds live outside solver/ so an experiment never races the
+# shipped .so (OGC_SOLVER_DIR=builds/<name>).
+sys.path.insert(0, os.path.join(ROOT, os.environ.get("OGC_SOLVER_DIR", "solver")))
 os.chdir(ROOT)
 import myalgorithm as M  # noqa: E402
 
@@ -65,7 +67,14 @@ def greedy(score):
     return asg
 
 
-if KIND == "incumbent":
+if KIND == "free":
+    # ORACLE-PRIOR CONTROL. The point of a learned assignment prior is to
+    # start the search in a better basin. "incumbent" is the strongest
+    # prior any model could ever learn -- the assignment of the best board
+    # we have found for this instance -- so free vs incumbent at equal
+    # budget bounds what ANY prior can buy.
+    asg = None
+elif KIND == "incumbent":
     asg = inc
 elif KIND == "pref":
     asg = greedy(lambda i, j, ld: PREF[i][j])

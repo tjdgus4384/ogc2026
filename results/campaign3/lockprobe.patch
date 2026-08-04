@@ -1,0 +1,105 @@
+--- solver/src/alns.hpp	2026-08-04 17:51:47.706008211 +0900
++++ builds/lockprobe/src/alns.hpp	2026-08-05 02:02:43.339050595 +0900
+@@ -416,10 +416,20 @@
+     while (now() < seconds &&
+            (rp.maxIters <= 0 || st.iters < rp.maxIters)) {
+         st.iters++;
+-        if (c.forcedBay &&
++        // PROBE BUILD ONLY (builds/lockprobe): the shipped kernel releases
++        // the assignment lock at 60% of the budget, so a locked run measures
++        // "start here then drift", not the assignment itself -- realised Z3
++        // came back at 464/495/583 against locked targets of 316/104/50.
++        // OGC_LOCKFRAC=1 holds the lock for the whole run so an assignment
++        // can actually be priced. Default 0.6 == shipped behaviour.
++        static const double lockFrac = [] {
++            const char* q = std::getenv("OGC_LOCKFRAC");
++            return q ? atof(q) : 0.6;
++        }();
++        if (c.forcedBay && lockFrac < 1.0 &&
+             (rp.maxIters > 0
+-                 ? st.iters >= (long)(0.6 * rp.maxIters)
+-                 : now() > 0.6 * seconds))
++                 ? st.iters >= (long)(lockFrac * rp.maxIters)
++                 : now() > lockFrac * seconds))
+             c.forcedBay = nullptr;
+         // late phase: hill climbing. Iteration-based when a budget is set
+         // (machine-independent trajectory); wall-based only in legacy mode.
+@@ -533,7 +543,18 @@
+                 if (tard.empty()) goto no_swap;
+                 int A = tard[c.rng() % tard.size()];
+                 int B = pl[c.rng() % pl.size()];
+-                if (A != B) {
++                // PROBE BUILD: the atomic swap writes s.bay[] directly and
++                // never consults forcedBay, so it silently reassigns locked
++                // blocks. Refuse a swap that would move a locked block out
++                // of its bay.
++                bool lockOK = true;
++                if (c.forcedBay && A != B) {
++                    if (c.forcedBay[A] >= 0 && c.forcedBay[A] != s.bay[B])
++                        lockOK = false;
++                    if (c.forcedBay[B] >= 0 && c.forcedBay[B] != s.bay[A])
++                        lockOK = false;
++                }
++                if (A != B && lockOK) {
+                     int aB=s.bay[A], aX=s.x[A], aY=s.y[A], aE=s.e[A];
+                     int bB=s.bay[B], bX=s.x[B], bY=s.y[B], bE=s.e[B];
+                     c.oc->stamp(pb, s, A, false);
+@@ -623,8 +644,14 @@
+         if ((kind == 8 || kind == 9) && c.tsBlk >= 0) {
+             // the upgrader claims the freed space first: forced into its
+             // preferred bay at an on-time entry, then the evicted go free.
++            // PROBE BUILD: the shipped code assigns an ALL-FREE vector here
++            // and only pins tsBlk, which silently DROPS a global assignment
++            // lock for the duration of this repair -- every other block is
++            // free to change bay. Seed from the active lock instead so the
++            // override is additive.
+             thread_local std::vector<int> fbv;
+-            fbv.assign(pb.n, -1);
++            if (c.forcedBay) fbv.assign(c.forcedBay, c.forcedBay + pb.n);
++            else fbv.assign(pb.n, -1);
+             fbv[c.tsBlk] = c.tsBay;
+             const int* save = c.forcedBay;
+             c.forcedBay = fbv.data();
+--- solver/src/api.cpp	2026-08-04 17:51:47.710008162 +0900
++++ builds/lockprobe/src/api.cpp	2026-08-05 01:52:51.833803415 +0900
+@@ -196,7 +196,11 @@
+     // bay -- the primitive for chasing an external plan (plan seeds,
+     // tools/plan_pack.py).
+     bool insertCapped(int A, int eCap, int bay) {
+-        std::vector<int> fbv(pb.n, -1);
++        // PROBE BUILD: seed from the active lock so a single-block override
++        // does not silently free every other block (see alns.hpp).
++        std::vector<int> fbv;
++        if (ctx.forcedBay) fbv.assign(ctx.forcedBay, ctx.forcedBay + pb.n);
++        else fbv.assign(pb.n, -1);
+         if (bay >= 0) fbv[A] = bay;
+         const int* save = ctx.forcedBay;
+         ctx.forcedBay = fbv.data();
+@@ -646,7 +650,10 @@
+         int oldBay=sol.bay[i], oldOri=sol.ori[i], oldX=sol.x[i], oldY=sol.y[i],
+             oldE=sol.e[i], oldF=sol.f[i];
+         repair::removeBlock(ctx, i);
+-        std::vector<int> asg(pb.n, -1); asg[i]=targetBay;
++        std::vector<int> asg;
++        if (ctx.forcedBay) asg.assign(ctx.forcedBay, ctx.forcedBay + pb.n);
++        else asg.assign(pb.n, -1);
++        asg[i] = targetBay;
+         const int* fbPrev = ctx.forcedBay;
+         ctx.forcedBay = asg.data();
+         ctx.rng.seed(seed);
+--- solver/myalgorithm.py	2026-08-04 17:51:47.706008211 +0900
++++ builds/lockprobe/myalgorithm.py	2026-08-05 01:46:42.846041937 +0900
+@@ -212,7 +212,12 @@
+                     best = (ob, od)
+         if best is not None:
+             if best[1] is not orders[-1]:
+-                eng.reconstruct_ordered([-1] * n, best[1], False, 7)
++                # PROBE BUILD: the shipped line replays the winning order with
++                # [-1]*n, i.e. it throws the assignment lock away and hands the
++                # portfolio an UNLOCKED board. Every "assignment lock" result
++                # in this repo was therefore measuring an unlocked rebuild --
++                # locked Z3 targets of 316/104/50 came back as 464/495/704.
++                eng.reconstruct_ordered(lockv, best[1], False, 7)
+             # top DISTINCT seeds, best first: the portfolio's basin hedge
+             # (different insertion orders often collapse to the same layout;
+             # duplicates would waste a thread on the same basin).
