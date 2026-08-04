@@ -1,0 +1,82 @@
+{
+ "meta": {
+  "data": "preliminary_test",
+  "pseed": 7,
+  "solver_commit": "2f3358d",
+  "solver_dir": "shipcheck",
+  "solver_dirty": false,
+  "tag": "ship-v53c-p36",
+  "tls": [
+   240,
+   480,
+   600,
+   900
+  ]
+ },
+ "runs": {
+  "prob_3": {
+   "error": null,
+   "feasible": true,
+   "inst": "prob_3",
+   "m": 3,
+   "maxrss_mb": 305.1,
+   "n": 200,
+   "obj1": 0.0,
+   "obj2": 2988,
+   "obj3": 458.0,
+   "objective": 83640.0,
+   "overrun": false,
+   "solver": "shipcheck",
+   "tl": 240.0,
+   "wall": 231.34
+  },
+  "prob_4": {
+   "error": null,
+   "feasible": true,
+   "inst": "prob_4",
+   "m": 3,
+   "maxrss_mb": 477.1,
+   "n": 150,
+   "obj1": 179.0,
+   "obj2": 3291,
+   "obj3": 4112.0,
+   "objective": 3026444.0,
+   "overrun": false,
+   "solver": "shipcheck",
+   "tl": 480.0,
+   "wall": 470.69
+  },
+  "prob_5": {
+   "error": null,
+   "feasible": true,
+   "inst": "prob_5",
+   "m": 4,
+   "maxrss_mb": 489.0,
+   "n": 200,
+   "obj1": 743.0,
+   "obj2": 974,
+   "obj3": 4770.0,
+   "objective": 10547647.0,
+   "overrun": false,
+   "solver": "shipcheck",
+   "tl": 600.0,
+   "wall": 587.34
+  },
+  "prob_6": {
+   "error": null,
+   "feasible": true,
+   "inst": "prob_6",
+   "m": 3,
+   "maxrss_mb": 468.8,
+   "n": 250,
+   "obj1": 4256.0,
+   "obj2": 1492,
+   "obj3": 7535.0,
+   "objective": 29516938.0,
+   "overrun": false,
+   "solver": "shipcheck",
+   "tl": 900.0,
+   "wall": 886.35
+  }
+ }
+}
