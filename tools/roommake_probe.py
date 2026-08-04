@@ -99,28 +99,48 @@ best = base
 rows = []
 t0 = time.time()
 
-for d, i, b in cands[:TOP]:
+# MULTI-MOVER: the top candidates almost always want the SAME bay, so
+# forcing them in ONE solve amortises the displacement cost that kills
+# the single-mover trade (measured: +2,065 on P3 for one mover).
+GROUP = int(os.environ.get("ROOM_GROUP", "1"))
+groups = []
+if GROUP > 1:
+    bybay = {}
+    for d, i, b in cands[:TOP * GROUP]:
+        bybay.setdefault(b, []).append((d, i))
+    for b, lst in bybay.items():
+        for t2 in range(0, len(lst), GROUP):
+            g = lst[t2:t2 + GROUP]
+            if g:
+                groups.append((sum(x[0] for x in g), [x[1] for x in g], b))
+    groups.sort()
+    groups = groups[:TOP]
+else:
+    groups = [(d, [i], b) for d, i, b in cands[:TOP]]
+
+for d, movers, b in groups:
+    i = movers[0]
     # residents of the target bay whose stay overlaps the mover's
     # punctual-feasible span [R_i, D_i)
-    lo, hi = R[i], D[i]
+    lo, hi = min(R[q] for q in movers), max(D[q] for q in movers)
     blockers = [q for q in range(n)
                 if cur[q*7+6] and q != i and cur[q*7] == b
                 and cur[q*7+4] < hi and cur[q*7+5] > lo]
     blockers.sort(key=lambda q: -(min(hi, cur[q*7+5]) - max(lo, cur[q*7+4])))
-    free = [i] + blockers[:K - 1]
+    free = list(movers) + [q for q in blockers if q not in movers][:K - len(movers)]
     part = list(cur)
     for q in free:
         part[q*7+6] = 0
     eng.set_solution(part); eng.build_occ(hor)
     CAND = {}
-    ok_row = {"gain_exact": round(d), "block": i, "to_bay": b,
+    ok_row = {"gain_exact": round(d), "movers": movers, "to_bay": b,
               "freed": len(free)}
     for q in free:
         raw = eng.feasible_positions(q, 400, 0)
         cs = [tuple(raw[t2:t2+5]) for t2 in range(0, len(raw), 5)]
-        if q == i:
-            cs = [c for c in cs if c[0] == b and c[4] + P[i] <= D[i]]
-            ok_row["mover_punctual_slots"] = len(cs)
+        if q in movers:
+            cs = [c for c in cs if c[0] == b and c[4] + P[q] <= D[q]]
+            ok_row.setdefault("mover_slots", []).append(len(cs))
             if not cs:
                 rows.append({**ok_row, "cp": "NO_SLOT", "dobj": None})
                 eng.set_solution(cur); eng.build_occ(hor)
