@@ -1,4 +1,4 @@
-v4.1 (finals canonical, 2026-08-03; zip = submissions/2026-08-03_v41-finals.zip)
+v5.5 (2026-08-05; zip = submissions/2026-08-05_v55-finals.zip)
 
 Lineage: v0 smax78-v82 (prelim best) -> v1 full rewrite (inspectable kernel,
 hardened gate ladder) -> v2.1 priced ejections + portfolio candidate gate ->
@@ -10,6 +10,13 @@ sign test: OFF wins 26-14, p=0.04).
 
 Judgment discipline: train_final 40-instance paired sign tests primary,
 prelim-6 secondary; multi-seed for engine changes; canaries p1 1499 / p2 3690.
+
+v5.5 = v5.3 + seed-lock repair: _seed_free replayed the winning insertion
+order with [-1]*n and so handed the portfolio an UNLOCKED board, silently
+discarding _arm_free's partial preference lock (measured: 63 of 200 P3 blocks
+off their locked bay at the seed). Judged quality-neutral -- train_final 40
+pairs 25W/13L median -0.22% p=0.073, p36 3 seeds +1.18/-1.68/+0.84% -- and
+adopted as a correctness repair on the v5.3 precedent.
 
 Off-by-default experiment modules still in tree (judged by the simplification
 pass): boxlns.py (OGC_BOXLNS), baysplit.py (OGC_BAYSPLIT).

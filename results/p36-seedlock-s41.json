@@ -1,0 +1,82 @@
+{
+ "meta": {
+  "data": "preliminary_test",
+  "pseed": 41,
+  "solver_commit": "b57c66c",
+  "solver_dir": "seedlock",
+  "solver_dirty": false,
+  "tag": "p36-seedlock-s41",
+  "tls": [
+   240,
+   480,
+   600,
+   900
+  ]
+ },
+ "runs": {
+  "prob_3": {
+   "error": null,
+   "feasible": true,
+   "inst": "prob_3",
+   "m": 3,
+   "maxrss_mb": 305.1,
+   "n": 200,
+   "obj1": 0.0,
+   "obj2": 3353,
+   "obj3": 439.0,
+   "objective": 82615.0,
+   "overrun": false,
+   "solver": "seedlock",
+   "tl": 240.0,
+   "wall": 232.88
+  },
+  "prob_4": {
+   "error": null,
+   "feasible": true,
+   "inst": "prob_4",
+   "m": 3,
+   "maxrss_mb": 472.1,
+   "n": 150,
+   "obj1": 174.0,
+   "obj2": 3147,
+   "obj3": 4098.0,
+   "objective": 2956671.0,
+   "overrun": false,
+   "solver": "seedlock",
+   "tl": 480.0,
+   "wall": 469.69
+  },
+  "prob_5": {
+   "error": null,
+   "feasible": true,
+   "inst": "prob_5",
+   "m": 4,
+   "maxrss_mb": 469.7,
+   "n": 200,
+   "obj1": 672.0,
+   "obj2": 1873,
+   "obj3": 4462.0,
+   "objective": 9566333.0,
+   "overrun": false,
+   "solver": "seedlock",
+   "tl": 600.0,
+   "wall": 587.27
+  },
+  "prob_6": {
+   "error": null,
+   "feasible": true,
+   "inst": "prob_6",
+   "m": 3,
+   "maxrss_mb": 506.0,
+   "n": 250,
+   "obj1": 4010.0,
+   "obj2": 1769,
+   "obj3": 7055.0,
+   "objective": 27807072.0,
+   "overrun": false,
+   "solver": "seedlock",
+   "tl": 900.0,
+   "wall": 887.53
+  }
+ }
+}

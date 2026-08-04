@@ -212,7 +212,15 @@ def _seed_free(p, diversify=True, asg=None):
                     best = (ob, od)
         if best is not None:
             if best[1] is not orders[-1]:
-                eng.reconstruct_ordered([-1] * n, best[1], False, 7)
+                # The replay must carry the SAME lock the winning order was
+                # built under. Replaying with [-1]*n handed the portfolio an
+                # UNLOCKED board, so _arm_free's partial preference lock was
+                # silently discarded -- measured on P3 with an explicit
+                # assignment: 63 of 200 blocks already off their locked bay
+                # at the seed (results/campaign3/lockleak_p3.log). Judged
+                # quality-neutral: train_final 40 pairs 25W/13L median
+                # -0.22% p=0.073, p36 3 seeds +1.18/-1.68/+0.84%.
+                eng.reconstruct_ordered(lockv, best[1], False, 7)
             # top DISTINCT seeds, best first: the portfolio's basin hedge
             # (different insertion orders often collapse to the same layout;
             # duplicates would waste a thread on the same basin).
