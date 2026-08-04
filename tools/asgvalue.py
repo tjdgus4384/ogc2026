@@ -88,6 +88,7 @@ elif KIND.startswith("swap"):
 else:
     sys.exit(f"unknown kind {KIND}")
 
+HARD = os.environ.get("ASG_HARD", "1") == "1"
 t0 = time.time()
 eng, seeds = M._seed_free(p, asg=asg)
 res = {"board": os.path.basename(prob_path), "kind": KIND, "n": n, "m": m}
@@ -96,9 +97,18 @@ if eng is None:
     print(json.dumps(res)); raise SystemExit
 hor = max(int(round(b["due_date"])) for b in B) \
     + max(int(math.ceil(b["processing_time"] - 1e-9)) for b in B) + 40
+# _seed_free only locks the assignment during CONSTRUCTION; the anneal
+# then runs free and drifts off it. Measuring the construction point
+# separately is the only way to tell "geometry rejected this assignment"
+# apart from "the search walked away from it".
+z0 = eng.objective()
+res_pre = {"constructed_obj": z0[3], "z1": z0[0], "z2": z0[1], "z3": z0[2]}
+if HARD and asg is not None:
+    eng.set_assignment_lock(list(asg))      # persistent: threads inherit it
 eng.run_portfolio(4, SEC, 1, 0.05, 0.15, 0.002, 0.9995, 7, len(seeds), seeds)
 z = eng.objective()
-res.update({"wall": round(time.time() - t0, 1), "objective": z[3],
+res.update({"pre": res_pre, "hard_lock": HARD,
+            "wall": round(time.time() - t0, 1), "objective": z[3],
             "z1": z[0], "z2": z[1], "z3": z[2],
             "placed": sum(1 for i in range(n) if eng.get_solution()[i*7+6])})
 sol = M._recs_to_sol(M._extract(eng, n))
