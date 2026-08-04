@@ -116,6 +116,18 @@ L5 WALL BUDGET (v5 correction): the shipped path is wall-clock, not
    would convert the server's speed into extra rounds instead, and
    extra rounds measured "rarely gain" (sticky optima). Rounds still
    restart from best and never regress.
+L7 EXACT-ARM CONFLICT MODEL MUST MIRROR BOTH SWEEPS: the CP
+   re-placement's pair model is only as good as its crane coverage.
+   Entry-descent alone (the model until 08-04) silently admits
+   arrangements the checker rejects on the EXIT sweep, and the vp
+   re-check then discards the whole solve -- so the arm looks
+   "converged" while its dense proposals are being thrown away.
+   Symptom to recognise: vp-infeasible CP solutions whose bad blocks
+   are ALL inside the freed set, never frozen ones. Rule of thumb: any
+   pairwise relaxation of vp must cover rule 1 (same-layer overlap),
+   rules 2/4 (entry descent, both directions when entries tie) and
+   rules 3/5 (exit ascent, LOCKSTEP breaking simultaneous exits).
+
 L6 GATE IS BYTE-AUTHORITY: vp is a conservative mirror, not the truth.
    Loosening vp admits checker-rejects (rescue churn); tightening vp
    vetoes legal moves (search loss). Either way the OBJECTIVE moves,
