@@ -135,13 +135,17 @@ for i in range(n):
         idx.append((i, q))
 eng.set_solution([0] * (n * 7)); eng.build_occ(hor)     # empty board: pure geometry
 t0 = time.time()
-prs = eng.pair_conflicts(flatc)
-conf_time = time.time() - t0
 pairs = set()
-for t in range(0, len(prs), 2):
-    a, b = idx[prs[t]], idx[prs[t + 1]]
-    if a[0] != b[0]:
-        pairs.add((a, b))
+if os.environ.get("GM_LAZY", "0") != "1":
+    # the upfront build is quadratic in the vocabulary; with lazy
+    # separation it is pure waste (measured: a GRID vocabulary made this
+    # call, not the MIP, the wall-clock bottleneck).
+    prs = eng.pair_conflicts(flatc)
+    for t in range(0, len(prs), 2):
+        a, b = idx[prs[t]], idx[prs[t + 1]]
+        if a[0] != b[0]:
+            pairs.add((a, b))
+conf_time = time.time() - t0
 
 mdl = gp.Model(env=gp.Env(params={"OutputFlag": 0}))
 z = {(i, q): mdl.addVar(vtype=GRB.BINARY)
