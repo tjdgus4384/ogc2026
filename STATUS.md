@@ -36,7 +36,7 @@
 | 블록-쌍 3D 직교 패킹 (G001) | ❌ 기각 | P1 모형 11,307 / 체커 11,360 vs 역대최선 11,280 → **맞물림 값어치 ≤0.71%**. n≥150은 7-280× 악화, P6 UNKNOWN. `results/campaign3/pack3d_p*.log` |
 | 어휘 확장 (G002) | ❌ 닫힘 (증명) | 도구 결함 2건(사전생성 충돌 미투입·Z2 누락) 수정 후, 보드 3/9/18개 어휘에서 **라운드 0에 bound=obj**, vp_bad 0, 체커 통과. 이득 0.000-0.006%. `results/campaign3/globalmip_p3_vocab.log` |
 | ML-유도 배정 prior (G003) | ❌ 전제 붕괴 | 도달 가능한 최선 prior = 인컴번트 자신의 배정. 더 싼 Z3 배정은 전부 파국. `results/campaign3/asgfrontier_p3.log` |
-| **배정 잠금 불변식 결손** | 🔴 발견 | 출하 커널은 시드 직후 200블록 중 **63개가 잠금 이탈**. 누수 6개 식별·차단 후에야 0. `results/campaign3/lockleak_p3.log`, `lockprobe.patch` |
+| **배정 잠금 불변식 결손** | 🔴 발견 | 출하 커널은 시드 직후 200블록 중 **63개가 잠금 이탈**. 누수 6개 식별·차단 후에야 0. `results/campaign3/lockviol_counters_p3.log`(job 63409), `lockleak_p3.log`, `lockprobe.patch` |
 | P3 배정 프런티어 | ❌ 닫힘 (실측) | 잠금이 진짜 걸린 상태에서 2/8/13블록 변경이 각각 350k/2.09M/3.77M. w1≈17,800/지각단위. `results/campaign3/asgfrontier_p3.log` |
 | 시드 잠금 수정 (v5.5) | ✅ 채택 (정확성, 품질 중립) | train_final 40쌍 **25W/13L 중앙 -0.22% p=0.073**, p36 3시드 +1.18/-1.68/+0.84%. shipcheck 전항목 통과 `results/ship-v55-check.log` |
 | 제출 판단 | ⛔ **보류** | 목표 미달(p36 ~2367 vs rank-1 2,440). v5.5는 v5.3 대비 측정 이득 0 → 12h 쿨다운과 8% 시드 로터리를 동전던지기에 쓰지 않는다. **v5.3 유지** |

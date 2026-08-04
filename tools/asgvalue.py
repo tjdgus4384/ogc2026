@@ -72,7 +72,10 @@ if KIND == "free":
     # start the search in a better basin. "incumbent" is the strongest
     # prior any model could ever learn -- the assignment of the best board
     # we have found for this instance -- so free vs incumbent at equal
-    # budget bounds what ANY prior can buy.
+    # budget bounds what ANY prior can buy -- but ONLY while the lock
+    # actually holds. The shipped kernel leaked it (six paths; see
+    # results/campaign3/lockviol_counters_p3.log), so a meaningful
+    # comparison needs ASG_HARD=1 on a build where _viol stays 0.
     asg = None
 elif KIND == "incumbent":
     asg = inc

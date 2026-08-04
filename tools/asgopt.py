@@ -20,9 +20,10 @@ ar = [b['width']*b['height'] for b in bays]
 # SC also sets how finely u_j is represented. The objective is scored with
 # floor(Z2), so the master must model that floor exactly (below) rather than
 # minimise a continuous range; and u_j must be fine enough that its rounding
-# cannot move the floor. 1e-3 left a 4.6e-4 relative error on u, which is the
-# only reason the earlier "OPTIMAL" certified a surrogate rather than the
-# printed objective.
+# cannot move the floor. At SC=1e3 the worst-case relative error on u is
+# 0.5/round(SC*u) (~2e-4 here), which is why the earlier "OPTIMAL" certified a
+# surrogate rather than the printed objective; z2_agrees_with_model in the
+# output now reports whether the model's Z2 equals the officially scored one.
 SC = 100000
 u = [int(round(SC*(sum(ar)/m)/a)) for a in ar]
 w1, w2, w3 = W['w1'], W['w2'], W['w3']
@@ -32,7 +33,7 @@ w1, w2, w3 = W['w1'], W['w2'], W['w3']
 # geometry: a bay offers area_j per day, and a block needs area_i * P_i
 # of that. Polygon areas are used, so no interlocking can shrink the
 # demand, which makes the constraint valid rather than heuristic.
-CAP = float(__import__('os').environ.get('ASGOPT_CAP', '0'))   # 0 = off
+CAP = float(os.environ.get('ASGOPT_CAP', '0'))                 # 0 = off
 FIT = os.environ.get('ASGOPT_FIT', '0') == '1'
 PUNCTUAL = os.environ.get('ASGOPT_PUNCTUAL', '0') == '1'
 TAG = os.environ.get('ASGOPT_TAG', '')

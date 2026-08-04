@@ -217,7 +217,8 @@ def _seed_free(p, diversify=True, asg=None):
                 # UNLOCKED board, so _arm_free's partial preference lock was
                 # silently discarded -- measured on P3 with an explicit
                 # assignment: 63 of 200 blocks already off their locked bay
-                # at the seed (results/campaign3/lockleak_p3.log). Judged
+                # at the seed (results/campaign3/lockviol_counters_p3.log,
+                # job 63409). Judged
                 # quality-neutral: train_final 40 pairs 25W/13L median
                 # -0.22% p=0.073, p36 3 seeds +1.18/-1.68/+0.84%.
                 eng.reconstruct_ordered(lockv, best[1], False, 7)

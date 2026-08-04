@@ -1,0 +1,19 @@
+# ASSIGNMENT-LOCK VIOLATION COUNTERS (P3, direct measurement)
+# detector: tools/asgvalue.py _viol() counts blocks whose realised bay != locked bay.
+# arm = restricted-master optimum assignment (results/campaign3/asgopt_p3_v3_assignment.json), 40s budget.
+# job 63409 = SHIPPED kernel (solver/), job 63410 = probe build after the _seed_free repair only,
+# job 63415 = probe build after all six leak repairs. repo_head at capture=53201b3
+#
+# build                                   | viol after seed | viol after portfolio | realised Z3 (target 50)
+# shipped solver/                         |            63   |                18    | 611
+# probe: _seed_free replay under lock     |             0   |                13    | 818
+# probe: all six leaks closed             |             0   |                 0    |  50
+#
+# The 63/200 figure quoted in solver/VERSION, solver/myalgorithm.py, STATUS.md and SUBMISSIONS.md
+# is the shipped-kernel row below.
+## diag_shipped.log
+{"board": "prob_3.json", "kind": "file:/data_fast/home/tjdgus4384/priv/ogc2026/results/campaign3/asgopt_p3_v3_assignment.json", "n": 200, "m": 3, "lock_viol_post": 18, "pre": {"constructed_obj": 577867.0, "z1": 4.0, "z2": 3101.0, "z3": 3275.0, "lock_viol": 63}, "hard_lock": true, "wall": 40.9, "objective": 102840.0, "z1": 0.0, "z2": 2238.0, "z3": 611.0, "placed": 200, "checker_feasible": true, "checker_obj": 102840.0}
+## diag_probe.log
+{"board": "prob_3.json", "kind": "file:/data_fast/home/tjdgus4384/priv/ogc2026/results/campaign3/asgopt_p3_v3_assignment.json", "n": 200, "m": 3, "lock_viol_post": 13, "pre": {"constructed_obj": 10635198.0, "z1": 596.0, "z2": 6402.0, "z3": 50.0, "lock_viol": 0}, "hard_lock": true, "wall": 40.9, "objective": 137515.0, "z1": 0.0, "z2": 2963.0, "z3": 818.0, "placed": 200, "checker_feasible": true, "checker_obj": 137515.0}
+## diag2.log
+{"board": "prob_3.json", "kind": "file:/data_fast/home/tjdgus4384/priv/ogc2026/results/campaign3/asgopt_p3_v3_assignment.json", "n": 200, "m": 3, "lock_viol_post": 0, "pre": {"constructed_obj": 10635198.0, "z1": 596.0, "z2": 6402.0, "z3": 50.0, "lock_viol": 0}, "hard_lock": true, "wall": 40.7, "objective": 4412898.0, "z1": 246.0, "z2": 6402.0, "z3": 50.0, "placed": 200, "checker_feasible": true, "checker_obj": 4412898.0}

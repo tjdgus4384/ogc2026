@@ -14,7 +14,8 @@ prelim-6 secondary; multi-seed for engine changes; canaries p1 1499 / p2 3690.
 v5.5 = v5.3 + seed-lock repair: _seed_free replayed the winning insertion
 order with [-1]*n and so handed the portfolio an UNLOCKED board, silently
 discarding _arm_free's partial preference lock (measured: 63 of 200 P3 blocks
-off their locked bay at the seed). Judged quality-neutral -- train_final 40
+off their locked bay at the seed; results/campaign3/lockviol_counters_p3.log,
+job 63409). Judged quality-neutral -- train_final 40
 pairs 25W/13L median -0.22% p=0.073, p36 3 seeds +1.18/-1.68/+0.84% -- and
 adopted as a correctness repair on the v5.3 precedent.
 
