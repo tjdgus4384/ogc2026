@@ -73,6 +73,12 @@ elif KIND == "bal":
     asg = greedy(lambda i, j, ld: -u[j] * ld[j])
 elif KIND == "mix":
     asg = greedy(lambda i, j, ld: PREF[i][j] - 0.02 * u[j] * ld[j])
+elif KIND.startswith("file:"):
+    # geometry-free optimum (tools/asgopt.py). Z2 and Z3 depend only on
+    # the assignment, so this is the best those two terms can be; the
+    # question this probe answers is what the engine's exact geometry
+    # then charges in tardiness for insisting on it.
+    asg = json.load(open(KIND[5:]))
 elif KIND.startswith("swap"):
     k = int(KIND[4:])
     asg = list(inc)
