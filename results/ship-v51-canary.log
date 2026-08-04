@@ -1,0 +1,4 @@
+=== shipped-zip canaries (refs: p1 1499, p2 3690) ===
+{"inst": "prob_1", "solver": "shipcheck", "tl": 20.0, "wall": 16.23, "overrun": false, "maxrss_mb": 351.5, "n": 100, "m": 2, "error": null, "feasible": true, "objective": 1499.0, "obj1": 0.0, "obj2": 157, "obj3": 2.0}
+{"inst": "prob_2", "solver": "shipcheck", "tl": 20.0, "wall": 16.12, "overrun": false, "maxrss_mb": 352.7, "n": 100, "m": 3, "error": null, "feasible": true, "objective": 3690.0, "obj1": 0.0, "obj2": 144, "obj3": 15.0}
+=== shipcanary done ===

@@ -1,0 +1,10 @@
+{"prob": 4, "arm": "cpsat", "K": 25, "ncand": 30, "wall": 119.3, "rounds": 374, "applied": 0, "base": 2986177.0, "best": 2986177.0, "gain_pct": 0.0}
+{"prob": 4, "arm": "grb", "K": 25, "ncand": 30, "wall": 119.3, "rounds": 232, "applied": 0, "base": 2986177.0, "best": 2986177.0, "gain_pct": 0.0}
+{"prob": 4, "arm": "grb", "K": 80, "ncand": 40, "wall": 125.6, "rounds": 7, "applied": 0, "base": 2986177.0, "best": 2986177.0, "gain_pct": 0.0}
+{"prob": 5, "arm": "cpsat", "K": 25, "ncand": 30, "wall": 119.2, "rounds": 315, "applied": 4, "base": 11102874.0, "best": 11067733.0, "gain_pct": 0.317}
+{"prob": 5, "arm": "grb", "K": 25, "ncand": 30, "wall": 119.3, "rounds": 210, "applied": 2, "base": 11102874.0, "best": 11093123.0, "gain_pct": 0.088}
+{"prob": 5, "arm": "grb", "K": 80, "ncand": 40, "wall": 127.0, "rounds": 9, "applied": 0, "base": 11102874.0, "best": 11102874.0, "gain_pct": 0.0}
+{"prob": 6, "arm": "cpsat", "K": 25, "ncand": 30, "wall": 119.5, "rounds": 327, "applied": 11, "base": 28760341.0, "best": 28597285.0, "gain_pct": 0.567}
+{"prob": 6, "arm": "grb", "K": 25, "ncand": 30, "wall": 119.4, "rounds": 255, "applied": 13, "base": 28760341.0, "best": 28627088.0, "gain_pct": 0.463}
+{"prob": 6, "arm": "grb", "K": 80, "ncand": 40, "wall": 121.1, "rounds": 14, "applied": 0, "base": 28760341.0, "best": 28760341.0, "gain_pct": 0.0}
+EXACTARM-DONE
