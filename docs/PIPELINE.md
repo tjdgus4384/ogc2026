@@ -22,7 +22,8 @@ algorithm(prob, TL)                      never raises; worst case _trivial
       │                  of ~25-block tardy-seeded subsets (candidates from
       │                  the engine, conflicts from C++ pair_conflicts,
       │                  vp-verified, reserve-protected)
-      ├─ _pref_polish    deterministic single-block preferred-bay moves
+      ├─ _assign_descent exact-delta (Z2/Z3 closed form, Z1 via the mover's
+      │                  own tardiness) relocate/swap descent, engine-verified
       ├─ _gate           checker → rescue ladder (nudge → retime → same-bay
       │                  move tight/loose → cross-bay move), deadline-guarded
       └─ candidate loop  gate failure ⇒ try runner-up thread solutions
