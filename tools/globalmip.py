@@ -148,6 +148,79 @@ for i in range(n):
         z[i, q].Start = 1.0 if c == cur else 0.0
 mdl.Params.MIPFocus = 1
 
+CB = os.environ.get("GM_CB", "0") == "1"
+if CB:
+    # Proper separation: enforce conflicts INSIDE the search tree. The
+    # outer round loop restarts the whole solve after each batch of
+    # cuts, so it re-pays the tree every time and converges in ~250
+    # cuts/round; a lazy callback adds them at every integer node and
+    # keeps one tree. The oracle is the engine's pair model, which the
+    # 08-04 fix made sound, so a solution that survives separation is
+    # feasible by construction.
+    mdl.Params.LazyConstraints = 1
+    mdl.Params.TimeLimit = float(os.environ.get("GM_CBTL", "900"))
+    state = {"cuts": 0, "sols": 0, "best": None}
+
+    def sep(model, where):
+        if where != GRB.Callback.MIPSOL:
+            return
+        vals = model.cbGetSolution(model._z)
+        sub, sidx = [], []
+        for (i, q), v in zip(model._keys, vals):
+            if v > 0.5:
+                c = CAND[i][q]
+                sub += [i, c[0], c[1], c[2], c[3], c[4]]
+                sidx.append((i, q))
+        pr = eng.pair_conflicts(sub)
+        added = 0
+        for t in range(0, len(pr), 2):
+            a, b = sidx[pr[t]], sidx[pr[t + 1]]
+            if a[0] == b[0]:
+                continue
+            model.cbLazy(model._z[model._pos[a]] + model._z[model._pos[b]] <= 1)
+            added += 1
+        state["cuts"] += added
+        state["sols"] += 1
+        if added == 0:
+            ob = model.cbGet(GRB.Callback.MIPSOL_OBJ)
+            if state["best"] is None or ob < state["best"]:
+                state["best"] = ob
+
+    keys = [(i, q) for i in range(n) for q in range(len(CAND[i]))]
+    mdl._keys = keys
+    mdl._z = [z[k] for k in keys]
+    mdl._pos = {k: t for t, k in enumerate(keys)}
+    eng.set_solution([0] * (n * 7)); eng.build_occ(hor)
+    mdl.optimize(sep)
+    out = {"board": os.path.basename(prob_path), "mode": "callback",
+           "candidates": sum(len(CAND[i]) for i in range(n)),
+           "best_input": best_obj, "lazy_cuts": state["cuts"],
+           "int_sols": state["sols"], "status": mdl.Status,
+           "sol_count": mdl.SolCount}
+    if mdl.SolCount:
+        flat = [0] * (n * 7)
+        for i in range(n):
+            for q, c in enumerate(CAND[i]):
+                if z[i, q].X > 0.5:
+                    flat[i*7:i*7+7] = [c[0], c[1], c[2], c[3], c[4],
+                                       c[4] + P[i], 1]
+                    break
+        eng.set_solution(flat); eng.build_occ(hor)
+        out["vp_bad"] = sum(1 for i in range(n) if not eng.vp_ok(i))
+        out["engine_obj"] = eng.objective()[3]
+        out["mip_obj"] = round(mdl.ObjVal)
+        out["bound"] = round(mdl.ObjBound)
+        if out["vp_bad"] == 0:
+            sol = M._recs_to_sol(M._extract(eng, n))
+            chk = M._check(p, sol)
+            out["checker_feasible"] = None if chk is None else bool(chk.get("feasible"))
+            out["checker_obj"] = None if chk is None else chk.get("objective")
+            out["gain_vs_best_input_pct"] = round(
+                100 * (best_obj - out["engine_obj"]) / best_obj, 3)
+            json.dump(sol, open(out_path, "w"))
+    print(json.dumps(out))
+    raise SystemExit
+
 res = {"board": os.path.basename(prob_path),
        "candidates": sum(len(CAND[i]) for i in range(n)),
        "conflict_pairs": len(pairs), "conflict_build_s": round(conf_time, 2),
