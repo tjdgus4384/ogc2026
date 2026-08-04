@@ -10,11 +10,9 @@
   fallback ladder.
 
   Structure-keyed config (_spec_rule, measured 5-seed at official TLs):
-  <=3-bay AND under-saturated boards get a partial preference lock
-  (P3 -2.1% / P4 -8.2%); rounds come from the budget (2 when sec <= 110,
-  else 1). The pref-first probability is NOT decided by a rule any more
-  -- half the portfolio's arms carry 0.85 and half the regime default,
-  so both configurations compete and the merge keeps the winner.
+  <=3-bay AND under-saturated boards get pref-first 0.85 + a partial
+  preference lock (P3 -2.1% / P4 -8.2%); rounds come from the budget
+  (2 when sec <= 110, else 1). 4-bay/over-saturated boards keep legacy.
 
   Env hooks, all inert on the grading server (unset): OGC_SEED
   (portfolio seed, distributional testing), OGC_DIAG (stderr
@@ -37,6 +35,7 @@ import time
 #  OGC_SEED    portfolio seed (distributional testing; server default 7)
 #  OGC_DIAG    stderr diagnostics (harness logs; silent on the server)
 #  OGC_SLICE   =0 disables the slice-refine tail (ablation switch)
+#  OGC_PREFP   internal driver->kernel channel set by _spec_rule
 #  SMAX_DEBUG  kernel-side dump hook (api/alns), unset in production
 _DIAG = os.environ.get("OGC_DIAG")
 
@@ -715,12 +714,12 @@ def _arm_free(p, deadline, seed=7, tl=None):
                                      # unlock + NO stacked PREFP reaches
                                      # the deep basins (ledger 07-30)
             asg[i] = max(range(len(pref[i])), key=lambda j: pref[i][j])
-    # The pref-first BOOST is no longer decided here: both settings run
-    # side by side in the portfolio's arms (api.cpp), so no instance
-    # rule picks one. The assignment LOCK below stays a spec-board
-    # mechanism -- stacking a lock on top of the boost pushed locked
-    # boards over the tardiness edge (ledger 07-30), and the arms that
-    # carry the boost are exactly the ones that also carry the lock.
+    # PREFP boost and locks are BOTH preference mechanisms -- stacked
+    # they push locked boards over the tardiness edge (the production-
+    # only cliff: probe without PREFP was stable). Locks replace the
+    # boost where they apply; unlocked spec boards keep 0.85.
+    if spec and asg is None:
+        os.environ["OGC_PREFP"] = os.environ.get("OGC_PREFP", "0.85")
     eng, seeds = _seed_free(p, asg=asg)
     if eng is None and asg is not None:
         asg = None

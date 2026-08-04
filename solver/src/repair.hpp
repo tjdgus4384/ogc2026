@@ -41,12 +41,6 @@ struct Ctx {
     int densMode = -1;                // -1: knob; 0: bay-area cap
                                       // (never falsely rejects);
                                       // 1: instance fill cap (filters)
-    // pref-first insertion probability for THIS thread. -1 = use the
-    // runtime regime split. Per-thread instead of global so the
-    // portfolio can run both configurations at once (see api.cpp) --
-    // that is what removed the instance-feature rule that used to pick
-    // one of them up front.
-    double prefP = -1.0;
     const int* entryCap  = nullptr;   // optional block->latest-entry lock
                                       // (or -1): the Z1 twin of forcedBay.
                                       // Held for the WHOLE anneal -- the
@@ -265,7 +259,13 @@ inline bool insertGreedy(Ctx& c, int A, int eCap = -1) {
         eCap = c.entryCap[A];
     int eBot = pb.R[A];
     int eTop = (eCap > 0 ? eCap : c.horizon - pb.P[A] - 1);
-    // ENERGETIC RESERVATION (adopted): skip release days that
+    // SLACK-AWARE ENTRY (env OGC_SLACKDEF = fraction of slack, 0 =
+    // off): repair always grabs the earliest legal day, so slack-rich
+    // blocks occupy prime early space and tight blocks find none --
+    // the measured pathology (peak utilisation 63% yet tardy blocks
+    // wait 13-19 days past release). Starting slack-rich blocks later
+    // reserves that space, inside the anneal, vp-exact.
+    // ENERGETIC RESERVATION (env OGC_RESERVE): skip release days that
     // are PROVABLY over-subscribed -- days where the blocks that must
     // be present already demand more area than polygons can pack. A
     // block with slack gains nothing by entering there and denies the
@@ -287,13 +287,14 @@ inline bool insertGreedy(Ctx& c, int A, int eCap = -1) {
     else { bays.resize(pb.m); for (int j = 0; j < pb.m; j++) bays[j] = j; }
     std::vector<int> oris(pb.geo[A].orients.size());
     for (size_t o = 0; o < oris.size(); o++) oris[o] = (int)o;
+    const double PREFP = knobs::prefP();
     if (std::uniform_real_distribution<double>(0,1)(c.rng)
-            < (c.prefP >= 0 ? c.prefP : (c.prefStrong ? 0.92 : 0.70)))
+            < (PREFP >= 0 ? PREFP : (c.prefStrong ? 0.92 : 0.70)))
         std::sort(bays.begin(), bays.end(), [&](int a, int b){
             return pb.pref[A][a] > pb.pref[A][b]; });
     else
         std::shuffle(bays.begin(), bays.end(), c.rng);
-    // COMPACT-ORIENTATION PREFERENCE (adopted, 50% of draws):
+    // COMPACT-ORIENTATION PREFERENCE (env OGC_ORIPREF = percent):
     // orientations of the same block differ in bounding-box area by a
     // median factor of 1.38 (max 3.19), and the boards are bbox-bound
     // (bbox utilisation 103% while polygon utilisation is 58-65%), so
