@@ -1,0 +1,3 @@
+# build 1e1d545 job 63484 2026-08-05T05:25:05+09:00 tool=tools/asgopt.py prob=3
+ASGOPT_AREA_BENDERS=1 requires ASGOPT_PUNCTUAL=1: the area cores are punctuality-derived and are not valid cuts for a master that allows tardiness
+{"prob":"3","error":true}

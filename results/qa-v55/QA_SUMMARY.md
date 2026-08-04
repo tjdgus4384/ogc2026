@@ -1,3 +1,8 @@
+> ADDENDUM (frozen after the fact): the checker_feasible gap reported below as an OPEN finding
+> was closed before this file was committed -- commit d0a07f1 gated the cpsat path, and efc1977
+> lifted the gate into `_report_gain` so all three backends share it. Read the status line as
+> "PASS, finding closed in d0a07f1/efc1977".
+
 # Boundary QA — campaign-3 change set (base 95201bb → head 53201b3)
 
 sourceHash sha256:993208275a308affe1859ef5e9125ccc9769f3390f6c6d1139709d390f1c0e1b
