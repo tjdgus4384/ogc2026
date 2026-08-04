@@ -181,6 +181,31 @@ for i in range(n):
             lits.append(lit)
         mdl.AddBoolOr(lits)
 
+# REDUNDANT ENERGETIC REASONING (per bay, over time). The pair
+# disjunctions carry no notion of a bay filling up, so on congested
+# boards the search flails: P4's bays came back 5-7x worse than the
+# incumbent and P6's bays returned no solution at all in 240 s. Inside
+# THIS model bboxes may not overlap, so the area of the blocks resident
+# in bay j at time t is bounded by the bay's area -- a valid cumulative
+# constraint here even though the same inequality is INVALID for the
+# real problem, where interlocking lets boards exceed it (measured:
+# 7.6-13.3% of contact pairs interlock).
+if os.environ.get("P3D_CUMUL", "1") == "1":
+    area = []
+    for i in range(n):
+        a = mdl.NewIntVar(1, maxW * maxH, f"a{i}")
+        mdl.AddElement(ori[i], [max(1, (EXT[i][o]["x1"] - EXT[i][o]["x0"])
+                                    * (EXT[i][o]["y1"] - EXT[i][o]["y0"]))
+                                for o in range(NORI[i])], a)
+        area.append(a)
+    for j in range(m):
+        ivs, dem = [], []
+        for i in range(n):
+            iv = mdl.NewOptionalIntervalVar(e[i], P[i], e[i] + P[i],
+                                            inbay[i][j], f"iv{i}_{j}")
+            ivs.append(iv); dem.append(area[i])
+        mdl.AddCumulative(ivs, dem, BW[j] * BH[j])
+
 tard = [mdl.NewIntVar(0, HOR, f"t{i}") for i in range(n)]
 for i in range(n):
     mdl.Add(tard[i] >= e[i] + P[i] - D[i])
