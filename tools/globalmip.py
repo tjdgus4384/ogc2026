@@ -163,11 +163,20 @@ for j in range(m):
 # it is exactly the global structure the pairwise conflict set expresses
 # only implicitly. A few hundred rows that tighten the LP everywhere.
 if os.environ.get("GM_AREA", "1") == "1":
+    # The coefficient must be a LOWER bound on the block's true
+    # footprint, otherwise the cut is not valid and can cut off the
+    # incumbent itself -- measured 08-04: with orientation-0 areas both
+    # P3 and P4 returned sol_count 0, i.e. even the warm start was
+    # excluded. Use the minimum bbox area over orientations.
     areaOf = []
     for i in range(n):
-        sh = B[i]["shape"][0]["layers"]
-        xs_ = [v[0] for lay in sh for v in lay]; ys_ = [v[1] for lay in sh for v in lay]
-        areaOf.append((max(xs_) - min(xs_)) * (max(ys_) - min(ys_)))
+        best = None
+        for sh in B[i]["shape"]:
+            xs_ = [v[0] for lay in sh["layers"] for v in lay]
+            ys_ = [v[1] for lay in sh["layers"] for v in lay]
+            a = (max(xs_) - min(xs_)) * (max(ys_) - min(ys_))
+            best = a if best is None else min(best, a)
+        areaOf.append(best)
     span = {}
     for i in range(n):
         for q, c in enumerate(CAND[i]):
