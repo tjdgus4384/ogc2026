@@ -1,0 +1,4 @@
+{"board": "prob_3.sol.json", "tightness_conflicts_on_incumbent": 0, "soundness_pairs_checked": 367, "soundness_violations": 0}
+{"board": "prob_4.sol.json", "tightness_conflicts_on_incumbent": 0, "soundness_pairs_checked": 331, "soundness_violations": 0}
+{"board": "prob_6.sol.json", "tightness_conflicts_on_incumbent": 0, "soundness_pairs_checked": 349, "soundness_violations": 0}
+CSOUND-DONE
