@@ -1,0 +1,18 @@
+{
+ "P3": {
+  "objective": 76230.0,
+  "source": "ej-s15"
+ },
+ "P4": {
+  "objective": 2643869.0,
+  "source": "mine-qF-s100"
+ },
+ "P5": {
+  "objective": 9739415.0,
+  "source": "mine-sh45-s79"
+ },
+ "P6": {
+  "objective": 27650902.0,
+  "source": "mine-sh45-s83"
+ }
+}

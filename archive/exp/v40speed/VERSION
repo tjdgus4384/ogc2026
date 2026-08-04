@@ -1,0 +1,26 @@
+v40speed staging (= solver v3.1). Speed-program ledger: ADOPTED rb-cache+flags x1.12-1.20 (v3.1). REFUTED: snap-bypass, flags-alone, pair-mask screens (+0-1%), overlap memoization (-0~-4%: vp cost is ~22ns/entry LOOP iterations, not geometry calls -- layer-bbox early-outs already kill the exact work; memo table thrashes cache). CORRECTED TARGET: vp's five internal nb loops = the measured 26-34% block; a Sol-level per-bay TIME-BUCKET index cuts iterations from pop (60-100) to overlappers (15-30). Consumers are order-insensitive (booleans / sorted sets) so the byte-identity contract holds.
+Time-bucket wiring (07-30): Sol::tbk[bay][t/16], forSpan w/ local-epoch
+dedup (nested revisits safe: fns pure). vp 5 rules span-complete on
+forSpan. Maintenance split: addIdx/delIdx (byBay+tbk) at legacy placement
+sites; addTbk/delTbk (tbk only) at e/f retimes (compactLeft, retimeBlock)
+so byBay order stays byte-identical. retimeBlock wrap is mutation-tight
+(neighbour vp(k) must see i at NEW times). audit codes 5/6 = tbk
+incoherence. BATTERY: byte-identical 6/6 (p27 8000 it, real-P4 20000 it).
+BATTERY 57693 (stay-interval tbk + epoch dedup): byte-identical 6/6 but
+SLOWER -- p27 0.962x / p38 0.980x / real-P4 0.946x. Mechanism: stays are
+long vs TB=16, so rule-1's full-stay span revisits each long-stay
+resident span/16 times (epoch check each) and scattered seenEp writes
+beat byBay's linear prefetch. REDESIGN (zero-duplicate): each rule is one
+of three query shapes -- stab(t) present-at-t = tbk one bucket; enter =
+ebk[e/TB] one home; exit = fbk[(f-1)/TB] one home. Rule 1 splits
+disjointly into stab(eN) + enter(eN+1,fN). No dedup state at all; epochs
+deleted. audit code 5 = full index rebuild-and-compare per bucket.
+BATTERY 57694 (zero-dup ebk/fbk/stab design): byte-identical 6/6, speed
+p27 1.034x / p38 0.983x / real-P4 1.011x -- REFUTED at adoption
+threshold. With duplication and dedup overhead structurally eliminated, the win
+is ~1% DESPITE visits dropping 55-75% (measured overlap fractions
+0.17-0.52): the reject path was already ~free (~1-2ns/entry), and vp
+cost is concentrated in QUALIFYING work (restOverlap, pres rebuilds,
+entryOK/exitOK) which no visit-reduction can remove. Derivation in
+docs/PIPELINE.md. vp-index front CLOSED (two designs measured).
+NOT folded into solver; this dir is the archive.

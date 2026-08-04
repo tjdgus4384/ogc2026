@@ -1,0 +1,4 @@
+{"p": 4, "incumbent": 2540917.0, "K": 60, "ncand": 40, "iters": 500}
+{"conflicts": 338526, "cands": 2275}
+{"iter": 15, "obj": 2538938.0, "delta_pct": -0.078}
+{"iter": 56, "obj": 2532633.0, "delta_pct": -0.326}

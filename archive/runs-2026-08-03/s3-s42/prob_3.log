@@ -1,0 +1,4 @@
+{"diag": "slice", "rounds": 16, "obj": 82610.0, "rate_p": 0.0, "rate_a": 1.032128414438868}
+{"diag": "population", "best": 82610}
+{"diag": "prefpolish", "obj": 82610.0}
+{"inst": "prob_3", "solver": "solver_sl3", "tl": 240.0, "wall": 222.61, "overrun": false, "maxrss_mb": 107.7, "n": 200, "m": 3, "error": null, "feasible": true, "objective": 82610.0, "obj1": 0.0, "obj2": 3262, "obj3": 442.0}

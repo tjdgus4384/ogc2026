@@ -1,0 +1,3 @@
+{"reconstruct_rc": -1, "start_placed": 200, "n": 200, "horizon": 428}
+{"p": 5, "mode": "polish", "anneal_secs": 420.0, "after_anneal": 11290549.0}
+{"p": 5, "mode": "polish", "seed": 36, "obj": 10882074.0, "z1": 763.0, "z2": 3112.0, "z3": 5167.0, "polish_tried": 544, "polish_improved": 31, "vp_violations": 0, "wall": 597.1}

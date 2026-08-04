@@ -1,0 +1,7 @@
+{"p": 6, "incumbent": 31194210.0, "z1": 4530.0, "z2": 1650.0, "z3": 6530.0}
+{"window_bay": 0, "window_t0": 84, "window_tardy_days": 780}
+{"freed": 20, "tardy_total": 147}
+{"cand_secs": 0.6, "cand_min": 1, "cand_max": 1, "cand_mean": 1.0}
+{"conflict_secs": 0.0, "conflicts": 0}
+{"status": "OPTIMAL", "solve_secs": 0.0}
+{"cpsat_obj": 31194210.0, "incumbent": 31194210.0, "delta_pct": 0.0, "vp_violations": 0, "screen_sound": true}

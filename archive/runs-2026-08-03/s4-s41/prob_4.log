@@ -1,0 +1,6 @@
+{"diag": "slice", "rounds": 6, "obj": 2985663.0, "rate_p": 458.8160283337307, "rate_a": 463.6824004155761}
+{"diag": "repair", "iters": 1006980, "failed": 0, "fail_pct": 0.0}
+{"diag": "ops", "used": [142, 126, 61, 52, 68, 36, 40, 52, 0, 24], "imp": [398, 139, 86, 46, 44, 43, 83, 31, 0, 7]}
+{"diag": "portfolio", "winner": 2, "iters": 787898, "chunks": 1, "phase_us": [1899676, 48863942, 55427, 28], "thread_best": [3969215, 3553286, 3147930, 3486751]}
+{"diag": "prefpolish", "obj": 2985663.0}
+{"inst": "prob_4", "solver": "solver_sl4", "tl": 480.0, "wall": 465.0, "overrun": false, "maxrss_mb": 203.8, "n": 150, "m": 3, "error": null, "feasible": true, "objective": 2985663.0, "obj1": 176.0, "obj2": 3265, "obj3": 4108.0}

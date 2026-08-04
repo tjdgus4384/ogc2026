@@ -1,0 +1,4 @@
+{"reconstruct_rc": -1, "start_placed": 250, "n": 250, "horizon": 432}
+{"p": 6, "mode": "auto", "anneal_secs": 630.0, "after_anneal": 29285038.0}
+{"auto_final": 28398552.0, "rate_polish": 2310.2666602742684, "rate_anneal": 4500.933648490035, "slices": 5}
+{"p": 6, "mode": "auto", "seed": 35, "obj": 28398552.0, "z1": 4104.0, "z2": 2073.0, "z3": 6804.0, "polish_tried": 389, "polish_improved": 34, "vp_violations": 0, "wall": 896.4}
