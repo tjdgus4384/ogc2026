@@ -170,10 +170,33 @@ if SOLVER == "cpsat":
         for q, c in enumerate(CAND[i]):
             cost[i, q] = int(w1 * max(0, c[4] + P[i] - D[i])
                              + w3 * (SMAX[i] - PREF[i][c[0]]))
-    # NOTE: Z2 is omitted here, so "bound" in this backend bounds
-    # w1*Z1 + w3*Z3 only (the omission is worth <= w2 * spread).
-    m2.Minimize(sum(cost[k] * Z[k] for k in Z))
+    # Z2 belongs in the objective. Without it this backend minimised
+    # w1*Z1 + w3*Z3 only, so its numbers were not comparable to any
+    # full-objective figure and the "vocabulary got cheaper" reading was
+    # measuring a different objective. u_j*L_i is fractional, so the
+    # balance term is carried in SC-scaled integer units and the whole
+    # objective is scaled by SC to match.
+    ZSC = 100
+    zhi = m2.NewIntVar(0, 10**12, "zmax")
+    zlo = m2.NewIntVar(0, 10**12, "zmin")
+    for j in range(m):
+        ld = sum(int(round(ZSC * u[j] * L[i])) * Z[i, q]
+                 for i in range(n) for q, c in enumerate(CAND[i]) if c[0] == j)
+        m2.Add(zhi >= ld)
+        m2.Add(zlo <= ld)
+    m2.Minimize(ZSC * sum(cost[k] * Z[k] for k in Z)
+                + int(w2) * (zhi - zlo))
     known = set()
+    # SEED THE MODEL WITH THE PRE-GENERATED CONFLICTS. These were already
+    # computed in bulk by the C++ pair oracle above; leaving them out made
+    # the first solve completely unconstrained geometrically, which is why
+    # the round loop kept adding hundreds of cuts and vp_bad never fell.
+    for (a, b) in pairs:
+        if a[0] == b[0] or (a, b) in known:
+            continue
+        known.add((a, b)); known.add((b, a))
+        m2.AddBoolOr([Z[a].Not(), Z[b].Not()])
+    res["seeded_cuts"] = len(known) // 2
     sol_flat = None
     for rnd in range(ROUNDS):
         sv = _cp.CpSolver()
@@ -194,8 +217,9 @@ if SOLVER == "cpsat":
                     break
         eng.set_solution(flat); eng.build_occ(hor)
         bad = [i for i in range(n) if not eng.vp_ok(i)]
-        res["rounds"].append({"r": rnd, "obj": round(sv.ObjectiveValue()),
-                              "bound": round(sv.BestObjectiveBound()),
+        res["rounds"].append({"r": rnd,
+                              "obj": round(sv.ObjectiveValue() / ZSC),
+                              "bound": round(sv.BestObjectiveBound() / ZSC),
                               "engine_obj": eng.objective()[3],
                               "vp_bad": len(bad)})
         if not bad:
