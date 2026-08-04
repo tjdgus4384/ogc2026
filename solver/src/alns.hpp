@@ -389,20 +389,15 @@ inline RunStats run(repair::Ctx& c, double seconds, const RunParams& rp,
     // 20-30 block neighbourhood is proven optimal, wider ruins wash)
     int qhi = std::max(qlo + 1, (int)(rp.qhiF * pb.n));
     qhi = std::min(qhi, std::max(qlo + 1, pb.n - 1));
-    // TEMPERATURE ON THE OBJECTIVE'S STEP, NOT ITS MAGNITUDE.
-    // T0 = 0.002*obj ties the temperature to how BIG the objective is,
-    // but what the walk must climb is one QUANTUM of it: a tardy day
-    // costs w1, a regret point costs w3. Measured 08-04 on the prelim
-    // boards, step/T0 and our distance to the best known values line up
-    // almost monotonically -- P6 0.12 (+14%), P3 0.94 (+24%), P5 0.64
-    // (+35%), P4 2.20 (+59%). At 2.2 the acceptance of a single tardy
-    // day is 0.11 and falls from there, i.e. on P4 the anneal is a hill
-    // climber in the Z1 dimension and cannot cross a ridge at all.
-    // Calibrating to the step makes the schedule scale-free in the same
-    // way the adopted cooling/reheat rule is, and the persona split
-    // (x0.5/x1/x2, carried in rp.T0mul) is preserved exactly.
-    const double step = (core::evaluate(pb, s).z1 > 0.0) ? pb.w1 : pb.w3;
-    double T0 = std::max(1.0, step * (rp.T0mul / 0.002)), T = T0;
+    // T0 = 0.002*obj. Calibrating instead to the objective's STEP
+    // (w1 per tardy day / w3 per regret point) was tried 08-04 on the
+    // back of a clean correlation -- step/T0 vs our gap to the best
+    // known values was almost monotone (P6 0.12/+14%, P3 0.94/+24%,
+    // P5 0.64/+35%, P4 2.20/+59%) -- and REFUTED by measurement: p36
+    // 3 seeds gave P4 +7.1%, P5 +5.0%, P6 +5.5%. Both directions hurt,
+    // so this constant sits at a local optimum; the correlation was not
+    // the mechanism.
+    double T0 = std::max(1.0, cur * rp.T0mul), T = T0;
     // SCALE-INVARIANT SCHEDULE (adopted): cooling exp(-0.06/n), reheat
     // after 6n stalled iterations -- reduces exactly to the legacy
     // constants at n=200 and generalises to unseen sizes.
