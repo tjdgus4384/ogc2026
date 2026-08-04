@@ -21,3 +21,6 @@ gurobi.lic
 
 # experiment builds: source is tracked, binaries are not
 archive/exp/*/sscore*.so
+
+# isolated probe/ship builds (source is tracked as patches under results/)
+builds/
