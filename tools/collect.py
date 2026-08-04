@@ -22,9 +22,13 @@ def load_run(tag):
         sys.exit(f"no runs/{tag}/ -- was the job submitted?")
     recs = {}
     for f in sorted(d.glob("prob_*.json")):
+        if f.name.endswith(".sol.json"):
+            continue  # OGC_SAVE_SOL boards, not run records
         try:
             r = json.loads(f.read_text())
         except Exception:
+            continue
+        if "inst" not in r:
             continue
         recs[r["inst"]] = r
     meta = {}
