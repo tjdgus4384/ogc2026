@@ -593,10 +593,17 @@ def _slice_refine(p, eng, seed, until, hor):
     rng = random.Random(seed * 7919 + 13)
     cur = eng.get_solution()
     best = eng.objective()[3]
-    # subset size / candidate count: standalone sweeps preferred K=60
-    # (P6 -4.24% vs -4.06% at K=25; P5 -2.09%) but k60 REFUTED on the
-    # 40-pair harness (08-03, -16 rank pts); fixed shipped values.
-    K = 25
+    # ADAPTIVE SUBSET SIZE. A fixed K is a bet on how big a
+    # neighbourhood the exact re-placement can both solve and profit
+    # from, and that differs per board and per phase: standalone sweeps
+    # preferred K=60 (P6 -4.24% vs -4.06%, P5 -2.09%) while the 40-pair
+    # harness refuted k60 outright (-16 rank pts). Both are true -- the
+    # right size is not a constant. The arm already measures its own
+    # earnings per second, so it can size itself the same way: grow
+    # after a solve that improved (the neighbourhood was productive),
+    # shrink after one that did not (too big to solve well in the
+    # per-solve budget). Bounded, self-correcting, no magic constant.
+    K, KLO, KHI = 25, 12, 60
     NCAND = 30
     span = until - time.time()
     if span <= 8.0:
@@ -669,6 +676,7 @@ def _slice_refine(p, eng, seed, until, hor):
             sv.parameters.num_search_workers = _THR
             st = sv.Solve(mdl)
             if st not in (cp.OPTIMAL, cp.FEASIBLE):
+                K = max(KLO, int(K * 0.8))
                 eng.set_solution(cur); eng.build_occ(hor); continue
             new = list(part)
             for i in free:
@@ -679,16 +687,19 @@ def _slice_refine(p, eng, seed, until, hor):
                         break
             eng.set_solution(new); eng.build_occ(hor)
             if any(new[i*7+6] and not eng.vp_ok(i) for i in range(n)):
+                K = max(KLO, int(K * 0.8))
                 eng.set_solution(cur); eng.build_occ(hor); continue
             v = eng.objective()[3]
             if v < best:
                 best, cur = v, new
+                K = min(KHI, int(K * 1.25) + 1)
             else:
                 eng.set_solution(cur); eng.build_occ(hor)
+                K = max(KLO, int(K * 0.8))
         rate["p"] = (b0 - best) / max(1e-9, time.time() - t1)
     eng.set_solution(cur)
     eng.build_occ(hor)
-    _diag("slice", rounds=rounds, obj=best,
+    _diag("slice", rounds=rounds, obj=best, kfinal=K,
           rate_p=rate["p"], rate_a=rate["a"])
 
 
