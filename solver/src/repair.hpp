@@ -314,19 +314,18 @@ inline bool insertGreedy(Ctx& c, int A, int eCap = -1) {
     // orient-0 bbox area: the same currency areaUsed accumulates (occ::stamp
     // stamps the chosen orientation's bbox). Heuristic either way -- see
     // areaRoom.
-    // The screen must be ADMISSIBLE: it may only reject a bay when NO
-    // orientation could fit the area. Using orientation 0's area (what
-    // this did) rejects bays that a more compact orientation would fit
-    // -- orientations differ in bbox area by a median factor of 1.38
-    // and up to 3.19, so the screen was silently hiding candidates
-    // from the scan it is supposed to be accelerating.
-    double areaA = 1e300;
-    for (const auto& go : pb.geo[A].orients) {
-        double a = (knobs::polyArea() && go.parea > 0.0)
-                   ? go.parea
-                   : (go.bb.x1 - go.bb.x0) * (go.bb.y1 - go.bb.y0);
-        if (a < areaA) areaA = a;
-    }
+    // orient-0 area, deliberately NOT the admissible min over
+    // orientations. Making it admissible was tried 08-04 and REFUTED
+    // (p36 3 seeds: P4 +4.7%, all-board mean +1.4%): the screen is a
+    // SPEED device -- its false rejections are the pruning, and they
+    // are what keeps the insertion from scanning every bay (the
+    // comment on areaRoom measured 65% of P4's iteration budget lost
+    // without it). Correctness never depended on it: the phase-3 sweep
+    // is unconditional and re-examines what the screen skipped.
+    const auto& g0 = pb.geo[A].orients[0];
+    double areaA = knobs::polyArea() && g0.parea > 0.0
+                   ? g0.parea
+                   : (g0.bb.x1 - g0.bb.x0) * (g0.bb.y1 - g0.bb.y0);
     thread_local std::vector<int> xs, ys;
 
     // phase 1: full scan at the release day
