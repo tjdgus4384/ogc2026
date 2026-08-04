@@ -1,30 +1,31 @@
-"""Branch-and-check (logic-based Benders) over the ASSIGNMENT.
+"""Assignment-proposal loop -- and why this is NOT branch-and-check.
 
-The measurements left one suspect: which blocks share a bay. Every
-method that froze an assignment and rearranged geometry returned 0.0%,
-and locking different whole assignments changes the reachable objective
-by ~15% on P4 -- but an assignment cannot be judged on paper, because
-its cost depends on a packing that only the engine can evaluate.
+Named honestly. Logic-based Benders and its branch-and-check variant
+both require a subproblem that is solved EXACTLY (or at least returns a
+valid bound): only then is the cut it induces valid, and only then do
+convergence and optimality mean anything. Our subproblem oracle here is
+the ALNS engine, a heuristic, so the tardiness it reports is an UPPER
+bound on what that block set could achieve. A cut of the form
+    T_j >= T_observed(S) - BIG * sum_{i in S} (1 - y[i][j])
+is therefore NOT valid: the true optimum for S may sit below what the
+heuristic found, and the cut can exclude it. Branch-and-check further
+means checking at integer nodes of ONE search tree; this loop re-solves
+the master from scratch every round. It is neither.
 
-So decompose along exactly that seam:
+The exact version is out of reach for a concrete, measured reason: it
+would need an oracle that proves the minimum tardiness of 50-80
+polygons in one bay over a time axis, and tools/pack3d.py measured what
+that costs -- a 37-block bay came back 7x worse than the incumbent
+after 240 s, and 95-block bays returned no solution at all. Without
+that oracle there is no valid optimality cut to generate.
 
-    master      choose y[i][j] with Z2 and Z3 in closed form and Z1
-                represented by per-bay variables T_j bounded from below
-                by cuts learned so far.  No geometry at all -- it stays
-                small and fast.
-    subproblem  give the chosen block set of each bay to the PRODUCTION
-                ENGINE (exact polygons, exact crane rules, exact time
-                axis) and let it pack; read the achieved tardiness.
-    cut         T_j >= T*(S_j) - BIG * sum_{i in S_j} (1 - y[i][j])
-                -- valid because dropping any block from the set can
-                only lower the achievable tardiness, and binding only
-                while the whole set stays together in that bay.
+What IS valid here is the energetic master bound below: it uses each
+block's own polygon area, which no interlocking can shrink, and it does
+not depend on the heuristic at all. Everything else in this loop is
+guidance, not proof, and the results say the guidance loses to free
+search anyway (P3 98,335 against 78,705 with the energetic rows in).
 
-The cuts are reusable structural knowledge: each one says "this group,
-in this bay, cannot beat T*". That is the part a heuristic can later be
-distilled from.
-
-  bcheck.py <prob.json> <out.json> <total_seconds> <sub_seconds> [board]
+  asgloop.py <prob.json> <out.json> <total_seconds> <sub_seconds> [board]
 """
 import json
 import math
