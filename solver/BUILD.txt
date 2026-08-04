@@ -18,8 +18,26 @@ No license and no network are required: ortools' CP-SAT is used, not a
 commercial solver. Verified against ortools 9.15.6755, the version present
 on the grading image.
 
-What the last revision changed (v5.1, 2026-08-04)
+What the last revision changed (v5.3, 2026-08-04)
 -------------------------------------------------
+0. PAIR-CONFLICT MODEL COMPLETED (src/api.cpp pairConflicts). The CP
+   re-placement arm ranks candidate placements against a pairwise
+   conflict model; that model checked only the crane ENTRY descent, so
+   dense proposals were rejected afterwards by the official checker on
+   the EXIT sweep and the whole solve was discarded. Added the mirror
+   rule (whichever block leaves first must clear the stayer's layers
+   j>=k, simultaneous exits resolved by the same LIFO exit order the
+   solution emits) and both descent directions when two candidates
+   share an entry day. Verified tight (feeding an incumbent board as
+   its own candidate set yields zero conflicts on 3 boards) and sound
+   (1,047 accepted pairs sampled, zero oracle violations).
+1'. Assignment polish replaced by an exact-delta descent: the balance
+   (Z2), preference (Z3) and mover-tardiness (Z1) deltas of a relocate
+   or swap are closed-form, so candidates are ranked exactly and the
+   engine is paid only for geometric verification.
+
+Earlier revision (v5.1)
+-----------------------
 1. FULL SIMPLIFICATION PASS: every refuted experiment path was excised
    with its code (48% less code than the previous submission; kernel
    config surface = src/knobs.hpp, ~60 env knobs removed). Verified two
