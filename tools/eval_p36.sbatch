@@ -23,8 +23,10 @@ OUT=$ROOT/runs/$TAG
 mkdir -p "$OUT"
 export OGC_SOLVER="$SOLVER" OGC_DATA="${OGC_DATA:-preliminary_test}" OMP_NUM_THREADS=4
 export OGC_DIAG=1 OGC_SEED=$PSEED OGC_SAVE_SOL=1
-printf '{"tag":"%s","data":"%s","pseed":%s,"solver_dir":"%s","tls":[240,480,600,900]}\n' \
-  "$TAG" "${OGC_DATA:-preliminary_test}" "$PSEED" "$(basename "$SOLVER")" > "$OUT/META.json"
+printf '{"tag":"%s","data":"%s","pseed":%s,"solver_dir":"%s","tls":[240,480,600,900],"solver_commit":"%s","solver_dirty":%s}\n' \
+  "$TAG" "${OGC_DATA:-preliminary_test}" "$PSEED" "$(basename "$SOLVER")" \
+  "$(cd "$ROOT" && git rev-parse --short HEAD)" \
+  "$(cd "$ROOT" && git diff --quiet HEAD -- solver && echo false || echo true)" > "$OUT/META.json"
 TLS=(240 480 600 900)
 PS=(3 4 5 6)
 mapfile -t CPUS < <($PY -c "import os;print('\n'.join(map(str,sorted(os.sched_getaffinity(0)))))")

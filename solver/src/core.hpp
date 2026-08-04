@@ -265,14 +265,9 @@ inline const double*& glsPen() {
     return p;
 }
 
-// SLACK SURROGATE (env OGC_SLACKW): the true objective only counts
-// tardy DAYS, so every on-time block looks identical to the search --
-// a block finishing the day before its due date scores the same as
-// one with 20 days of room, and the anneal cannot see that it is
-// walking toward a cliff. Adding a small term for consumed slack
-// (f - D when negative) gives the classic scheduling gradient that
-// steers away from brittle boards. Kept OUT of the accepted-solution
-// comparison (that stays exact) -- this only shapes the walk.
+// SLACK SURROGATE weight, always 0.0 since the 08-02 ablation refuted
+// the term (the env knob was removed with the v5 pass); the machinery
+// stays because evaluatePen reduces exactly to evaluate at w=0.
 inline double& slackW() {
     static thread_local double w = 0.0;
     return w;

@@ -36,9 +36,8 @@ insertGreedy ── phase1 full scan @R ──┐
              ── phase2 exit events ───┼─ scanBayAt / scanLocal
              ── phase3 sparse sweep ──┘      │
 scanBayAt: cornerSets → hitsSnap prefilter → vpConservativeAt until first
-           feasible → commitAt. (OGC_NFP2: two-axis contact candidates
-           first; OGC_BESTFIT: contact-scored best-of-N — both G004
-           candidates, default off.)
+           feasible → commitAt (plain first-fit; the NFP2/BESTFIT
+           candidate variants were judged refuted 08-04 and excised).
 vpConservativeAt: the 5 checker rules, candidate side ALWAYS from arguments
            (rule1 restOverlapAt · rule2 entryOK · rule3 exitOK ·
             rule4/5 neighbour entry/exit with exact bbox early-outs)
@@ -53,10 +52,10 @@ alns::run: pick destroyer (adaptive weights, 60-iter credit, decay .85) →
 ## Config surface (complete)
 
 Kernel: `src/knobs.hpp` — adopted constants with provenance inline, plus
-the G004 candidate levers OGC_NFP2 / OGC_NFPAUTO / OGC_BESTFIT (default
-off) and the internal OGC_PREFP channel (driver→kernel, spec rule).
+the internal OGC_PREFP channel (driver→kernel, spec rule).
 Driver: OGC_SEED (portfolio seed) · OGC_DIAG (stderr diagnostics) ·
-OGC_SLICE=0 (slice ablation). Nothing else reads the environment.
+OGC_SLICE=0 (slice ablation). SMAX_DEBUG gates kernel-side dumps
+(diagnostics only). Nothing else reads the environment.
 Every refuted knob was excised WITH its code path in the v5 pass
 (commit cdfc3e7, canary-byte-identical); the full experiment chronicle:
 `archive/docs-early/PIPELINE-fronts-2026-0730.md`, UNDERSTANDING.md.

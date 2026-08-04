@@ -10,8 +10,9 @@
   fallback ladder.
 
   Structure-keyed config (_spec_rule, measured 5-seed at official TLs):
-  <=3-bay AND under-saturated boards run rounds=2 + pref-first 0.85
-  (P3 -2.1% / P4 -8.2%); 4-bay or over-saturated boards keep legacy.
+  <=3-bay AND under-saturated boards get pref-first 0.85 + a partial
+  preference lock (P3 -2.1% / P4 -8.2%); rounds come from the budget
+  (2 when sec <= 110, else 1). 4-bay/over-saturated boards keep legacy.
 
   Env hooks, all inert on the grading server (unset): OGC_SEED
   (portfolio seed, distributional testing), OGC_DIAG (stderr
@@ -27,20 +28,15 @@ import sys
 import time
 
 # =============================================================== config
-# Every tunable in the system, grouped by MECHANISM LAYER (the causal map
-# in docs/PIPELINE.md; change-prediction laws L1-L6 live there). C++ hot-
-# path knobs read env ONCE via static-init lambdas at their use site --
-# consolidating them into plumbing would add complexity, not remove it.
+# The WHOLE env surface. Kernel constants live in src/knobs.hpp (adopted
+# values with provenance); the causal map and change-prediction laws
+# L1-L6 live in docs/PIPELINE.md.
 #
-#  layer        python (here)             C++ (site, env)
-#  ---------    ------------------------  --------------------------------
-#  diagnosis    _DIAG                     SMAX_DEBUG (api/alns dumps)
-#  seed         _PSEED                    --
-#  construction (spec rule -> OGC_PREFP)  PREFP/AREASLK/STRIDE (repair)
-#                                         CNOISE (alns constructInitial)
-#  destroy mix  --                        DECAY/OP8TOP (alns), BIGQ/HCFRAC
-#                                         (api persona splits)
-#  gate/rescue  reserve in _arm_free      --
+#  OGC_SEED    portfolio seed (distributional testing; server default 7)
+#  OGC_DIAG    stderr diagnostics (harness logs; silent on the server)
+#  OGC_SLICE   =0 disables the slice-refine tail (ablation switch)
+#  OGC_PREFP   internal driver->kernel channel set by _spec_rule
+#  SMAX_DEBUG  kernel-side dump hook (api/alns), unset in production
 _DIAG = os.environ.get("OGC_DIAG")
 
 
@@ -808,7 +804,9 @@ def _arm_free(p, deadline, seed=7, tl=None):
         _diag("gate", stage=f"cand{k+1}")
         s2, r2 = _gate(p, eng, n, deadline)
         if s2 is not None and r2 is None:
-            return s2, r2
+            # checker died mid-audition: prefer the already-VERIFIED
+            # incumbent result over an unverified candidate board.
+            return (best_sol, best_res) if best_sol is not None else (s2, r2)
         if s2 is not None and r2.get("objective", float("inf")) < best_obj:
             best_sol, best_res = s2, r2
             best_obj = r2["objective"]
@@ -818,28 +816,36 @@ def _arm_free(p, deadline, seed=7, tl=None):
 def _trivial(p):
     """absolute safety net: one block at a time, alone in its best bay,
     strictly sequential in time -- geometrically and temporally feasible
-    by construction. Never used unless everything else failed."""
+    by construction. Never used unless everything else failed.
+    Picks the (ORIENTATION, bay) pair with the largest containment margin
+    over ALL orientations -- the red-team probe showed orientation-0 alone
+    can be 0.005 units from not fitting any bay (prob_11 block 144) while
+    other orientations carry 12-20 unit margins."""
     B = p["blocks"]; n = len(B)
     bays = p["bays"]
     recs = {}
     t = 0
     for i in sorted(range(n),
                     key=lambda i: int(round(B[i]["due_date"]))):
-        xs = [v[0] for lay in B[i]["shape"][0]["layers"] for v in lay]
-        ys = [v[1] for lay in B[i]["shape"][0]["layers"] for v in lay]
-        w_i = max(xs) - min(xs)
-        h_i = max(ys) - min(ys)
-        # checker translates the RAW polygon by (x,y): align the raw
-        # min-corner to the bay origin, in the bay with the most room.
-        j = max(range(len(bays)),
-                key=lambda q: min(bays[q]["width"] - w_i,
-                                  bays[q]["height"] - h_i))
-        x = int(math.ceil(-min(xs) + 1e-9))
-        y = int(math.ceil(-min(ys) + 1e-9))
+        best = None                      # (margin, j, oi, x, y)
+        for oi, sh in enumerate(B[i]["shape"]):
+            xs = [v[0] for lay in sh["layers"] for v in lay]
+            ys = [v[1] for lay in sh["layers"] for v in lay]
+            w_i = max(xs) - min(xs)
+            h_i = max(ys) - min(ys)
+            for j in range(len(bays)):
+                m = min(bays[j]["width"] - w_i, bays[j]["height"] - h_i)
+                if best is None or m > best[0]:
+                    # checker translates the RAW polygon by (x,y): align
+                    # the raw min-corner to the bay origin.
+                    best = (m, j, oi,
+                            int(math.ceil(-min(xs) + 1e-9)),
+                            int(math.ceil(-min(ys) + 1e-9)))
+        _, j, oi, x, y = best
         R = int(math.ceil(B[i]["release_time"] - 1e-9))
         P = max(1, int(math.ceil(B[i]["processing_time"] - 1e-9)))
         e = max(t, R)
-        recs[i] = [j, x, y, 0, e, e + P]
+        recs[i] = [j, x, y, oi, e, e + P]
         t = e + P
     return _recs_to_sol(recs)
 

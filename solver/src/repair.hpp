@@ -38,11 +38,6 @@ struct Ctx {
     std::mt19937 rng;
     int horizon;
     const int* forcedBay = nullptr;   // optional block->bay lock (or -1)
-    std::vector<int>* evicted = nullptr;  // takeover sink: blocks the
-                                          // repair must re-place
-    int chainDepth = 0;                   // current ejection-chain depth
-    std::vector<uint8_t>* chainSeen = nullptr;  // blocks already moved
-                                                // in this chain
     int densMode = -1;                // -1: knob; 0: bay-area cap
                                       // (never falsely rejects);
                                       // 1: instance fill cap (filters)
@@ -167,50 +162,12 @@ inline bool scanBayAt(Ctx& c, int A, int j, int e, const std::vector<int>& oris,
     c.oc->buildSnap(j, e, f, sn);
     thread_local std::vector<RB> rbs;
     rbCollect(c, j, e, f, rbs);
-    // BEST-FIT placement (env OGC_BESTFIT = candidates to weigh,
-    // 0 = classic first-fit): the measured pathology is fragmentation
-    // -- peak bay utilisation only 63% while blocks wait 13-19 days
-    // for space. First-fit takes the first legal corner; best-fit
-    // weighs a few and keeps the one that hugs existing geometry
-    // (contact score), which is the standard anti-fragmentation
-    // device in nesting/packing.
-    const int BF = knobs::bestFit();
-    int bfBestOi = -1, bfX = 0, bfY = 0;
-    double bfScore = -1e18;
-    int bfSeen = 0;
     for (int oi : oris) {
         cornerSetsRB(c, A, oi, j, rbs, xs, ys);
-        // POLYGON candidate generation (env OGC_NFP=1): replace the
-        // bbox-corner x set with the row's true contact set. The
-        // corner generator sees only resident BOUNDING BOXES, which
-        // is why boards saturate at 103-105% bbox utilisation while
-        // real polygon utilisation stalls at 58-65% -- the whole
-        // rank-1 gap lives in that difference.
-        // NFP2: generate candidates from the true two-axis contact
-        // set instead of the bbox-corner cross product.
-        // Contact candidates pay exactly where bays are DENSE: with
-        // >=65 blocks per bay the bbox corners are all buried inside
-        // other blocks' boxes while real polygon room remains (peak
-        // bbox use 103%, polygon 58-65%), so the corner scan cannot
-        // see the space. On roomier bays the corner set already finds
-        // it and the extra candidates only cost time. Measured on the
-        // current engine: P3 (66.7/bay) -4.9%, P6 (83.3/bay) -1.5%,
-        // P4/P5 (50/bay) +3.2%/+1.2%.
-        int nfp2 = knobs::nfp2();
-        if (nfp2 == 0 && knobs::nfpAuto() &&
-            (double)pb.n / std::max(1, pb.m) >= 65.0)
-            nfp2 = 1;
-        if (nfp2 > 0 && !ys.empty()) {
-            const auto& bb2 = pb.geo[A].orients[oi].bb;
-            int x2lo = (int)std::ceil(-bb2.x0);
-            int x2hi = (int)std::floor(pb.bayW[j] - bb2.x1);
-            int y2lo = (int)std::ceil(-bb2.y0);
-            int y2hi = (int)std::floor(pb.bayH[j] - bb2.y1);
-            static thread_local int cx2[512], cy2[512];
-            int nc2 = c.oc->nfpCands(sn, A, oi, x2lo, x2hi, y2lo, y2hi,
-                                     cx2, cy2, 512);
-            for (int q = 0; q < nc2; q++) {
-                s.bay[A]=j; s.ori[A]=oi; s.x[A]=cx2[q]; s.y[A]=cy2[q];
+        for (int y : ys) {
+            for (int x : xs) {
+                if (c.oc->hitsSnap(sn, A, oi, x, y)) continue;
+                s.bay[A]=j; s.ori[A]=oi; s.x[A]=x; s.y[A]=y;
                 s.e[A]=e; s.f[A]=f; s.placed[A]=1;
                 if (core::vpConservative(pb, s, A)) {
                     s.addIdx(A);
@@ -219,62 +176,7 @@ inline bool scanBayAt(Ctx& c, int A, int j, int e, const std::vector<int>& oris,
                 }
                 s.placed[A]=0;
             }
-            if (nfp2 > 1) continue;      // 2 = NFP-only, 1 = then corners
         }
-        for (int y : ys) {
-            for (int x : xs) {
-                if (c.oc->hitsSnap(sn, A, oi, x, y)) continue;
-            s.bay[A]=j; s.ori[A]=oi; s.x[A]=x; s.y[A]=y;
-            s.e[A]=e; s.f[A]=f; s.placed[A]=1;
-            if (core::vpConservative(pb, s, A)) {
-                if (BF <= 0) {
-                    s.addIdx(A);
-                    c.oc->stamp(pb, s, A, true);
-                    return true;
-                }
-                // contact score: shared bbox edge length with the
-                // residents of this window plus the bay walls.
-                const auto& bbA = pb.geo[A].orients[oi].bb;
-                double ax0 = bbA.x0 + x, ax1 = bbA.x1 + x;
-                double ay0 = bbA.y0 + y, ay1 = bbA.y1 + y;
-                double sc = 0.0;
-                if (ax0 <= 1e-9) sc += ay1 - ay0;
-                if (ay0 <= 1e-9) sc += ax1 - ax0;
-                if (ax1 >= pb.bayW[j] - 1e-9) sc += ay1 - ay0;
-                if (ay1 >= pb.bayH[j] - 1e-9) sc += ax1 - ax0;
-                for (const RB& rb : rbs) {
-                    double ox = std::min(ax1, rb.x1)
-                                - std::max(ax0, rb.x0);
-                    double oy = std::min(ay1, rb.y1)
-                                - std::max(ay0, rb.y0);
-                    if (std::fabs(ax1 - rb.x0) < 1e-6 ||
-                        std::fabs(rb.x1 - ax0) < 1e-6)
-                        if (oy > 0) sc += oy;
-                    if (std::fabs(ay1 - rb.y0) < 1e-6 ||
-                        std::fabs(rb.y1 - ay0) < 1e-6)
-                        if (ox > 0) sc += ox;
-                }
-                if (sc > bfScore) {
-                    bfScore = sc; bfBestOi = oi; bfX = x; bfY = y;
-                }
-                s.placed[A]=0;
-                if (++bfSeen >= BF) goto bf_done;
-                continue;
-            }
-            s.placed[A]=0;
-            }
-        }
-    }
-bf_done:
-    if (BF > 0 && bfBestOi >= 0) {
-        s.bay[A]=j; s.ori[A]=bfBestOi; s.x[A]=bfX; s.y[A]=bfY;
-        s.e[A]=e; s.f[A]=f; s.placed[A]=1;
-        if (core::vpConservative(pb, s, A)) {
-            s.addIdx(A);
-            c.oc->stamp(pb, s, A, true);
-            return true;
-        }
-        s.placed[A]=0;
     }
     return false;
 }

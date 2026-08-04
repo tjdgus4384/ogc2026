@@ -620,7 +620,6 @@ no_swap:
             fbv[c.tsBlk] = c.tsBay;
             const int* save = c.forcedBay;
             c.forcedBay = fbv.data();
-            c.evicted = nullptr; c.chainSeen = nullptr; c.chainDepth = 0;
             ok = repair::insertGreedy(c, c.tsBlk, c.tsECap);
             c.forcedBay = save;
             if (ok)
@@ -629,7 +628,6 @@ no_swap:
                     if (!repair::insertGreedy(c, A, -1)) { ok = false; break; }
                 }
         } else {
-            c.evicted = nullptr; c.chainSeen = nullptr; c.chainDepth = 0;
             for (int A : rem) {
                 if (!repair::insertGreedy(c, A, -1)) { ok = false; break; }
             }

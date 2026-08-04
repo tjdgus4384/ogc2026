@@ -479,6 +479,10 @@ struct Engine {
                     phaseNs_[3] += (double)st.tSamples;
                     double o2 = core::evaluate(pb, s2).total;
                     threadBest[tid] = o2;
+                    // keep only the LATEST round's board per thread --
+                    // without the clear, rounds>=2 appended and every
+                    // consumer sliced the stale round-0 snapshot.
+                    candSols[tid].clear();
                     candSols[tid].reserve((size_t)pb.n * 7);
                     for (int i = 0; i < pb.n; i++) {
                         candSols[tid].push_back(s2.bay[i]);

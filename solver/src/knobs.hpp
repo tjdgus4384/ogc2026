@@ -1,22 +1,18 @@
 // knobs.hpp -- the WHOLE remaining config surface of the kernel.
 // v5 simplification (2026-08-04): every refuted experiment knob was
-// excised with its code path (history: docs/PIPELINE.md census,
-// docs/UNDERSTANDING.md, git). What remains is either an ADOPTED
-// constant (measured on the 40-instance train_final harness or the
-// official-TL boards; provenance next to each value) or one of the
-// two G004 candidate levers still under judgment (env-gated, default
-// OFF, inert on the grading server).
+// excised WITH its code path (history: docs/PIPELINE.md, git; the
+// G004 candidates NFP2/NFPAUTO/BESTFIT were judged refuted on the
+// 40-pair harness and excised in the generation-2 review pass).
+// What remains is ADOPTED constants -- measured on the train_final
+// 40-instance harness or the official-TL boards; provenance next to
+// each value -- plus the one internal driver channel.
 //
-// The driver-side surface is equally small: OGC_SEED / OGC_DIAG /
-// OGC_SLICE (myalgorithm.py) + the internal OGC_PREFP channel below.
+// The driver-side env surface: OGC_SEED / OGC_DIAG / OGC_SLICE
+// (myalgorithm.py) + SMAX_DEBUG (kernel dump hook, diagnostics only).
 #pragma once
 #include <cstdlib>
 
 namespace knobs {
-inline int envi(const char* n, int d) {
-    const char* v = std::getenv(n); return v ? atoi(v) : d;
-}
-
 // ---- adopted constants (semantics live at the call sites) ----------
 // area screen slack x1.02 on the fill-ratio cap; heterogeneous per
 // thread (densMode): tight cap won -1..-5% except z1-free boards.
@@ -44,15 +40,4 @@ inline double prefP() {
     }();
     return v;
 }
-
-// ---- G004 candidate levers (default OFF, judgment pending) ---------
-// NFP2: candidates from the true two-axis contact set instead of the
-// bbox-corner cross product. tf-nfp2 measured -4.3% vs v40 (32W/7L)
-// at s7 but only -0.2% at s13 -- multi-seed adoption judgment open.
-inline int nfp2()    { static const int v = envi("OGC_NFP2", 0); return v; }
-// auto-gate NFP2 on dense boards (>=65 blocks/bay).
-inline int nfpAuto() { static const int v = envi("OGC_NFPAUTO", 0); return v; }
-// best-fit corner scoring (contact-hugging) instead of first-fit.
-// tf-bfit measured -3.6% vs v40 -- multi-seed adoption judgment open.
-inline int bestFit() { static const int v = envi("OGC_BESTFIT", 0); return v; }
 } // namespace knobs
