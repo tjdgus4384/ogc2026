@@ -131,8 +131,15 @@ obj = gp.quicksum((w1 * max(0, c[4] + P[i] - D[i])
                    + w3 * (SMAX[i] - PREF[i][c[0]])) * z[i, q]
                   for i in range(n) for q, c in enumerate(CAND[i]))
 mdl.setObjective(obj + w2 * (zmax - zmin), GRB.MINIMIZE)
-for (i, q), (k, r) in pairs:
-    mdl.addConstr(z[i, q] + z[k, r] <= 1)
+LAZY = os.environ.get("GM_LAZY", "0") == "1"
+if not LAZY:
+    for (i, q), (k, r) in pairs:
+        mdl.addConstr(z[i, q] + z[k, r] <= 1)
+else:
+    # keep the pair set for bookkeeping but let the separation loop add
+    # them: a big vocabulary has quadratically many pairs, and only the
+    # ones an integer solution actually violates are ever needed.
+    pairs = set()
 # warm start from the incumbent
 for i in range(n):
     cur = (best_flat[i*7], best_flat[i*7+1], best_flat[i*7+2],
