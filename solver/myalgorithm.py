@@ -1,10 +1,11 @@
-"""Shipyard block placement -- solver v3.0 (map: docs/PIPELINE.md).
+"""Shipyard block placement -- solver v5 (map: docs/PIPELINE.md).
 
   algorithm(prob, TL) never raises; worst case returns the always-feasible
   trivial constructor. Pipeline: kernel-native seeding (6 insertion orders,
   top-3 distinct layouts) -> 4-persona portfolio ALNS on iteration-governed
   rounds (trajectory = f(seed, round count); machine speed only decides the
-  count, monotone in best-so-far) -> checker gate with a least-destructive
+  count, monotone in best-so-far) -> _slice_refine tail (anneal bursts race
+  CP-SAT exact re-placement) -> checker gate with a least-destructive
   rescue ladder over the portfolio's candidate set -> deadline-guarded
   fallback ladder.
 
@@ -12,10 +13,10 @@
   <=3-bay AND under-saturated boards run rounds=2 + pref-first 0.85
   (P3 -2.1% / P4 -8.2%); 4-bay or over-saturated boards keep legacy.
 
-  Env hooks, all inert on the grading server (unset): OGC_SEED (portfolio
-  seed, distributional testing),
-  OGC_DIAG (stderr diagnostics), OGC_PREFP / screener knobs (judgment instruments; see
-  docs/PIPELINE.md knob census).
+  Env hooks, all inert on the grading server (unset): OGC_SEED
+  (portfolio seed, distributional testing), OGC_DIAG (stderr
+  diagnostics), OGC_SLICE=0 (slice-refine ablation). Everything else
+  was retired with its refuted experiment (history: archive/, ledger).
 """
 import json
 import math
@@ -213,35 +214,6 @@ def _seed_free(p, diversify=True, asg=None):
                 cands.append((ob, eng.get_solution()))
                 if best is None or ob < best[0]:
                     best = (ob, od)
-        # ORDER SEARCH (env OGC_ORDSEARCH = seconds, 0 = off): the
-        # decoder is exact and fast (60ms at n=150) and the objective
-        # spread across EDD-neighbourhood orders is 44% -- yet the
-        # classic seeding samples only the 6 handmade orders. Spend a
-        # slice of the budget hill-climbing the ORDER instead.
-        _ords = float(os.environ.get("OGC_ORDSEARCH", "0"))
-        if _ords > 0 and best is not None:
-            _t0 = time.time()
-            _cur = list(best[1])
-            _curv = best[0]
-            _rng = random.Random(9)
-            _tried = 0
-            while time.time() - _t0 < _ords:
-                _cand = list(_cur)
-                for _ in range(1 + _rng.randrange(3)):
-                    _a = _rng.randrange(n)
-                    _b = min(n - 1, max(0, _a + _rng.randint(-12, 12)))
-                    _cand[_a], _cand[_b] = _cand[_b], _cand[_a]
-                if eng.reconstruct_ordered(lockv, _cand, False, 7) != -1:
-                    continue
-                _tried += 1
-                _v = eng.objective()[3]
-                if _v < _curv:
-                    _curv, _cur = _v, _cand
-                    cands.append((_v, eng.get_solution()))
-            _diag("ordsearch", tried=_tried, start=round(best[0]),
-                  best=round(_curv))
-            if _curv < best[0]:
-                best = (_curv, _cur)
         if best is not None:
             if best[1] is not orders[-1]:
                 eng.reconstruct_ordered([-1] * n, best[1], False, 7)
@@ -452,49 +424,6 @@ def _pref_polish(p, eng, deadline):
                 improved = True
             else:
                 eng.move_block(i, ob, True, 7)
-    # PREFERENCE CYCLES (env OGC_PREFCYC): a 2-way trade fails because
-    # the partner loses what the mover gains. A CYCLE does not: i takes
-    # j's bay, j takes k's, k takes i's, and every one of them can move
-    # closer to its own favourite. Cycles are the standard fix for
-    # assignment problems where pairwise exchange is blocked, and on a
-    # z1-free board (P3: tardiness 0, regret 424 vs rank-1's ~321)
-    # assignment is the entire remaining objective.
-    if os.environ.get("OGC_PREFCYC", "0") == "1" and \
-            hasattr(eng, "swap_blocks"):
-        rng = random.Random(11)
-        tries = 0
-        while time.time() < deadline - 3.0 and tries < 4000:
-            tries += 1
-            cand = [i for i in range(n) if eng.get_block(i)[6]]
-            if len(cand) < 3:
-                break
-            i = rng.choice(cand)
-            bi = eng.get_block(i)[0]
-            want = max(range(len(pref[i])), key=lambda j: pref[i][j])
-            if want == bi:
-                continue
-            # j sits in the bay i wants; k sits in the bay j wants
-            inbay = [q for q in cand if eng.get_block(q)[0] == want]
-            if not inbay:
-                continue
-            j = rng.choice(inbay)
-            wj = max(range(len(pref[j])), key=lambda q: pref[j][q])
-            if wj == want:
-                continue
-            third = [q for q in cand
-                     if eng.get_block(q)[0] == wj and q not in (i, j)]
-            if not third:
-                continue
-            k = rng.choice(third)
-            before = eng.objective()[3]
-            if not eng.swap_blocks(i, j):
-                continue
-            if not eng.swap_blocks(j, k):
-                eng.swap_blocks(i, j)
-                continue
-            if eng.objective()[3] >= before:
-                eng.swap_blocks(j, k)
-                eng.swap_blocks(i, j)
     _diag("prefpolish", obj=eng.objective()[3])
 
 
@@ -605,33 +534,12 @@ def _slice_refine(p, eng, seed, until, hor):
     cp = _cpsat()
     rng = random.Random(seed * 7919 + 13)
     cur = eng.get_solution()
-    # sibling-thread boards as extra vocabulary (env OGC_SLPEER). The
-    # portfolio's four threads end ~25% apart, i.e. in different basins;
-    # a freed block's position in a sibling board is a placement another
-    # basin certified as part of a full packing. Verification against
-    # the frozen rest costs ~0.03s/iteration at 4 boards -- nothing --
-    # and the offline probe showed exactly this vocabulary keeps earning
-    # after the corner channel saturates (P5, time-fair -1.35% vs -0.86%).
-    peers = []
-    if os.environ.get("OGC_SLPEER", "0") == "1":
-        try:
-            peers = [list(c) for c in eng.get_candidates()[:4]
-                     if len(c) >= n * 7]
-        except Exception:
-            peers = []
     best = eng.objective()[3]
     # subset size / candidate count: standalone sweeps preferred K=60
-    # (P6 -4.24% vs -4.06% at K=25; P5 -2.09%), affordable only because
-    # pair_conflicts is C++. Env-tunable for measurement, fixed defaults.
-    K = int(os.environ.get("OGC_SLK", "25"))
-    NCAND = int(os.environ.get("OGC_SLNC", "30"))
-    # Per-iteration randomization of (K, ncand): the per-instance best
-    # setting is real and seed-stable (fresh-seed selector: 17W-7L,
-    # p=0.03, -4.6% on switched boards) but does NOT generalize by
-    # features (LOIO 8/40, predicted config -3.2%). Prediction being
-    # impossible, DIVERSITY harvests part of the same spread: hundreds
-    # of re-solves per run, each drawing its own scale.
-    _rand_kn = os.environ.get("OGC_SLRAND", "0") == "1"
+    # (P6 -4.24% vs -4.06% at K=25; P5 -2.09%) but k60 REFUTED on the
+    # 40-pair harness (08-03, -16 rank pts); fixed shipped values.
+    K = 25
+    NCAND = 30
     span = until - time.time()
     if span <= 8.0:
         return
@@ -663,23 +571,8 @@ def _slice_refine(p, eng, seed, until, hor):
             tardy = [i for i in range(n) if cur[i*7+6] and cur[i*7+5] > D[i]]
             if not tardy:
                 break
-            if _rand_kn:
-                K = rng.choice((15, 25, 40, 60))
-                NCAND = rng.choice((15, 30, 40))
             seed_i = rng.choice(tardy)
             free = [seed_i]
-            if os.environ.get("OGC_SLCOH", "0") == "1":
-                # coherent subset: the seed's bay-window neighbours are
-                # the blocks it can actually trade space-time with; a
-                # uniform sample mostly frees blocks that cannot interact
-                # with the seed at all.
-                jb, e0, f0 = cur[seed_i*7], cur[seed_i*7+4], cur[seed_i*7+5]
-                Pi = f0 - e0
-                nb = [i for i in range(n)
-                      if i != seed_i and cur[i*7+6] and cur[i*7] == jb
-                      and cur[i*7+4] < f0 + Pi and cur[i*7+5] > e0 - Pi]
-                nb.sort(key=lambda i: abs(cur[i*7+4] - e0))
-                free += nb[:K - 1]
             pool = [i for i in range(n) if cur[i*7+6] and i not in set(free)]
             if len(free) < K:
                 free += rng.sample(pool, min(K - len(free), len(pool)))
@@ -691,16 +584,6 @@ def _slice_refine(p, eng, seed, until, hor):
             for i in free:
                 raw = eng.feasible_positions(i, NCAND, 0)
                 cs = [tuple(raw[q:q+5]) for q in range(0, len(raw), 5)]
-                if peers:
-                    seen = set(cs)
-                    for pbd in peers:
-                        c = tuple(pbd[i*7:i*7+5])
-                        if c in seen: continue
-                        seen.add(c)
-                        if eng.place_at(i, c[0], c[1], c[2], c[3], c[4]):
-                            cs.append(c)
-                            eng.set_solution(part)
-                            eng.build_occ(hor)
                 c0 = tuple(cur[i*7:i*7+5])
                 if c0 not in cs:
                     cs.append(c0)
@@ -764,23 +647,7 @@ def _arm_free(p, deadline, seed=7, tl=None):
     # on P3 where the unlocked control managed 97.3k (official-TL best
     # unlocked: 85,490). Cleared before gate/polish; unlocked fallback.
     asg = None
-    # BALANCE ATTACK (env OGC_LOCKK = fraction, 0 = classic): the lock
-    # only ever fired on spec boards, so tardiness-dominated instances
-    # (P4-P6) run with NO regret control -- measured composition: obj1
-    # 190 x w1 = 76% of objective while obj3 4,573 x w3 = 21%, whereas
-    # rank-1's P4 total is only reachable with BOTH low (obj1 ~130 and
-    # obj3 ~2,500). Locking the top preference-spread blocks to their
-    # argmax bay makes the anneal buy that regret back with geometry.
-    _lk = float(os.environ.get("OGC_LOCKK", "0"))
-    if _lk > 0:
-        pref = [b["bay_preferences"] for b in p["blocks"]]
-        nn = len(pref)
-        spread = sorted(range(nn),
-                        key=lambda i: -(max(pref[i]) - min(pref[i])))
-        asg = [-1] * nn
-        for i in spread[:int(nn * _lk)]:
-            asg[i] = max(range(len(pref[i])), key=lambda j: pref[i][j])
-    elif spec and _saturation(p) < 0.6:
+    if spec and _saturation(p) < 0.6:
         pref = [b["bay_preferences"] for b in p["blocks"]]
         nn = len(pref)
         spread = sorted(range(nn),
@@ -839,52 +706,18 @@ def _arm_free(p, deadline, seed=7, tl=None):
     # taking 30% from P3 cost +3.24% while it bought P4 -12.14% and
     # P6 -3.69%. The gate keys on WHICH ALGORITHM runs, not on the
     # instance, so it carries to unseen boards.
-    _spb0 = sec / max(1, n)
-    _pop_here = (os.environ.get("OGC_POP", "") == "1"
-                 or (os.environ.get("OGC_POP", "") == ""
-                     and sec >= 150.0 and _spb0 <= 1.6))
-    # NB: OGC_SLICE, deliberately NOT OGC_REFINE -- that name already
-    # gates the old certified-CP post-pass further down, and sharing it
-    # would silently switch on a refuted module.
+    # SCALE-INVARIANT population gate (08-01, 40-instance sweep): the
+    # population's edge is the tight regime (~1 s/block, the P3 class);
+    # absolute-time windows overfit the train boards. Gate on the ratio.
+    _pop_here = sec >= 150.0 and sec / max(1, n) <= 1.6
+    # OGC_SLICE=0 is the shipped ablation switch (noslice variant measured
+    # +2.1% mean on the 40-pair harness 08-03 -- keep ON; sh45 share and
+    # k60 subset variants refuted there too).
     _rfshare = 0.0
     if (sec > 60.0 and not _pop_here
             and os.environ.get("OGC_SLICE", "1") == "1"):
-        _rfshare = float(os.environ.get("OGC_SLSH", "0.30")) * sec
+        _rfshare = 0.30 * sec
         sec -= _rfshare
-    # bay-split budget carve, gated on BAY SIZE: measured 08-01 at a
-    # 22% tail -- P6 (83 blocks/bay) -3.4%, P5 (50/bay) flat, P4
-    # (50/bay) +5.3%. Big bays are where the joint anneal spreads too
-    # thin for its per-bay work to be deep; small bays it handles.
-    _blc = float(os.environ.get("OGC_BOXLNS", "0"))
-    if _blc > 0 and sec > _blc + 60.0:
-        sec -= _blc                      # carve the LNS slice up front
-    _bpb = n / max(1, len(p["bays"]))
-    _bs_on = (os.environ.get("OGC_BAYSPLIT", "0") == "1"
-              and _bpb >= float(os.environ.get("OGC_BSMIN", "65"))
-              and sec > 90.0)
-    if _bs_on:
-        sec = max(60.0, float(os.environ.get("OGC_BSJOINT", "0.78"))
-                  * sec)
-    # MORPH ARM (env OGC_MARM = w3 multiplier, default off): spend
-    # ~35% of the budget annealing under a preference-boosted
-    # objective, then inject that board as a start for the true-weight
-    # portfolio. Offline discovery (08-01): objective bias steers the
-    # anneal into different valleys whose boards win under TRUE
-    # weights (morph-a x long: P4 -8.5%). In-TL transfer candidate.
-    _ma = float(os.environ.get("OGC_MARM", "0"))
-    if _ma > 0 and sec > 60.0:
-        _sec1 = min(0.35 * sec, 300.0)
-        _pm = dict(p)
-        _pm["weights"] = {"w1": p["weights"]["w1"],
-                          "w2": p["weights"]["w2"],
-                          "w3": p["weights"]["w3"] * _ma}
-        _e2, _s2 = _seed_free(_pm)
-        if _e2 is not None:
-            _st2 = [_s2[0], []] + _s2[1:3] if _s2 else []
-            _e2.run_portfolio(_THR, _sec1, 1, 0.05, 0.15, 0.002,
-                              0.9995, seed, 1, _st2, 0)
-            starts = [_e2.get_solution()] + starts[:3]
-        sec = max(2.0, deadline - time.time() - reserve)
     rounds = 1 if sec > 110 else 2
     if asg is not None:
         eng.set_assignment_lock(asg)
@@ -892,65 +725,7 @@ def _arm_free(p, deadline, seed=7, tl=None):
     # TL240 class (P3: 3/3 seeds), ties with high variance at TL480, and
     # loses TL600/900 (P5/P6: 3/3 each; burst=sec/8 starves big boards).
     # Default rule: population only in its measured win zone.
-    _pe = os.environ.get("OGC_POP", "")
-    # SCALE-INVARIANT population gate (08-01, 40-instance sweep): the
-    # old absolute window (150 <= sec <= 250) was an artifact of P3's
-    # budget-per-block, and on the train set it cost 1.3pp of regret
-    # vs always-portfolio (3.77 vs 2.49) by firing on loose-budget
-    # n=100 boards where the portfolio wins (prob_24: port -49.8%).
-    # The population's edge is the TIGHT regime (P3: 1.05 s/block);
-    # gate on that ratio so hidden instances of any size land right.
-    # LAHC gate (measured 08-02): canonical late-acceptance beats SA
-    # on the BIG boards -- P6 (n=250, 83 blocks/bay, 900s) improved in
-    # 3/3 independent runs (-2.7%, -3.5%, -5.0%) with P3 unchanged,
-    # while P4/P5-class boards lose. Those are the instances with the
-    # most iterations per block, where a long quality memory pays and
-    # a decaying temperature does not. Gate on that structure, not on
-    # the instance id.
-    # LAHC with a SELF-SCALED history (L = -1 asks the kernel for
-    # n * lahcMul slots, so the memory always spans the same fraction
-    # of the walk regardless of instance size) plus the slack
-    # surrogate, whose weight is 1/n inside the kernel -- neither
-    # carries a hand-tuned constant, which is what makes them safe on
-    # hidden instances.
-    # LAHC was a real win over the OLD repair order, but once repair
-    # inserts hardest-first (OGC_RORDER=2) the SA schedule is better
-    # on 3/4 boards (08-02 head-to-head, seeds 9-11): the acceptance
-    # rule was compensating for a weak repair, not adding search
-    # power. Kept in the kernel behind OGC_LAHC, default off.
-    # slack surrogate REFUTED by its own ablation (08-02): turning it
-    # OFF gave the best P5 of the whole sweep (10,212,943 vs 10.7-11.6M
-    # with it on). The earlier "P5 gains" were seed variance, not the
-    # term. Left in the kernel behind OGC_SLACK, default off.
-    _spb = sec / max(1, n)
-    _use_pop = _pe == "1" or (_pe == "" and sec >= 150.0
-                              and _spb <= 1.6)
-    # learned persona-fleet selector (LOIO-validated 08-01: fixed
-    # fleet wastes 7.09% avg per thread; predicted [best x2, 2nd x2]
-    # fleet 4.37%, oracle 3.18%; model beat fixed on 27/40 held-out
-    # instances). Ridge weights baked; features are instance meta.
-    # REFUTED at official TLs (fleet-s7/s8: P4 +14%, P5 +6%): the
-    # judgment metric was mean per-thread loss but the outcome is the
-    # MIN over correlated draws -- min-simulation shows even ORACLE
-    # persona pairs gain <=1%p while duplicate-persona correlation
-    # erases it. Fixed diverse fleet is min-optimal. Default OFF.
-    if os.environ.get("OGC_FLEET", "0") == "1":
-        _PW = [[0.075931, 0.153667, -0.137218, 0.075835, 0.006136, 0.06412, -0.002169, -0.071218], [-0.033278, -0.012892, 0.028401, -0.001825, 0.016969, 0.021952, 0.000774, 0.042794], [0.022798, 0.148489, -0.14064, 0.070772, 0.001814, 0.078943, -0.000355, -0.029713], [-0.044941, -0.012549, 0.039284, -0.011994, 0.002369, -0.020951, -0.000155, 0.080311]]
-        _bl = p["blocks"]
-        _by = p["bays"]
-        _wts = p["weights"]
-        _f = [len(_bl) / 250.0, len(_by) / 5.0,
-              len(_bl) / len(_by) / 80.0,
-              math.log10(max(_wts["w1"], 1)) / 5.0,
-              _wts["w2"] / 10.0,
-              math.log10(max(_wts["w3"], 1)) / 3.0,
-              _wts["w3"] / (_wts["w1"] + 1e-9) * 100.0, 1.0]
-        _pl = [sum(a * b for a, b in zip(_f, _PW[k])) for k in range(4)]
-        _rank = sorted(range(4), key=lambda k: _pl[k])
-        os.environ["OGC_PERSONA"] = ",".join(
-            map(str, [_rank[0], _rank[0], _rank[1], _rank[1]]))
-        _diag("fleet", persona=os.environ["OGC_PERSONA"])
-    if _use_pop and sec >= 150.0:
+    if _pop_here:
         _population_search(p, eng, seed, sec, starts, asg)
         r = None                      # population seats its best in eng;
                                       # the portfolio diag has no row here
@@ -995,121 +770,7 @@ def _arm_free(p, deadline, seed=7, tl=None):
               thread_best=[round(x) for x in r[3:]])
     else:
         _diag("population", best=round(eng.objective()[3]))
-    # BAY-SPLIT main search (env OGC_BAYSPLIT): the objective
-    # decomposes exactly once the assignment is fixed (Z2/Z3 are
-    # assignment-only, Z1 is a per-block sum, every checker rule is
-    # within-bay), so after the joint phase settles the assignment we
-    # anneal each bay as its own instance, in parallel, one core each.
-    # Measured motivation (08-01): a 50-block bay sub-anneal recovers
-    # 77% of a deliberate perturbation -- the per-bay space is where
-    # the search still has room.
-    if _bs_on:
-        try:
-            import baysplit as _bsm
-            _orig = list(eng.get_solution())
-            _ob = eng.objective()
-            _bo = _ob[3]
-            if _ob[0] <= 1e-9:
-                _left = deadline - time.time() - 2.0 - 0.01 * n
-                if _left > 10.0:
-                    eng.run_portfolio(_THR, _left, 1, 0.05, 0.15,
-                                      0.002, 0.9995, seed + 5, 1,
-                                      [eng.get_solution()], 0)
-                    _diag("baysplit", skipped="z1free",
-                          gave_back=round(_left, 1))
-                raise RuntimeError("z1-free")
-            B_ = p["blocks"]
-            _H3 = (max(int(round(b["due_date"])) for b in B_)
-                   + max(max(1, int(math.ceil(b["processing_time"]
-                                              - 1e-9)))
-                         for b in B_) + 40)
-            _new = _bsm.optimize(
-                p, _orig, deadline - 2.0 - 0.01 * n, seed=seed,
-                diag=_diag,
-                solver_dir=os.path.dirname(os.path.abspath(__file__)))
-            if _new is not None:
-                eng.set_solution(_new)
-                eng.build_occ(_H3)
-                if eng.objective()[3] >= _bo:
-                    eng.set_solution(_orig)
-                    eng.build_occ(_H3)
-        except Exception:
-            _diag("baysplit", error="exception")
-    # CP-SAT EXACT-REPAIR LNS (env OGC_BOXLNS = seconds): the engine's
-    # repair is greedy first-fit over corner candidates; this hands a
-    # ~18-block slice (one bay, one time window) to CP-SAT with x/y/
-    # entry CONTINUOUS and the rest as fixed obstacles, taking the
-    # proven-best arrangement. Bbox-conservative, so accepted moves are
-    # checker-legal by construction.
-    _bl = float(os.environ.get("OGC_BOXLNS", "0"))
-    if _bl > 0:
-        try:
-            import boxlns as _bxm
-            _o0 = list(eng.get_solution())
-            _v0 = eng.objective()[3]
-            B_ = p["blocks"]
-            _H4 = (max(int(round(b["due_date"])) for b in B_)
-                   + max(max(1, int(math.ceil(b["processing_time"]
-                                              - 1e-9))) for b in B_) + 40)
-            _nf = _bxm.optimize(p, _o0,
-                                min(time.time() + _bl, deadline - 3.0),
-                                seed=seed, diag=_diag)
-            if _nf is not None:
-                eng.set_solution(_nf)
-                eng.build_occ(_H4)
-                if eng.objective()[3] >= _v0:
-                    eng.set_solution(_o0); eng.build_occ(_H4)
-                else:
-                    _diag("boxlns", gain=round(_v0 - eng.objective()[3]))
-        except Exception:
-            _diag("boxlns", error="exception")
     _pref_polish(p, eng, deadline)
-    # in-TL certified CP refinement post-pass (env OGC_REFINE):
-    # strictly additive -- adopts the CP board only when its EXACT
-    # model objective beats the anneal's, and falls back to the anneal
-    # board if the gate rejects it. ortools is in the grading env
-    # (problem_statement.md sec 3.2).
-    if os.environ.get("OGC_REFINE", "0") == "1":
-        _rleft = deadline - time.time()
-        if _rleft <= 25.0:
-            _diag("refine", skipped="budget", left=round(_rleft, 1))
-    if os.environ.get("OGC_REFINE", "0") == "1" and \
-            deadline - time.time() > 25.0:
-        try:
-            import refine as _rfm
-            _orig = list(eng.get_solution())
-            _cands = [list(c) for c in eng.get_candidates()[:6]]
-            if _orig not in _cands:
-                _cands = [_orig] + _cands
-            _e2 = _build_engine(p)
-            B_ = p["blocks"]
-            _H2 = (max(int(round(b["due_date"])) for b in B_)
-                   + max(max(1, int(math.ceil(b["processing_time"]
-                                              - 1e-9))) for b in B_)
-                   + 40)
-            _e2.build_occ(_H2)
-            _rfl = _rfm.refine(
-                p, _e2, _cands, _orig,
-                deadline - 1.5 - 0.01 * n,
-                best_obj=eng.objective()[3], diag=_diag)
-            if _rfl is not None:
-                eng.set_solution(_rfl)
-                eng.build_occ(_H2)
-                _sol2, _res2 = _gate(p, eng, n, deadline)
-                if _sol2 is not None:
-                    return _sol2, _res2
-                eng.set_solution(_orig)
-                eng.build_occ(_H2)
-        except Exception:
-            _diag("refine", error="exception")
-            _dp = os.environ.get("OGC_REFDBG", "")
-            if _dp:
-                try:
-                    import traceback
-                    with open(_dp, "a") as _fh:
-                        _fh.write(traceback.format_exc())
-                except Exception:
-                    pass
     # The gate consumes the portfolio's candidate SET, best first. Whether a
     # layout carries a measure-zero checker artifact is an independent
     # lottery per candidate, so trying the runner-ups on gate failure drops

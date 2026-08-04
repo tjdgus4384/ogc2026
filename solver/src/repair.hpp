@@ -180,20 +180,6 @@ inline bool scanBayAt(Ctx& c, int A, int j, int e, const std::vector<int>& oris,
     int bfSeen = 0;
     for (int oi : oris) {
         cornerSetsRB(c, A, oi, j, rbs, xs, ys);
-        // fastscan (env OGC_FASTSCAN, default on): one dilation pass
-        // per row replaces per-candidate hitsSnap probes with O(1)
-        // bit lookups -- identical semantics (bitset certified
-        // 0-mismatch vs hitsSnap), ~|xs|x fewer probe ops per row.
-        // REFUTED as a speedup (08-01 iters A/B: ON 1.19M vs OFF
-        // 1.88M iters at P5 TL600 -- hitsSnap early-exits beat the
-        // always-full dilation pass). Default OFF, env-opt-in only.
-        static const bool fsc = [] {
-            const char* v = getenv("OGC_FASTSCAN");
-            return v && *v == '1';
-        }();
-        int xmax = 0;
-        for (int x : xs) if (x > xmax) xmax = x;
-        uint64_t FB[20];
         // POLYGON candidate generation (env OGC_NFP=1): replace the
         // bbox-corner x set with the row's true contact set. The
         // corner generator sees only resident BOUNDING BOXES, which
@@ -235,64 +221,9 @@ inline bool scanBayAt(Ctx& c, int A, int j, int e, const std::vector<int>& oris,
             }
             if (nfp2 > 1) continue;      // 2 = NFP-only, 1 = then corners
         }
-        const bool nfp = knobs::nfp() != 0;
-        const auto& bbN = pb.geo[A].orients[oi].bb;
-        const int nxlo = (int)std::ceil(-bbN.x0);
-        const int nxhi = (int)std::floor(pb.bayW[j] - bbN.x1);
-        thread_local std::vector<int> cxs;
-        int cbuf[64];
         for (int y : ys) {
-            if (nfp && nxhi >= nxlo) {
-                int nc = c.oc->contactXs(sn, A, oi, y, nxlo, nxhi,
-                                         cbuf, 64);
-                if (nc > 0) {
-                    cxs.assign(cbuf, cbuf + nc);
-                    // EXACTNESS RECOVERY: the raster is cell-centre
-                    // based, so positions where the polygons interlock
-                    // within a cell read as "blocked" and the tightest
-                    // nesting spots never enter the candidate set
-                    // (measured sliver overlaps: area 0.002-0.68).
-                    // Positions are INTEGERS, so those spots are
-                    // exactly the cells just outside each free run --
-                    // ask the polygon-exact judge about them directly.
-                    for (int t = 0; t < nc; t++) {
-                        int lo2 = cbuf[t] - 1, hi2 = cbuf[t] + 1;
-                        if (lo2 >= nxlo &&
-                            std::find(cxs.begin(), cxs.end(), lo2)
-                                == cxs.end())
-                            cxs.push_back(lo2);
-                        if (hi2 <= nxhi &&
-                            std::find(cxs.begin(), cxs.end(), hi2)
-                                == cxs.end())
-                            cxs.push_back(hi2);
-                    }
-                    for (int x0 : xs)
-                        if (x0 >= nxlo && x0 <= nxhi &&
-                            std::find(cxs.begin(), cxs.end(), x0)
-                                == cxs.end())
-                            cxs.push_back(x0);
-                    for (int x : cxs) {
-                        s.bay[A]=j; s.ori[A]=oi; s.x[A]=x; s.y[A]=y;
-                        s.e[A]=e; s.f[A]=f; s.placed[A]=1;
-                        if (core::vpConservative(pb, s, A)) {
-                            s.addIdx(A);
-                            c.oc->stamp(pb, s, A, true);
-                            return true;
-                        }
-                        s.placed[A]=0;
-                    }
-                    continue;
-                }
-            }
-            int nwx = -1;
-            if (fsc && !xs.empty() && xs.front() >= 0)
-                nwx = c.oc->freeRowFB(sn, A, oi, y, xmax, FB);
             for (int x : xs) {
-            if (nwx > 0) {
-                if ((FB[x >> 6] >> (x & 63)) & 1ULL) continue;
-            } else {
                 if (c.oc->hitsSnap(sn, A, oi, x, y)) continue;
-            }
             s.bay[A]=j; s.ori[A]=oi; s.x[A]=x; s.y[A]=y;
             s.e[A]=e; s.f[A]=f; s.placed[A]=1;
             if (core::vpConservative(pb, s, A)) {
@@ -344,32 +275,6 @@ bf_done:
             return true;
         }
         s.placed[A]=0;
-    }
-    // raster-NFP FALLBACK: polygon-contact leftmost fits, only when no
-    // corner candidate placed A. Contact-tight placements are legal but
-    // sticky (rules 4/5), so slide-FIRST wholesale wrecked the schedule
-    // (P3 obj1 139,692 tardy days); as a crowded-moment rescue it only
-    // adds fits the corner scan cannot see.
-    if (knobs::slide()) {
-        for (int oi : oris) {
-            cornerSetsRB(c, A, oi, j, rbs, xs, ys);
-            const auto& bb = pb.geo[A].orients[oi].bb;
-            int xlo = (int)std::ceil(-bb.x0);
-            int xhi = (int)std::floor(pb.bayW[j] - bb.x1);
-            if (xhi < xlo) continue;
-            for (int y : ys) {
-                int sx = c.oc->slideLeftX(sn, A, oi, y, xlo, xhi);
-                if (sx == INT_MIN) continue;
-                s.bay[A]=j; s.ori[A]=oi; s.x[A]=sx; s.y[A]=y;
-                s.e[A]=e; s.f[A]=f; s.placed[A]=1;
-                if (core::vpConservative(pb, s, A)) {
-                    s.addIdx(A);
-                    c.oc->stamp(pb, s, A, true);
-                    return true;
-                }
-                s.placed[A]=0;
-            }
-        }
     }
     return false;
 }
@@ -473,14 +378,6 @@ inline bool insertGreedy(Ctx& c, int A, int eCap = -1) {
                c.pb->dayLoad[eBot] > thr)
             eBot++;
     }
-    const double SLK = knobs::slackDef();
-    if (SLK > 0.0) {
-        int slack = pb.D[A] - pb.R[A] - pb.P[A];
-        if (slack > 0) {
-            int shift = (int)(SLK * slack);
-            if (shift > 0 && eBot + shift <= eTop) eBot += shift;
-        }
-    }
     if (eTop < eBot) return false;
 
     std::vector<int> bays;
@@ -491,57 +388,6 @@ inline bool insertGreedy(Ctx& c, int A, int eCap = -1) {
     const double PREFP = knobs::prefP();
     if (std::uniform_real_distribution<double>(0,1)(c.rng)
             < (PREFP >= 0 ? PREFP : (c.prefStrong ? 0.92 : 0.70)))
-        // CONGESTION-DISCOUNTED PREFERENCE (env OGC_CONGEST): sorting
-        // by raw preference sends every block at the same popular bay
-        // regardless of how full it already is, and the loser is
-        // whoever needed that space to be punctual. Measured on P3:
-        // the favourite bay peaks at 156% of capacity while the other
-        // two sit at 31% and 38%. Dividing the preference by the bay's
-        // own occupancy over the block's stay makes a crowded bay look
-        // exactly as unattractive as it actually is -- no constant,
-        // just demand over capacity.
-        if (knobs::congest()) {
-            thread_local std::vector<double> sc;
-            sc.assign(pb.m, 0.0);
-            for (int j : bays) {
-                double capj = pb.bayW[j] * pb.bayH[j];
-                double used = 0.0; int cntd = 0;
-                for (int t = eBot; t < eBot + pb.P[A]
-                                   && t < c.oc->T; t++) {
-                    used += c.oc->areaUsed[j][t]; cntd++;
-                }
-                double occ = cntd ? (used / cntd) / std::max(1.0, capj)
-                                  : 0.0;
-                if (knobs::congest() >= 3) {
-                    // Utilisation-based expected delay. The previous
-                    // form triggered on occupancy ABOVE capacity, but
-                    // the area screener already prevents that, so it
-                    // never fired (P4/P6 came out byte-identical).
-                    // Queueing gives the right shape: waiting grows
-                    // like u/(1-u) as a resource approaches
-                    // saturation, so a bay at 90% is far worse than
-                    // one at 30% even though neither is "full".
-                    double u = std::min(0.95, occ);
-                    double delay = pb.P[A] * (u / (1.0 - u));
-                    sc[j] = pb.w3 * pb.pref[A][j] - pb.w1 * delay;
-                } else if (knobs::congest() >= 2) {
-                    // price both sides in OBJECTIVE units instead of
-                    // discounting by an invented factor: choosing a
-                    // bay that is over capacity by fraction f delays
-                    // the block by roughly f of its stay (w1 per day),
-                    // while giving up the favourite costs w3 per
-                    // preference point. The exchange rate then comes
-                    // from the instance's own weights, not a guess.
-                    double over = std::max(0.0, occ - 1.0);
-                    sc[j] = pb.w3 * pb.pref[A][j]
-                            - pb.w1 * over * pb.P[A];
-                } else {
-                    sc[j] = pb.pref[A][j] / (1.0 + 3.0 * occ);
-                }
-            }
-            std::sort(bays.begin(), bays.end(), [&](int a, int b){
-                return sc[a] > sc[b]; });
-        } else
         std::sort(bays.begin(), bays.end(), [&](int a, int b){
             return pb.pref[A][a] > pb.pref[A][b]; });
     else
@@ -628,87 +474,6 @@ inline bool insertGreedy(Ctx& c, int A, int eCap = -1) {
                     s.placed[A]=0;
                 }
             }
-        }
-    }
-    // LAST RESORT: TAKE A SLOT (env OGC_TAKEOVER). Reaching here means
-    // no free space fits A anywhere -- which on a bbox-saturated board
-    // is the normal case, not an exception, and today the whole move
-    // is simply discarded. But a slot does not have to be empty to be
-    // usable: evict the resident whose own re-seating is cheapest,
-    // stand A in its place, and hand the evicted block back to the
-    // caller's repair loop. This turns the dead failure path into the
-    // exchange the board actually needs. Verified with the same vp
-    // oracle; on any doubt nothing is committed.
-    if (knobs::takeover() && c.evicted &&
-        c.chainDepth < knobs::chainMax()) {
-        int bestK = -1; double bestCost = 1e18;
-        for (int j : bays) {
-            for (int k : s.byBay[j]) {
-                if (!s.placed[k] || k == A) continue;
-                if (s.f[k] <= eBot) continue;
-                // never displace a block twice in one chain: that is
-                // what turns an ejection chain into a cycle
-                if (c.chainSeen && (*c.chainSeen)[k]) continue;
-                double slack = (double)(pb.D[k] - s.f[k]);
-                double cost = -slack;          // most slack = cheapest
-                if (cost >= bestCost) continue;
-                bestK = k; bestCost = cost;
-            }
-        }
-        if (bestK >= 0) {
-            int kB=s.bay[bestK], kO=s.ori[bestK], kX=s.x[bestK],
-                kY=s.y[bestK], kE=s.e[bestK], kF=s.f[bestK];
-            removeBlock(c, bestK);
-            int e2 = std::max(eBot, kE);
-            if (e2 <= eTop) {
-                // RESCAN the freed bay instead of forcing A into the
-                // evicted block's exact slot with the evicted block's
-                // orientation index. A and k have different shapes, so
-                // that single (ori, x, y) guess almost never holds --
-                // which is why this path produced nothing and the
-                // ejection chain above it stayed inert (P4 came out
-                // byte-identical with chains on). The census says
-                // evicting the right resident OPENS a punctual
-                // position, not that A fits exactly where k stood.
-                thread_local std::vector<int> oris2, xs2, ys2;
-                oris2.clear();
-                for (size_t oq = 0; oq < pb.geo[A].orients.size(); oq++)
-                    oris2.push_back((int)oq);
-                s.placed[A]=0;
-                // scanBayAt commits and stamps on success, so only the
-                // fallback needs a manual commit here.
-                bool got = scanBayAt(c, A, kB, e2, oris2, xs2, ys2);
-                if (!got) {
-                    s.bay[A]=kB; s.ori[A]=kO; s.x[A]=kX; s.y[A]=kY;
-                    s.e[A]=e2; s.f[A]=e2+pb.P[A]; s.placed[A]=1;
-                    if (core::vpConservative(pb, s, A)) {
-                        s.addIdx(A);
-                        c.oc->stamp(pb, s, A, true);
-                        got = true;
-                    } else {
-                        s.placed[A]=0;
-                    }
-                }
-                if (got) {
-                    bool nb = true;
-                    for (int k2 : s.byBay[kB]) {
-                        if (k2 == A || !s.placed[k2]) continue;
-                        if (!core::vpConservative(pb, s, k2)) {
-                            nb = false; break; }
-                    }
-                    if (nb) {
-                        if (c.chainSeen) (*c.chainSeen)[bestK] = 1;
-                        c.evicted->push_back(bestK);
-                        return true;
-                    }
-                    removeBlock(c, A);
-                }
-            }
-            // restore the resident: the takeover did not hold
-            s.bay[bestK]=kB; s.ori[bestK]=kO; s.x[bestK]=kX;
-            s.y[bestK]=kY; s.e[bestK]=kE; s.f[bestK]=kF;
-            s.placed[bestK]=1; s.addIdx(bestK);
-            c.oc->stamp(pb, s, bestK, true);
         }
     }
     return false;

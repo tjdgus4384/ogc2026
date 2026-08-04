@@ -391,24 +391,6 @@ struct Engine {
             double roundT0 = elapsed();
             core::Sol roundStart = globalBest;
             double roundEnterBest = bestObj;
-            // learned persona fleet (env OGC_PERSONA="a,b,c,d"):
-            // remap each thread's SEARCH PERSONA (q-mult / T0 / SA-mix
-            // / op-mask) while keeping tid for seeds and starts.
-            // Unset = identity (grading default unchanged).
-            int perMap[64];
-            for (int q = 0; q < 64; q++) perMap[q] = q;
-            if (const char* pv = getenv("OGC_PERSONA")) {
-                int idx = 0, val = -1;
-                for (const char* c = pv; ; c++) {
-                    if (*c >= '0' && *c <= '9')
-                        val = (val < 0 ? 0 : val * 10) + (*c - '0');
-                    else {
-                        if (val >= 0 && idx < 64) perMap[idx++] = val;
-                        val = -1;
-                        if (!*c) break;
-                    }
-                }
-            }
             #pragma omp parallel num_threads(threads)
             {
                 int tid = 0;
@@ -419,7 +401,7 @@ struct Engine {
                 occ::OccIndex oc2; oc2.build(pb, horizon_);
                 repair::Ctx c2; c2.pb = &pb; c2.s = &s2; c2.oc = &oc2;
                 c2.horizon = horizon_;
-                c2.densMode = knobs::mixDens() ? (tid % 2) : -1;
+                c2.densMode = tid % 2;
                 c2.forcedBay = ctx.forcedBay;   // assignment lock -> threads
                 c2.entryCap = ctx.entryCap;     // entry lock -> threads
                 bool constructed = false;
@@ -453,39 +435,14 @@ struct Engine {
                         if (s2.placed[i]) oc2.stamp(pb, s2, i, true);
                 }
                 alns::RunParams rp;
-                const int pid = perMap[tid];
-                double mult = (pid % 3 == 0 ? 0.6 : (pid % 3 == 1 ? 1.0 : 1.5));
+                double mult = (tid % 3 == 0 ? 0.6 : (tid % 3 == 1 ? 1.0 : 1.5));
                 rp.qloF = qlo * mult; rp.qhiF = qhi * mult;
-                rp.T0mul = T0mul * ((pid/3) % 3 == 0 ? 0.5 :
-                                    ((pid/3) % 3 == 1 ? 1.0 : 2.0));
+                rp.T0mul = T0mul * ((tid/3) % 3 == 0 ? 0.5 :
+                                    ((tid/3) % 3 == 1 ? 1.0 : 2.0));
                 rp.cooling = cooling;
-                // judgment screeners ([유산] re-judgment): env-gated persona
-                // overrides, inert when unset (grading server).
-                const double HCF = knobs::hcFrac();
-                const double BQ = knobs::bigQ();
-                rp.hcFrac  = HCF >= 0 ? HCF
-                             : ((pid % 2 == 0) ? 1.0 : 0.75); // half pure-SA
-                rp.bigQProb = (pid % 2 == 0) ? 0.0
-                              : (BQ >= 0 ? BQ : 0.06);
-                rp.opMask  = (pid % 2 == 0) ? 0x1F : 0x3FF; // exploit / explore+ejections
-                // HETEROGENEOUS ACCEPTANCE (env OGC_MIXACC, default
-                // on): half the threads anneal with SA, half with
-                // self-scaled LAHC. Measured 08-02, LAHC wins P3/P5/P6
-                // but loses P4 -- and no clean structural gate
-                // separates them on four boards without overfitting.
-                // Running both rules in the same portfolio lets the
-                // instance decide, which is also what the min-of-
-                // parallel law says: diversity beats a single choice.
-                if (knobs::mixAcc())
-                    rp.lahcLen = (tid % 2 == 0) ? 0 : -1;
-                // Split on tid/2, ORTHOGONAL to the tid%2 axis that
-                // already carries the exploit/explore persona (op mask,
-                // hill-climb fraction, big-q, acceptance rule). Keying
-                // both on the same parity put every shift-off thread on
-                // the exploit persona, so the configuration that wins
-                // P5 by 5.2% was never actually run.
-                if (knobs::shiftSplit())
-                    rp.shiftPP = (tid / 2 == 0) ? knobs::shiftP() : 0;
+                rp.hcFrac  = (tid % 2 == 0) ? 1.0 : 0.75;   // half pure-SA tail
+                rp.bigQProb = (tid % 2 == 0) ? 0.0 : 0.06;
+                rp.opMask  = (tid % 2 == 0) ? 0x1F : 0x3FF; // exploit / explore+ejections
                 // round 0 = the full core; extensions run core/3 (fit-check
                 // scales the duration estimate by the iteration ratio) and
                 // CONTINUE the thread's anneal temperature: a T0 restart
@@ -504,8 +461,7 @@ struct Engine {
                         if (s2.placed[i]) oc2.stamp(pb, s2, i, true);
                     repair::Ctx c3; c3.pb=&pb; c3.s=&s2; c3.oc=&oc2;
                     c3.horizon=horizon_;
-                    if (knobs::sCompact() > 0)
-                        alns::spatialCompact(c3, knobs::sCompact());
+                    alns::spatialCompact(c3, 6);
                     alns::compactLeft(c3, 3);
                 }
                 #pragma omp critical

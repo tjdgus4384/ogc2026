@@ -268,27 +268,6 @@ struct OccIndex {
     // can never produce (measured: bbox utilisation 103-105% while
     // polygon utilisation is 58-65%, i.e. the engine packs boxes).
     // Returns how many were written to out.
-    int contactXs(const Snap& sn, int i, int oi, int y, int xlo,
-                  int xhi, int* out, int cap) {
-        if (xhi < xlo || cap <= 0) return 0;
-        uint64_t FB[20];
-        int nwx = freeRowFB(sn, i, oi, y, xhi, FB);
-        if (nwx < 0) return 0;
-        int cnt = 0, x = xlo;
-        while (x <= xhi) {
-            if ((FB[x >> 6] >> (x & 63)) & 1ULL) { x++; continue; }
-            int a = x;
-            while (x + 1 <= xhi &&
-                   !((FB[(x + 1) >> 6] >> ((x + 1) & 63)) & 1ULL))
-                x++;
-            out[cnt++] = a;                       // left contact
-            if (cnt >= cap) return cnt;
-            if (x != a) { out[cnt++] = x;         // right contact
-                          if (cnt >= cap) return cnt; }
-            x++;
-        }
-        return cnt;
-    }
     int slideLeftX(const Snap& sn, int i, int oi, int y, int xlo,
                    int xhi) {
         if (xhi < xlo) return INT_MIN;
@@ -366,16 +345,6 @@ struct OccIndex {
         for (int x = xlo; x <= xhi; x++) {
             int xp = x - x0;
             if (!((FB[xp >> 6] >> (xp & 63)) & 1ULL)) { res = x; break; }
-        }
-        static const bool chk = getenv("OGC_SLIDECHECK") != nullptr;
-        if (chk) {
-            int lin = INT_MIN;
-            for (int x = xlo; x <= xhi; x++)
-                if (!hitsSnap(sn, i, oi, x, y)) { lin = x; break; }
-            if (lin != res)
-                fprintf(stderr, "SLIDEMISMATCH i=%d oi=%d y=%d "
-                        "bit=%d lin=%d xlo=%d xhi=%d nw=%d\n",
-                        i, oi, y, res, lin, xlo, xhi, nw);
         }
         return res;
     }
