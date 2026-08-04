@@ -81,6 +81,41 @@ if BOARD:
                 for j in range(m):
                     mdl.AddHint(y[o["block_id"]][j], 1 if j == o["bay_id"] else 0)
 
+# ---- ENERGETIC VALID INEQUALITIES (a real Z1 model for the master)
+# The first version gave the master no notion of tardiness at all: its
+# bound sat at 116k against an actual 3.7M, so it wandered into
+# assignments whose geometry was hopeless (P6: 73 of 73 proposals could
+# not even be seeded). Area-time is the currency that fixes this. A bay
+# processes at most area_j of area-time per day, so for any threshold t
+# the work that is DUE by t and assigned to j needs
+#     sum_{D_i <= t} area_i * P_i * y[i][j]
+# of area-time inside a window of capacity area_j * t. Whatever exceeds
+# that must finish later, and the excess divided by area_j is a lower
+# bound on how many days late it lands -- hence on sum-tardiness.
+# Unlike the bbox-area cut that was refuted for the real problem, this
+# uses each block's own polygon area, which no interlocking can shrink.
+AREA = []
+for i in range(n):
+    sh = B[i]["shape"][0]["layers"]
+    xs = [v[0] for lay in sh for v in lay]
+    ys = [v[1] for lay in sh for v in lay]
+    AREA.append(max(1.0, (max(xs) - min(xs)) * (max(ys) - min(ys))))
+thr = sorted({D[i] for i in range(n)})
+if len(thr) > 24:
+    step = len(thr) / 24.0
+    thr = [thr[min(len(thr) - 1, int(k * step))] for k in range(24)]
+energetic = 0
+for j in range(m):
+    for t in thr:
+        cap = ar[j] * t
+        dem = [(i, AREA[i] * P[i]) for i in range(n) if D[i] <= t]
+        if not dem or sum(d for _, d in dem) <= cap:
+            continue
+        # T_j * area_j >= (demand due by t) - capacity by t
+        mdl.Add(int(ar[j]) * T[j] >= sum(int(d) * y[i][j] for i, d in dem)
+                - int(cap))
+        energetic += 1
+
 BIG = HOR
 t0 = time.time()
 rounds, best = [], None
@@ -99,9 +134,27 @@ while time.time() - t0 < TOTAL - SUB - 10:
     # subproblem: the engine packs this assignment with exact geometry
     eng, seeds = M._seed_free(p, asg=asg)
     if eng is None:
-        # no packing at all under this assignment: forbid it wholesale
-        mdl.AddBoolOr([y[i][asg[i]].Not() for i in range(n)])
-        rounds.append({"master_lb": round(master_lb), "sub": "seed-failed"})
+        # Locate WHICH bay is impossible and forbid that set, not just
+        # this one assignment. Forbidding the whole proposal taught the
+        # master nothing: P6 burned 73 rounds re-proposing variations of
+        # the same impossible bay.
+        bad = 0
+        for j in range(m):
+            S = [i for i in range(n) if asg[i] == j]
+            if not S:
+                continue
+            sub = {"bays": [bays[j]],
+                   "blocks": [{**B[i], "bay_preferences": [PREF[i][j]]}
+                              for i in S],
+                   "weights": W}
+            e2, _ = M._seed_free(sub)
+            if e2 is None:
+                mdl.Add(sum(y[i][j] for i in S) <= len(S) - 1)
+                bad += 1
+        if bad == 0:
+            mdl.AddBoolOr([y[i][asg[i]].Not() for i in range(n)])
+        rounds.append({"master_lb": round(master_lb), "sub": "seed-failed",
+                       "subset_cuts": bad})
         continue
     eng.run_portfolio(4, SUB, 1, 0.05, 0.15, 0.002, 0.9995, 7, len(seeds), seeds)
     flat = eng.get_solution()
@@ -125,7 +178,7 @@ while time.time() - t0 < TOTAL - SUB - 10:
         break
 
 res = {"board": os.path.basename(prob_path), "n": n, "m": m,
-       "rounds": rounds, "best_engine_obj": best,
+       "energetic_rows": energetic, "rounds": rounds, "best_engine_obj": best,
        "wall": round(time.time() - t0, 1)}
 if best_sol is not None:
     eng = M._build_engine(p)
