@@ -1,22 +1,39 @@
 {
-  "_provenance": "결선 히든 인스턴스(8개, P1-P8)의 서버 회신 실측. 예선 P1-P6과는 다른 새 인스턴스(스케일 상이) -- data/prelim_refs.json의 목표치는 결선 히든에 직접 적용 불가. 다음 제출의 비교 기준선.",
-  "submissions": [
-    {
-      "zip": "2026-08-03_v40-slice-finals.zip",
-      "engine": "v4.0 (slice, mixAcc=1)",
-      "submitted": "2026-08-03",
-      "status": "8/8 Feasible solution found",
-      "objectives": {
-        "P1": 2827959.0,
-        "P2": 20429336.0,
-        "P3": 5816464.0,
-        "P4": 4879934.0,
-        "P5": 6999837.0,
-        "P6": 1039127.0,
-        "P7": 18959858.0,
-        "P8": 16848893.0
-      },
-      "total": 77801508.0
-    }
-  ]
+ "_provenance": "결선 히든 인스턴스(8개, P1-P8)의 서버 회신 실측. 예선 P1-P6과는 다른 새 인스턴스(스케일 상이) -- data/prelim_refs.json의 목표치는 결선 히든에 직접 적용 불가. 다음 제출의 비교 기준선.",
+ "submissions": [
+  {
+   "zip": "2026-08-03_v40-slice-finals.zip",
+   "engine": "v4.0 (slice, mixAcc=1)",
+   "submitted": "2026-08-03",
+   "status": "8/8 Feasible solution found",
+   "objectives": {
+    "P1": 2827959.0,
+    "P2": 20429336.0,
+    "P3": 5816464.0,
+    "P4": 4879934.0,
+    "P5": 6999837.0,
+    "P6": 1039127.0,
+    "P7": 18959858.0,
+    "P8": 16848893.0
+   },
+   "total": 77801508.0
+  },
+  {
+   "zip": "2026-08-04_v51-finals.zip",
+   "engine": "v5.1 (simplified core + rescue audition + trivial fix, mixAcc=0)",
+   "submitted": "2026-08-04",
+   "status": "8/8 Feasible solution found",
+   "objectives": {
+    "P1": 2595496.0,
+    "P2": 20470776.0,
+    "P3": 5880133.0,
+    "P4": 5095054.0,
+    "P5": 6802605.0,
+    "P6": 1007796.0,
+    "P7": 18390455.0,
+    "P8": 16803611.0
+   },
+   "total": 77045926.0
+  }
+ ]
 }
