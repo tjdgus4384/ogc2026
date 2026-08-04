@@ -23,3 +23,10 @@
 {"board": "prob_3.json", "kind": "incumbent", "n": 200, "m": 3, "pre": {"constructed_obj": 1111264.0, "z1": 58.0, "z2": 3308.0, "z3": 424.0}, "hard_lock": true, "wall": 240.8, "objective": 80140.0, "z1": 0.0, "z2": 3308.0, "z3": 424.0, "placed": 200, "checker_feasible": true, "checker_obj": 80140.0}
 {"board": "prob_3.json", "kind": "file:/data_fast/home/tjdgus4384/priv/ogc2026/runs/asgopt/p3_r8.json", "n": 200, "m": 3, "pre": {"constructed_obj": 5926653.0, "z1": 331.0, "z2": 5307.0, "z3": 104.0}, "hard_lock": true, "wall": 240.9, "objective": 98150.0, "z1": 0.0, "z2": 2500.0, "z3": 571.0, "placed": 200, "checker_feasible": true, "checker_obj": 98150.0}
 {"board": "prob_3.json", "kind": "file:/data_fast/home/tjdgus4384/priv/ogc2026/results/campaign3/asgopt_p3_v3_assignment.json", "n": 200, "m": 3, "pre": {"constructed_obj": 10635198.0, "z1": 596.0, "z2": 6402.0, "z3": 50.0}, "hard_lock": true, "wall": 240.9, "objective": 129815.0, "z1": 0.0, "z2": 3373.0, "z3": 753.0, "placed": 200, "checker_feasible": true, "checker_obj": 129815.0}
+
+# SUPERSEDED-BY (2026-08-05, same day): the closing lines above -- 'at least one more path
+# remains unidentified' and '39,510 remains NEITHER confirmed NOR refuted' -- were both
+# overturned later the same day. The sixth leak (ops 8/9 forcing tsBlk into tsBay even when
+# that block is locked elsewhere) was found and closed; see lockviol_counters_p3.log for the
+# 0/0 counters and asgfrontier_p3.log for the priced frontier that settles 39,510. This file
+# is kept unedited as the record of what was known at the time.

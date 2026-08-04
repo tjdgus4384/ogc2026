@@ -1,0 +1,32 @@
+# judge.py p36 for the v5.5 candidate seeds (frozen for the ~2,367 figure quoted in STATUS/SUBMISSIONS)
+# repo_head=9c9d9e7 date=2026-08-05T05:58:37+09:00
+
+## seed 7
+== p36-seedlock-s7
+   prob    objective gap-to-min  rank score    obj1    wall
+   P3         82,610     +27.7%    18   391       0    233s
+   P4      3,066,295     +60.7%    13   396     182    471s
+   P5     10,415,006     +34.9%    26   383     735    587s
+   P6     29,420,213     +15.6%    28   381   4,267    886s
+   TOTAL score 2367 (~rank 14; §5 shape, rank-1=2,440)
+targets = §3 all-time minima {P3 64,695 / P4 1,908,043 / P5 7,718,486 / P6 25,452,695}
+
+## seed 41
+== p36-seedlock-s41
+   prob    objective gap-to-min  rank score    obj1    wall
+   P3         82,615     +27.7%    18   391       0    233s
+   P4      2,956,671     +55.0%    13   396     174    470s
+   P5      9,566,333     +23.9%    13   396     672    587s
+   P6     27,807,072      +9.3%    10   399   4,010    888s
+   TOTAL score 2398 (~rank 9; §5 shape, rank-1=2,440)
+targets = §3 all-time minima {P3 64,695 / P4 1,908,043 / P5 7,718,486 / P6 25,452,695}
+
+## seed 42
+== p36-seedlock-s42
+   prob    objective gap-to-min  rank score    obj1    wall
+   P3         82,610     +27.7%    18   391       0    231s
+   P4      3,213,205     +68.4%    18   391     199    470s
+   P5     10,772,407     +39.6%    32   377     762    586s
+   P6     29,071,366     +14.2%    23   386   4,186    886s
+   TOTAL score 2361 (~rank 15; §5 shape, rank-1=2,440)
+targets = §3 all-time minima {P3 64,695 / P4 1,908,043 / P5 7,718,486 / P6 25,452,695}

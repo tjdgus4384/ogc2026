@@ -6,6 +6,12 @@ with no packing constraint at all -- bounds from below what ANY feasible
 board can score on those two terms. On a board where Z1 is already zero
 (P3) that bound is the whole objective, so it says exactly how much room
 the assignment alone still holds.
+
+SCOPE: the lower-bound property holds ONLY in default mode. ASGOPT_CAP,
+ASGOPT_FIT, ASGOPT_PUNCTUAL and ASGOPT_AREA_BENDERS each RESTRICT the
+model, and a restriction bounds nothing -- its optimum can sit above the
+true one. The campaign's 39,510 run used FIT+PUNCTUAL+BENDERS and is
+therefore a restricted-master value, not a bound.
 """
 import json, math, os, sys, time
 from ortools.sat.python import cp_model as cp
