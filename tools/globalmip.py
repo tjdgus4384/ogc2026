@@ -153,6 +153,28 @@ for j in range(m):
     ld = gp.quicksum(u[j] * L[i] * z[i, q] for i in range(n)
                      for q, c in enumerate(CAND[i]) if c[0] == j)
     mdl.addConstr(zmax >= ld); mdl.addConstr(zmin <= ld)
+# VALID INEQUALITIES: per (bay, day) area capacity. Blocks resident in
+# bay j on day t cannot exceed its area -- true for every feasible board
+# (it is the area relaxation, already used as a lower-bound model), and
+# it is exactly the global structure the pairwise conflict set expresses
+# only implicitly. A few hundred rows that tighten the LP everywhere.
+if os.environ.get("GM_AREA", "1") == "1":
+    areaOf = []
+    for i in range(n):
+        sh = B[i]["shape"][0]["layers"]
+        xs_ = [v[0] for lay in sh for v in lay]; ys_ = [v[1] for lay in sh for v in lay]
+        areaOf.append((max(xs_) - min(xs_)) * (max(ys_) - min(ys_)))
+    span = {}
+    for i in range(n):
+        for q, c in enumerate(CAND[i]):
+            for t in range(c[4], c[4] + P[i]):
+                span.setdefault((c[0], t), []).append((i, q))
+    for (j, t), lst in span.items():
+        if len(lst) < 2:
+            continue
+        mdl.addConstr(gp.quicksum(areaOf[i] * z[i, q] for i, q in lst)
+                      <= bays[j]["width"] * bays[j]["height"])
+
 obj = gp.quicksum((w1 * max(0, c[4] + P[i] - D[i])
                    + w3 * (SMAX[i] - PREF[i][c[0]])) * z[i, q]
                   for i in range(n) for q, c in enumerate(CAND[i]))
