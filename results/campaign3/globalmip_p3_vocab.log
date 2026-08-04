@@ -1,0 +1,10 @@
+# tool=tools/globalmip.py sha256=07f31b08bde5d3fe73fc3c1281df825dd3e6a19746315ee43b6d7e9b3468e43f backend=cpsat
+# input=data/preliminary_test/prob_3.json sha256=c4f47c17910cf7c4a8aceaff74e6a5b884f752c389383fdd95f2ae2ce9a708d4
+# flags=GM_SOLVER=cpsat GM_TL=240 GM_ROUNDS=8 GM_EXTRA={12,12,40}
+# jobs=63351,63352,63353 nodes=maxwell,nobel,ohm repo_head=dc31ca2 ortools=9.15.6755 date=2026-08-05T01:03:16+09:00
+# scope: VOCABULARY-CONDITIONAL exact optimum. Conflicts pre-generated in bulk by Engine::pairConflicts
+# and seeded before the first solve; every returned board is vp-clean and official-checker feasible.
+# G002 question: does enlarging the vocabulary lower the value? ANSWER: NO.
+{"board": "prob_3.json", "solver": "cpsat", "candidates": 2843, "best_input": 82610.0, "rounds": [{"r": 0, "obj": 82615, "bound": 82615, "engine_obj": 82610.0, "vp_bad": 0}], "seeded_cuts": 142507, "final_obj": 82610.0, "checker_feasible": true, "gain_vs_best_input_pct": 0.0}
+{"board": "prob_3.json", "solver": "cpsat", "candidates": 3952, "best_input": 78705.0, "rounds": [{"r": 0, "obj": 78706, "bound": 78706, "engine_obj": 78705.0, "vp_bad": 0}], "seeded_cuts": 183091, "final_obj": 78705.0, "checker_feasible": true, "gain_vs_best_input_pct": 0.0}
+{"board": "prob_3.json", "solver": "cpsat", "candidates": 10237, "best_input": 77260.0, "rounds": [{"r": 0, "obj": 77259, "bound": 77259, "engine_obj": 77255.0, "vp_bad": 0}], "seeded_cuts": 1026338, "final_obj": 77255.0, "checker_feasible": true, "gain_vs_best_input_pct": 0.006}
