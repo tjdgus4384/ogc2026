@@ -1,3 +1,25 @@
+"""ARCHIVED 2026-08-04 — REJECTED, AND ITS "VALID INEQUALITY" CLAIM IS FALSE.
+
+Kept only as a record of the axis. Two defects, both found after the run:
+
+1. The energetic rows below advertise "each block's own polygon area, which
+   no interlocking can shrink". They do not compute a polygon area at all --
+   AREA is the BBOX of the union of every layer of orientation 0. A bbox
+   over-states occupancy, and using one orientation ignores that the block
+   may be placed in another, so the row can demand more area-time than the
+   block must actually consume and can cut off feasible assignments. It is
+   NOT a valid inequality as written.
+2. The subset infeasibility cuts treat a _seed_free construction failure as
+   proof that the block set cannot share a bay. The constructor is a greedy
+   heuristic, so its failure proves nothing about the instance.
+
+The measured verdict stands regardless: P3 98,335 against 78,705 for free
+search, P4 3,733,464 against 3,176,349, and P6 seed-failed in 73 of 73
+rounds. Do not resurrect this file; a correct version needs a per-layer
+minimum polygon area over orientations (see tools/asgopt.py) and an exact
+per-bay oracle that does not exist at this scale.
+"""
+
 """Assignment-proposal loop -- and why this is NOT branch-and-check.
 
 Named honestly. Logic-based Benders and its branch-and-check variant
