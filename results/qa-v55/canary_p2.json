@@ -1,0 +1,1 @@
+{"inst": "prob_2", "solver": "shipv55", "tl": 20.0, "wall": 16.3, "overrun": false, "maxrss_mb": 352.1, "n": 100, "m": 3, "error": null, "feasible": true, "objective": 3690.0, "obj1": 0.0, "obj2": 144, "obj3": 15.0}

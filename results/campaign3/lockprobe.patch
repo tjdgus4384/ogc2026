@@ -1,3 +1,7 @@
+# BASE: solver/ at commit 95201bb (left-hand side of every hunk below).
+# Applies to a COPY under builds/ only; builds/ is gitignored and never shipped.
+# Leak 1 of 6 (the myalgorithm.py hunk) was adopted into solver/ as v5.5;
+# hunks 2-6 remain probe-only and the shipped lock is soft.
 --- solver/src/alns.hpp	2026-08-04 17:51:47.706008211 +0900
 +++ builds/lockprobe/src/alns.hpp	2026-08-05 02:20:48.498958639 +0900
 @@ -416,10 +416,20 @@
