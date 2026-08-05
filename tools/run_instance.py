@@ -109,6 +109,8 @@ def main():
     expected_instance_hash = os.environ.get(f"OGC_INSTANCE_SHA256_{pid}")
     if expected_instance_hash and initial_instance_hash != expected_instance_hash:
         raise RuntimeError("input drift before candidate execution")
+    prob = json.loads(prob_path.read_text())
+    checker, checker_hash = _load_checker(os.environ.get("OGC_CHECKER_SHA256"))
 
     t0 = time.monotonic()
     try:
@@ -118,15 +120,10 @@ def main():
         sol, err = None, f"{type(exc).__name__}: {exc}"
     wall = time.monotonic() - t0
 
-    checker = None
-    checker_hash = None
-    prob = None
     try:
         final_instance_hash = _sha(prob_path)
         if final_instance_hash != initial_instance_hash:
             raise RuntimeError("candidate mutated the authoritative input")
-        prob = json.loads(prob_path.read_text())
-        checker, checker_hash = _load_checker(os.environ.get("OGC_CHECKER_SHA256"))
     except BaseException as exc:
         sol = None
         err = f"{type(exc).__name__}: {exc}"
@@ -161,7 +158,7 @@ def main():
         rec.update(feasible=False, objective=None, obj1=None, obj2=None, obj3=None)
     else:
         res = checker.check_feasibility(
-            json.loads(prob_path.read_text()), json.loads(json.dumps(sol)))
+            json.loads(json.dumps(prob)), json.loads(json.dumps(sol)))
         rec.update(
             feasible=bool(res.get("feasible")),
             objective=res.get("objective"),
