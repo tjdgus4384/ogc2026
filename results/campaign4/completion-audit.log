@@ -1,0 +1,28 @@
+== campaign4 completion audit ==
+2026-08-05T04:49:33Z
+-- solver unchanged from pre-campaign HEAD 6e00256 --
+PASS
+-- Slurm queue --
+jobs=0
+-- official-TL checker records --
+diverse-s7 PASS 4 checker-feasible records sum 43241599
+joint-s7 PASS 4 checker-feasible records sum 42459933
+regret-s7 PASS 4 checker-feasible records sum 52441908
+seedfirst-3seed PASS 12 checker-feasible records sum 130586996
+multirep-3seed PASS 12 checker-feasible records sum 130137539
+-- exact restricted-neighborhood artifact --
+PASS exactarm CP-SAT/Gurobi K25/K80 artifact present
+-- frozen evidence artifacts --
+332922d88610ab7a584f4893e1ebfc134868250ad76139a0791d6476279a5feb  results/campaign4/p36-arms-s7.log
+5cc3d58a371b23058ebce1231bb766abe918344bdaf96292a36e048d32c1fa4d  results/campaign4/tardyprobe.log
+9460148afd6c6ec822214a0ca8a0577dd4b0f9e0f9bc83328ae7f6da87745ef4  results/campaign4/refuted-kernel-arms.patch
+dcb34d2193f800a50a1a57a6880276907aa606950a7b6de013ab907660924805  results/campaign4/manifests/c4-joint-anchor-6e00256.json
+9eb17ccfa5c74587d91cef078022f70ca4cdd286f640f7eccacaa850635f1ff9  results/campaign4/manifests/c4-joint-diverse-6e00256.json
+43b05e03c1c5c94a767ade7f315b56caed2e30133bb71a312347e0d9a660289a  results/campaign4/manifests/c4-multirep-v1.json
+5353837d108d2dac370f16aa2c2b534195d53263bb48e44b74faefab325d9a13  results/campaign4/manifests/c4-regret-v1.json
+cc911ee3c7d68321ef664e10b0d5622d74854891954b58c18a14d99ad582e5d8  results/campaign4/manifests/c4-seedfirst-v1.json
+-- canonical v5.3 baseline artifact --
+24ad2e245bccdf451815757a4f450d5c6678e27225cbfdb775251ede81a84bc2  submissions/[OGC2026_AlgorithmCode]_MSGA.zip
+24ad2e245bccdf451815757a4f450d5c6678e27225cbfdb775251ede81a84bc2  submissions/2026-08-04_v53-finals.zip
+canary 1 PASS 1499.0
+canary 2 PASS 3690.0
