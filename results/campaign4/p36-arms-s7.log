@@ -82,3 +82,13 @@ same binary both arms, OGC_SEEDFIRST=0 vs 1, seeds 7/41/42
      several incumbents; no single-block insertion rule, cost function,
      destroy size, or post-hoc polish can reach it. That is the measured
      boundary of this campaign.
+
+== blocker-cohort multi-order joint repair, p36 3 seeds x P3-P6 ==
+build exp/c4-multirep-v1, manifest sha256 43b05e03c1c5c94a767ade7f315b56caed2e30133bb71a312347e0d9a660289a
+same binary: OGC_MULTIREP=0 vs 4, seeds 7/41/42. All 24 runs checker-feasible, no overrun/error.
+  P3 s7 -1.77  s41 +0.00  s42 +0.00
+  P4 s7 +8.86  s41 +7.72  s42 -7.08
+  P5 s7 +1.48  s41 +11.22 s42 +5.25
+  P6 s7 +4.10  s41 +1.08  s42 -0.57
+  12 pairs: 3W/7L/2T, objective sum +2.68% => REFUTED.
+Mechanism: ops 3/4 identify a tardy seed plus exact entry-blocker cohort; seed claims its on-time slot first, then four random orders reinsert displaced blockers and cheapest complete repair wins. It gave equal-iteration signals (P4 -6.3%, P5 -6.1%, P6 mixed), but official-TL replication loses P4/P5/P6. This is the strongest targeted joint rearrangement tested in campaign4 and still does not survive distributional judgment.

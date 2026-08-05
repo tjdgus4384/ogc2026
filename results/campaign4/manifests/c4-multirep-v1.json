@@ -1,0 +1,65 @@
+{
+  "tag": "c4-multirep-v1",
+  "files": [
+    {
+      "path": "BUILD.txt",
+      "sha256": "5b3456e9cbefa6ab834cda92e07ef9da55acaa979caa893bebea2f9005fdbf90"
+    },
+    {
+      "path": "README.md",
+      "sha256": "ab16449c82a566d8986efd9ebd5bdca1bfe240b2fb12114c661c8a84fb627c1e"
+    },
+    {
+      "path": "VERSION",
+      "sha256": "eb6f28faca1434fa1b1cebe0c5d12f8e50754925fd9534e545faf142a073678c"
+    },
+    {
+      "path": "build.sh",
+      "sha256": "3e9f5d08774fa6b4906e3c465d2236d602f0a907f5c9d80d4953cbaff0fe145a"
+    },
+    {
+      "path": "myalgorithm.py",
+      "sha256": "3cd04810114719b6546d3f3b917612b10d48393c2b8073560c7bae6f4cc921d4"
+    },
+    {
+      "path": "src/alns.hpp",
+      "sha256": "07fa2b35179ba283dc3ce6a40dd78b0aa9f04635cfbe14ca56f3709d0b76fa3c"
+    },
+    {
+      "path": "src/api.cpp",
+      "sha256": "4448fb844deaaacb76818c4810a48f235db732de9fb5892f403e69fb8304a77b"
+    },
+    {
+      "path": "src/core.hpp",
+      "sha256": "5d8a25455e94d84288dba3e260d1e6262ddcb798fa320d41f4e10e7c96cae574"
+    },
+    {
+      "path": "src/crane.hpp",
+      "sha256": "18de011fe9d5911e57439a28b8d6288ba3f76dd8b982bb2a1f5f1e0a59583a92"
+    },
+    {
+      "path": "src/geometry.hpp",
+      "sha256": "f621a68e333f7bb1b5cd1aec6071bbcd71407c884c9d1136567ae9174c885fbb"
+    },
+    {
+      "path": "src/knobs.hpp",
+      "sha256": "00db18ded68f46d9fd3d9c019212d8d41f128fb5124598f76ae1695d2970c120"
+    },
+    {
+      "path": "src/occ.hpp",
+      "sha256": "bf835cedadf379e04aa2c924abe4bb8c8d98acddf249806c32c78854a97855cd"
+    },
+    {
+      "path": "src/repair.hpp",
+      "sha256": "4ce748084c782cbb49d3cfabf00da2931e7c900cda0d884ad633b2ebf188d8ac"
+    },
+    {
+      "path": "sscore.cpython-312-x86_64-linux-gnu.so",
+      "sha256": "cb4ab504df471fbef6898908bc59832096efab9b370b605a5b67d512f0747fd1"
+    },
+    {
+      "path": "utils.py",
+      "sha256": "d45aaeafdce8bf80d59d097f655c43313a4951bed43b6628e3b1cf62d4876a94"
+    }
+  ]
+}
