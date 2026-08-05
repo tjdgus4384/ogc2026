@@ -17,6 +17,18 @@ namespace crane {
 using geom::Pt; using geom::Poly; using geom::BBox;
 
 struct OrientGeom {
+    const uint64_t cacheGeneration = 0;
+    const uint64_t cacheBlockId = 0;
+    const uint64_t cacheOrientationOrdinal = 0;
+    const uint64_t cacheId = 0;    // nonzero stable identity for relation caches
+
+    OrientGeom() = default;
+    OrientGeom(uint64_t generation, uint64_t blockId, uint64_t orientationOrdinal)
+        : cacheGeneration(generation),
+          cacheBlockId(blockId),
+          cacheOrientationOrdinal(orientationOrdinal),
+          cacheId(makeCacheId(generation, blockId, orientationOrdinal)) {}
+
     std::vector<Poly> layers;   // local coords (ref vertex of layer0 at origin)
     BBox bb;                    // union bbox over all layers (local)
     double parea = 0.0;         // true polygon footprint (max over layers):
@@ -26,6 +38,15 @@ struct OrientGeom {
                                 // boards sit exactly at that bbox limit.
     std::vector<BBox> lbb;      // per-layer bbox: gates each pair before any work
     std::vector<Pt>  ip;        // per-layer strictly-interior sample (cached)
+
+private:
+    static uint64_t makeCacheId(uint64_t generation, uint64_t blockId,
+                                uint64_t orientationOrdinal) {
+        uint64_t id = generation * 0x9E3779B97F4A7C15ull;
+        id ^= blockId * 0xC2B2AE3D27D4EB4Full;
+        id ^= orientationOrdinal * 0x165667B19E3779F9ull;
+        return id | 1ull;       // 0 remains the invalid identity
+    }
 };
 
 struct BlockGeom {
@@ -49,7 +70,12 @@ inline bool bboxOverlapOff(const BBox& a, double ax, double ay,
 // open-address table turns a repeat test into one probe. The earlier
 // memo refutation targeted the reject path; this caches the expensive
 // path only (after the bbox prefilter).
-struct OvSlot { uint64_t key; uint8_t val; };
+struct OvSlot {
+    uint64_t key = 0;
+    uint64_t generationA = 0;
+    uint64_t generationB = 0;
+    uint8_t val = 0;
+};
 inline bool overlapsLay(const OrientGeom& ga, int la, double ax, double ay,
                         const OrientGeom& gb, int lb, double bx, double by) {
     if (!bboxOverlapOff(ga.lbb[la], ax, ay, gb.lbb[lb], bx, by)) return false;
@@ -59,14 +85,15 @@ inline bool overlapsLay(const OrientGeom& ga, int la, double ax, double ay,
                   std::abs((by - ay) - (double)dy) < 1e-9);
     uint64_t h = 0;
     if (exact) {
-        h = (uint64_t)(uintptr_t)&ga * 0x9E3779B97F4A7C15ull;
-        h ^= (uint64_t)(uintptr_t)&gb * 0xC2B2AE3D27D4EB4Full;
+        h = ga.cacheId * 0x9E3779B97F4A7C15ull;
+        h ^= gb.cacheId * 0xC2B2AE3D27D4EB4Full;
         h ^= ((uint64_t)(uint32_t)la << 48) ^ ((uint64_t)(uint32_t)lb << 40);
         h ^= (uint64_t)(uint32_t)(int32_t)dx * 0x165667B19E3779F9ull;
         h ^= (uint64_t)(uint32_t)(int32_t)dy * 0x27D4EB2F165667C5ull;
         h |= 1ull;                                    // 0 = empty slot
         OvSlot& s = memo[h & (memo.size() - 1)];
-        if (s.key == h) return s.val != 0;
+        if (s.key == h && s.generationA == ga.cacheGeneration &&
+            s.generationB == gb.cacheGeneration) return s.val != 0;
     }
     const Poly& A = ga.layers[la]; const Poly& B = gb.layers[lb];
     thread_local Poly ta, tb;
@@ -78,7 +105,10 @@ inline bool overlapsLay(const OrientGeom& ga, int la, double ax, double ay,
     bool r = geom::overlapsAreaIP(ta, ia, tb, ib);
     if (exact) {
         OvSlot& s = memo[h & (memo.size() - 1)];
-        s.key = h; s.val = r ? 1 : 0;
+        s.key = h;
+        s.generationA = ga.cacheGeneration;
+        s.generationB = gb.cacheGeneration;
+        s.val = r ? 1 : 0;
     }
     return r;
 }
@@ -95,14 +125,18 @@ inline bool pairMemo(const OrientGeom& a, double ax, double ay,
     if (std::abs((bx - ax) - (double)dx) > 1e-9 ||
         std::abs((by - ay) - (double)dy) > 1e-9) return false;
     static thread_local std::vector<OvSlot> tb(1u << 21);
-    uint64_t h = (uint64_t)(uintptr_t)&a * 0x9E3779B97F4A7C15ull
-               ^ (uint64_t)(uintptr_t)&b * 0xC2B2AE3D27D4EB4Full
+    uint64_t h = a.cacheId * 0x9E3779B97F4A7C15ull
+               ^ b.cacheId * 0xC2B2AE3D27D4EB4Full
                ^ ((uint64_t)(uint32_t)mode << 56)
                ^ (uint64_t)(uint32_t)(int32_t)dx * 0x165667B19E3779F9ull
                ^ (uint64_t)(uint32_t)(int32_t)dy * 0x27D4EB2F165667C5ull;
     h |= 2ull;
     OvSlot& s = tb[h & (tb.size() - 1)];
-    if (s.key == h) { out = (s.val & 1) != 0; return true; }
+    if (s.key == h && s.generationA == a.cacheGeneration &&
+        s.generationB == b.cacheGeneration) {
+        out = (s.val & 1) != 0;
+        return true;
+    }
     // compute, store
     bool r = false;
     if (mode == 0) {
@@ -115,7 +149,10 @@ inline bool pairMemo(const OrientGeom& a, double ax, double ay,
             for (int j = k; j < nB && !r; j++)
                 r = overlapsLay(a, k, ax, ay, b, j, bx, by);
     }
-    s.key = h; s.val = r ? 1 : 0;
+    s.key = h;
+    s.generationA = a.cacheGeneration;
+    s.generationB = b.cacheGeneration;
+    s.val = r ? 1 : 0;
     out = r;
     return true;
 }

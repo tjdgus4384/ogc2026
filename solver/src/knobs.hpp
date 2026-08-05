@@ -29,15 +29,4 @@ inline constexpr int    stride() { return 6; }
 // small-neighbourhood destroy cap: 3% of n (min 8).
 inline constexpr int    qFrac() { return 3; }
 
-// ---- driver channel ------------------------------------------------
-// pref-first insertion probability. The DRIVER sets OGC_PREFP=0.85 for
-// spec boards (m<=3 and under-saturated, _spec_rule); unset means the
-// measured regime split 0.92 (prefStrong) / 0.70.
-inline double prefP() {
-    static const double v = [] {
-        const char* q = std::getenv("OGC_PREFP");
-        return q ? atof(q) : -1.0;
-    }();
-    return v;
-}
 } // namespace knobs

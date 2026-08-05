@@ -72,7 +72,7 @@ _THR = min(4, os.cpu_count() or 1)   # the server grants 4 cores (sec 100)
 _PSEED = int(os.environ.get("OGC_SEED", "7"))
 
 # ---------------------------------------------------------------- engine io
-def _build_engine(p):
+def _build_engine(p, pref_p=-1.0):
     if sscore is None:
         return None
     B = p["blocks"]; bays = p["bays"]; w = p["weights"]
@@ -89,6 +89,8 @@ def _build_engine(p):
         [float(b["width"]) for b in bays],
         [float(b["height"]) for b in bays],
         float(w["w1"]), float(w["w2"]), float(w["w3"]))
+    eng.set_pref_p(float(pref_p))
+    eng.set_wait_stays(os.environ.get("OGC_WAIT_STAYS") == "1")
     for i in range(n):
         for oi in range(len(B[i]["shape"])):
             L = [[list(v) for v in lay]
@@ -99,11 +101,11 @@ def _build_engine(p):
     return eng
 
 
-def _fresh(p, hmul=1):
+def _fresh(p, hmul=1, pref_p=-1.0):
     B = p["blocks"]; n = len(B)
     D = [int(round(b["due_date"])) for b in B]
     P = [max(1, int(math.ceil(b["processing_time"] - 1e-9))) for b in B]
-    eng = _build_engine(p)
+    eng = _build_engine(p, pref_p)
     eng.build_occ((max(D) + max(P) + 40) * hmul)
     return eng, D, P
 
@@ -169,7 +171,7 @@ def _spec_rule(p):
     return _saturation(p) < 1.0
 
 
-def _seed_free(p, diversify=True, asg=None):
+def _seed_free(p, diversify=True, asg=None, pref_p=-1.0):
     """kernel-native seeding, best-of-5 insertion orders (sec 87).
     asg: optional partial assignment lock (-1 = free) applied to every
     construction -- see _arm_free's partial-lock block."""
@@ -200,7 +202,7 @@ def _seed_free(p, diversify=True, asg=None):
     # failure -> _trivial's 4.2e9). Doubling the horizon is sound (a
     # superset of feasible times) and bounded (two retries).
     for hmul in (1, 2, 4):
-        eng, _, _ = _fresh(p, hmul)
+        eng, _, _ = _fresh(p, hmul, pref_p)
         cands = []                       # (objective, flat solution)
         best = None
         lockv = asg if asg is not None else [-1] * n
@@ -239,24 +241,30 @@ def _seed_free(p, diversify=True, asg=None):
 
 
 def _check(p, sol):
-    """A checker call that cannot take the run down (sec 158).
+    """Return an official checker result, or ``None`` when it is unusable.
 
-    `algorithm()` guards its body with try/except, but a checker that differs
-    in signature or return shape in the grading environment throws inside the
-    gate and collapses the whole run to `_trivial` -- measured: p2 3690 ->
-    9.6e8, a feasible but worthless answer. If the checker is unusable we
-    report `None` and the caller keeps the kernel's own solution, which
-    `vpConservative` has already validated against the same physics (resting
-    overlap + crane entry/exit); sec 133 records only an EPS-level gap between
-    the two, so this is a graceful degradation instead of a collapse.
+    A kernel board is never evidence of feasibility: only the official checker
+    can authorize it.  The checker is optional at import time, so failures and
+    incompatible return shapes are reported as unavailable rather than being
+    mistaken for an infeasible board.
     """
     if utils is None:
+        _diag("checker", state="unavailable", reason="import")
         return None
     try:
         res = utils.check_feasibility(p, sol)
     except Exception:
+        _diag("checker", state="unavailable", reason="call")
         return None
-    return res if isinstance(res, dict) else None
+    if (not isinstance(res, dict)
+            or type(res.get("feasible")) is not bool
+            or not isinstance(res.get("violations"), list)
+            or (res["feasible"]
+                and (type(res.get("objective")) not in (int, float)
+                     or not math.isfinite(res["objective"])))):
+        _diag("checker", state="unavailable", reason="shape")
+        return None
+    return res
 
 
 def _gate(p, eng, n, deadline=None):
@@ -281,8 +289,8 @@ def _gate(p, eng, n, deadline=None):
     res = _check(p, sol)
     ck = max(0.3, time.time() - t0)          # measured checker cost (max seen)
     if res is None:
-        return sol, None                     # checker unusable -> trust kernel
-    if res.get("feasible"):
+        return None, None
+    if res["feasible"]:
         return sol, res
 
     def room():
@@ -299,13 +307,15 @@ def _gate(p, eng, n, deadline=None):
         res = _check(p, sol)
         ck = max(ck, time.time() - t1)       # keep the worst-case estimate
         if res is not None:
-            _diag("gate", stage=stage, feasible=bool(res.get("feasible")),
-                  nviol=len(res.get("violations", [])))
+            _diag("gate", stage=stage, feasible=res["feasible"],
+                  nviol=len(res["violations"]))
         return res
 
+    _diag("checker", state="infeasible", stage="raw",
+          nviol=len(res["violations"]))
     _diag("gate", stage="raw", feasible=False,
-          nviol=len(res.get("violations", [])),
-          first=str(res.get("violations", ["?"])[0])[:120])
+          nviol=len(res["violations"]),
+          first=str(res["violations"][0] if res["violations"] else "?")[:120])
 
     # stage 1: pair nudges
     for v in res.get("violations", [])[:6]:
@@ -323,8 +333,8 @@ def _gate(p, eng, n, deadline=None):
         return None, res
     r = recheck("nudge")
     if r is None:
-        return sol, None
-    if r.get("feasible"):
+        return None, None
+    if r["feasible"]:
         return sol, r
 
     # stage 2: retimes -- entry obstruction: shift the entrant's stay +1 day;
@@ -345,8 +355,8 @@ def _gate(p, eng, n, deadline=None):
             break
         r = recheck("retime")
         if r is None:
-            return sol, None
-        if r.get("feasible"):
+            return None, None
+        if r["feasible"]:
             return sol, r
 
     # stage 3: relocations, tight first
@@ -379,8 +389,8 @@ def _gate(p, eng, n, deadline=None):
             break
         r = recheck(f"move{sd}")
         if r is None:
-            return sol, None
-        if r.get("feasible"):
+            return None, None
+        if r["feasible"]:
             return sol, r
     return None, res
 
@@ -723,16 +733,14 @@ def _arm_free(p, deadline, seed=7, tl=None):
                                      # unlock + NO stacked PREFP reaches
                                      # the deep basins (ledger 07-30)
             asg[i] = max(range(len(pref[i])), key=lambda j: pref[i][j])
-    # PREFP boost and locks are BOTH preference mechanisms -- stacked
-    # they push locked boards over the tardiness edge (the production-
-    # only cliff: probe without PREFP was stable). Locks replace the
-    # boost where they apply; unlocked spec boards keep 0.85.
-    if spec and asg is None:
-        os.environ["OGC_PREFP"] = os.environ.get("OGC_PREFP", "0.85")
-    eng, seeds = _seed_free(p, asg=asg)
+    # PREFP and assignment locks are both preference mechanisms. Keep the
+    # measured 0.85 override only for unlocked spec boards, but make it
+    # Engine-owned so sequential calls cannot inherit another instance's policy.
+    pref_p = 0.85 if spec and asg is None else -1.0
+    eng, seeds = _seed_free(p, asg=asg, pref_p=pref_p)
     if eng is None and asg is not None:
         asg = None
-        eng, seeds = _seed_free(p)
+        eng, seeds = _seed_free(p, pref_p=0.85 if spec else -1.0)
     if eng is None:
         return None, None
     # thread map (4 threads): best seed / fresh construction / 2nd / 3rd.
@@ -849,8 +857,6 @@ def _arm_free(p, deadline, seed=7, tl=None):
     #    cheapest feasible board. Deadline-guarded like every gate call.
     pre = eng.objective()[3]
     sol, res = _gate(p, eng, n, deadline)
-    if sol is not None and res is None:
-        return sol, res                  # checker unusable -> trust kernel
     best_obj = res.get("objective", float("inf")) if (sol is not None
                                                       and res) else float("inf")
     if sol is not None and best_obj <= pre * 1.02 + 1e-9:
@@ -869,11 +875,11 @@ def _arm_free(p, deadline, seed=7, tl=None):
             continue                     # cannot beat the incumbent even ungated
         _diag("gate", stage=f"cand{k+1}")
         s2, r2 = _gate(p, eng, n, deadline)
-        if s2 is not None and r2 is None:
-            # checker died mid-audition: prefer the already-VERIFIED
-            # incumbent result over an unverified candidate board.
-            return (best_sol, best_res) if best_sol is not None else (s2, r2)
-        if s2 is not None and r2.get("objective", float("inf")) < best_obj:
+        if s2 is None or r2 is None:
+            # A failed checker cannot authorize this candidate. Retain only
+            # the previously checker-verified incumbent, if there is one.
+            return best_sol, best_res
+        if r2.get("objective", float("inf")) < best_obj:
             best_sol, best_res = s2, r2
             best_obj = r2["objective"]
     return best_sol, best_res

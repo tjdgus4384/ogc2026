@@ -5,12 +5,29 @@
 // surface states which is which.
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
+#include <atomic>
+#include <stdexcept>
 #include "alns.hpp"
 #ifdef _OPENMP
 #include <omp.h>
 #endif
 namespace py = pybind11;
 using VV = std::vector<std::vector<std::pair<double,double>>>;
+namespace {
+uint64_t nextEngineGeneration() {
+    static std::atomic<uint64_t> next{1};
+    uint64_t generation = next.load(std::memory_order_relaxed);
+    for (;;) {
+        if (generation == 0)
+            throw std::overflow_error("Engine generation exhausted");
+        if (next.compare_exchange_weak(generation, generation + 1,
+                                       std::memory_order_relaxed,
+                                       std::memory_order_relaxed))
+            return generation;
+    }
+}
+} // namespace
+
 
 struct Engine {
     core::Problem pb;
@@ -18,6 +35,9 @@ struct Engine {
     occ::OccIndex oc;
     repair::Ctx ctx;
     int horizon_ = 0;
+    uint64_t generation_ = 0;
+    double prefP_ = -1.0;
+    bool allowWait_ = false;
 
     // ------------------------------------------------------------- loading
     void initProblem(int n, int m,
@@ -26,6 +46,7 @@ struct Engine {
                      std::vector<std::vector<double>> pref,
                      std::vector<double> bayW, std::vector<double> bayH,
                      double w1, double w2, double w3) {
+        generation_ = nextEngineGeneration();
         pb.n = n; pb.m = m;
         pb.R = std::move(R); pb.D = std::move(D); pb.P = std::move(P);
         pb.workload = std::move(workload);
@@ -43,13 +64,15 @@ struct Engine {
         avg /= m;
         pb.u.resize(m);
         for (int j = 0; j < m; j++) pb.u[j] = avg / (pb.bayW[j] * pb.bayH[j]);
-        pb.geo.assign(n, {});
+        pb.geo.clear();
+        pb.geo.resize(n);
         sol.init(n, m);
     }
 
     // add one orientation's layers for block i (local coords, ref at origin)
     void addOrient(int i, const VV& layers) {
-        crane::OrientGeom g;
+        crane::OrientGeom g(generation_, static_cast<uint64_t>(i),
+                            static_cast<uint64_t>(pb.geo[i].orients.size()));
         geom::BBox bb{1e18,1e18,-1e18,-1e18};
         for (auto& L : layers) {
             geom::Poly p;
@@ -130,6 +153,14 @@ struct Engine {
         for (int i = 0; i < pb.n; i++)
             if (sol.placed[i]) oc.stamp(pb, sol, i, true);
         ctx.pb = &pb; ctx.s = &sol; ctx.oc = &oc; ctx.horizon = horizon;
+    }
+    void setPrefP(double value) {
+        prefP_ = (value >= 0.0 && value <= 1.0) ? value : -1.0;
+        ctx.prefP = prefP_;
+    }
+    void setWaitStays(bool enabled) {
+        allowWait_ = enabled;
+        ctx.allowWait = enabled;
     }
 
     // ----------------------------------------------------- solution access
@@ -430,6 +461,8 @@ struct Engine {
                 c2.densMode = tid % 2;
                 c2.forcedBay = ctx.forcedBay;   // assignment lock -> threads
                 c2.entryCap = ctx.entryCap;     // entry lock -> threads
+                c2.prefP = prefP_;
+                c2.allowWait = allowWait_;
                 bool constructed = false;
                 if (r == 0 && !starts.empty()) {
                     const auto& st0 = starts[tid % (int)starts.size()];
@@ -479,6 +512,8 @@ struct Engine {
                         if (s2.placed[i]) oc2.stamp(pb, s2, i, true);
                     repair::Ctx c3; c3.pb=&pb; c3.s=&s2; c3.oc=&oc2;
                     c3.horizon=horizon_;
+                    c3.prefP=prefP_;
+                    c3.allowWait=allowWait_;
                     alns::spatialCompact(c3, 6);
                     alns::compactLeft(c3, 3);
                 }
@@ -546,6 +581,8 @@ struct Engine {
         core::Sol backup = sol;
         occ::OccIndex oc2; oc2.build(pb, horizon_);
         repair::Ctx c2; c2.pb=&pb; c2.s=&sol; c2.oc=&oc2; c2.horizon=horizon_;
+        c2.prefP = prefP_;
+        c2.allowWait = allowWait_;
         c2.forcedBay = asg.data();
         c2.rng.seed(seed);
         for (int i = 0; i < pb.n; i++) sol.placed[i] = 0;
@@ -747,6 +784,8 @@ PYBIND11_MODULE(sscore, m) {
         .def("add_orient", &Engine::addOrient)
         .def("build_occ", &Engine::buildOcc)
         .def("reconstruct_ordered", &Engine::reconstructOrdered)
+        .def("set_pref_p", &Engine::setPrefP)
+        .def("set_wait_stays", &Engine::setWaitStays)
         .def("run_portfolio", &Engine::runPortfolio,
              py::arg("threads"), py::arg("seconds"), py::arg("rounds"),
              py::arg("qlo"), py::arg("qhi"), py::arg("T0mul"),

@@ -49,6 +49,8 @@ struct Ctx {
                                       // anneal-long constraints move the
                                       // final basin.
     bool prefStrong = false;          // z1==0 regime: chase preferred bays hard.
+    double prefP = -1.0;                 // instance-owned override; <0 uses regime default
+    bool allowWait = false;               // permit f>e+P at resident-exit events
                                       // Predicate lives in alns::run (sec 148):
                                       // z1<=0 AND z3<n -- a measured two-order
                                       // regime gap, not a tuned constant.
@@ -151,6 +153,39 @@ inline void cornerSets(const Ctx& c, int A, int oi, int j, int e, int f,
     cornerSetsRB(c, A, oi, j, rbs, xs, ys);
 }
 
+// Commit a site at its minimum processing stay, or (when enabled) at the
+// earliest later resident-exit event that makes the full access schedule legal.
+// Extending a stay cannot repair a resting collision, so callers retain their
+// minimum-interval occupancy prefilter; vpConservative rechecks every event and
+// all collisions over each extended interval.
+inline bool tryPlacement(Ctx& c, int A, int j, int oi, int x, int y, int e) {
+    const Problem& pb = *c.pb;
+    Sol& s = *c.s;
+    const int minF = e + pb.P[A];
+    thread_local std::vector<int> exits;
+    exits.clear();
+    exits.push_back(minF);
+    if (c.allowWait) {
+        for (int k : s.byBay[j]) {
+            if (!s.placed[k]) continue;
+            const int f = s.f[k];
+            if (f > minF && f < c.horizon) exits.push_back(f);
+        }
+        std::sort(exits.begin() + 1, exits.end());
+        exits.erase(std::unique(exits.begin(), exits.end()), exits.end());
+    }
+    s.bay[A]=j; s.ori[A]=oi; s.x[A]=x; s.y[A]=y; s.e[A]=e; s.placed[A]=1;
+    for (int f : exits) {
+        s.f[A]=f;
+        if (!core::vpConservative(pb, s, A)) continue;
+        s.addIdx(A);
+        c.oc->stamp(pb, s, A, true);
+        return true;
+    }
+    s.placed[A]=0;
+    return false;
+}
+
 // Try to place A at (bay j, entry e): every corner candidate of every
 // orientation, snapshot-prefiltered, vp-confirmed. First fit wins; on success
 // the placement is committed (index + occupancy stamp).
@@ -167,14 +202,7 @@ inline bool scanBayAt(Ctx& c, int A, int j, int e, const std::vector<int>& oris,
         for (int y : ys) {
             for (int x : xs) {
                 if (c.oc->hitsSnap(sn, A, oi, x, y)) continue;
-                s.bay[A]=j; s.ori[A]=oi; s.x[A]=x; s.y[A]=y;
-                s.e[A]=e; s.f[A]=f; s.placed[A]=1;
-                if (core::vpConservative(pb, s, A)) {
-                    s.addIdx(A);
-                    c.oc->stamp(pb, s, A, true);
-                    return true;
-                }
-                s.placed[A]=0;
+                if (tryPlacement(c, A, j, oi, x, y, e)) return true;
             }
         }
     }
@@ -236,14 +264,7 @@ inline bool scanLocal(Ctx& c, int A, int trig, int e, double areaA) {
         lys.erase(std::unique(lys.begin(), lys.end()), lys.end());
         for (int yv : lys) for (int xv : lxs) {
             if (c.oc->hitsSnap(sn, A, oi, xv, yv)) continue;
-            s.bay[A]=j; s.ori[A]=oi; s.x[A]=xv; s.y[A]=yv;
-            s.e[A]=e; s.f[A]=f; s.placed[A]=1;
-            if (core::vpConservative(pb, s, A)) {
-                s.addIdx(A);
-                c.oc->stamp(pb, s, A, true);
-                return true;
-            }
-            s.placed[A]=0;
+            if (tryPlacement(c, A, j, oi, xv, yv, e)) return true;
         }
     }
     return false;
@@ -287,7 +308,7 @@ inline bool insertGreedy(Ctx& c, int A, int eCap = -1) {
     else { bays.resize(pb.m); for (int j = 0; j < pb.m; j++) bays[j] = j; }
     std::vector<int> oris(pb.geo[A].orients.size());
     for (size_t o = 0; o < oris.size(); o++) oris[o] = (int)o;
-    const double PREFP = knobs::prefP();
+    const double PREFP = c.prefP;
     if (std::uniform_real_distribution<double>(0,1)(c.rng)
             < (PREFP >= 0 ? PREFP : (c.prefStrong ? 0.92 : 0.70)))
         std::sort(bays.begin(), bays.end(), [&](int a, int b){
@@ -376,14 +397,7 @@ inline bool insertGreedy(Ctx& c, int A, int eCap = -1) {
                 cornerSetsRB(c, A, oi, j, rbs, xs, ys);
                 for (int y : ys) for (int x : xs) {
                     if (c.oc->hits(A, oi, j, x, y, e, f)) continue;
-                    s.bay[A]=j; s.ori[A]=oi; s.x[A]=x; s.y[A]=y;
-                    s.e[A]=e; s.f[A]=f; s.placed[A]=1;
-                    if (core::vpConservative(pb, s, A)) {
-                        s.addIdx(A);
-                        c.oc->stamp(pb, s, A, true);
-                        return true;
-                    }
-                    s.placed[A]=0;
+                    if (tryPlacement(c, A, j, oi, x, y, e)) return true;
                 }
             }
         }
