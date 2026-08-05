@@ -47,7 +47,7 @@ for i in $INSTS; do
     export "OGC_INSTANCE_SHA256_$i=$INPUT_HASH"
     (
         timeout --signal=TERM --kill-after=10 "$(( ${ITL%.*} + 30 ))s" \
-            srun --exclusive --nodes=1 --ntasks=1 --cpus-per-task=4 --mem=16G \
+            srun --exclusive --nodes=1 --ntasks=1 --cpus-per-task=4 --mem=16G --cpu-bind=cores \
             "$PY" "$RUNNER" "$i" "$ITL" "$OUT/prob_$i.json"
     ) > "$OUT/prob_$i.log" 2>&1 &
 done
