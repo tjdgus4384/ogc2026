@@ -614,7 +614,7 @@ def _slice_refine(p, eng, seed, until, hor):
     n = len(B)
     P = [max(1, int(math.ceil(b["processing_time"] - 1e-9))) for b in B]
     D = [int(round(b["due_date"])) for b in B]
-    PREF = [[float(v) for v in b["bay_preferences"]] for b in B]
+    PREF = [[int(round(v)) for v in b["bay_preferences"]] for b in B]
     SMAX = [max(pr) for pr in PREF]
     area_units = [int(round(float(b["width"]) * float(b["height"])))
                   for b in bays]
