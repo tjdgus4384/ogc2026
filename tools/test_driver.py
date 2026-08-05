@@ -36,6 +36,17 @@ for idx, prob in enumerate(probs, 1):
     checked = U.check_feasibility(prob, fallback)
     assert checked["feasible"], f"P{idx} fallback: {checked.get('violations')}"
 
+# 3b. Public fallback is certified before search and reused after a failure.
+original_algorithm = M._algorithm
+try:
+    def fail_after_fallback(*_args, **_kwargs):
+        raise RuntimeError("forced search failure")
+    M._algorithm = fail_after_fallback
+    cached_fallback = M.algorithm(probs[0], 60)
+    assert U.check_feasibility(probs[0], cached_fallback)["feasible"]
+finally:
+    M._algorithm = original_algorithm
+
 # 4. Malformed IDs and timestamp aliases fail closed before checker indexing/replay.
 bad_id = {"operations": {"0": [
     {"type": "ENTRY", "block_id": -1, "bay_id": 0}
@@ -44,4 +55,5 @@ bad_time = {"operations": {"00": []}}
 assert not U.check_feasibility(probs[0], bad_id)["feasible"]
 assert not U.check_feasibility(probs[0], bad_time)["feasible"]
 
-print("DRIVER GATE PASS: spec", specs, "exit-order, fallback, checker-input OK")
+print("DRIVER GATE PASS: spec", specs,
+      "exit-order, cached fallback, checker-input OK")
