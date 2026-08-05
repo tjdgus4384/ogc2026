@@ -407,6 +407,7 @@ struct Engine {
                 for (int l = 0; l < std::min(La, Lb) && !bad; l++)
                     bad = crane::overlapsLay(ga, l, A[3], A[4],
                                              gb, l, B[3], B[4]);
+                const bool restingConflict = bad;
                 if (!bad) {
                     // vertical descent: the later entrant's layer k has
                     // to clear the resident's layers j >= k
@@ -454,6 +455,27 @@ struct Engine {
                         for (int j = k; j < ns && !bad; j++)
                             bad = crane::overlapsLay(gx, k, X[3], X[4],
                                                      gs, j, Y[3], Y[4]);
+                }
+                if (bad && !restingConflict && exactEvents_ &&
+                    !sol.placed[A[0]] && !sol.placed[B[0]]) {
+                    const int ai=A[0], bi=B[0];
+                    const auto oldA = getBlock(ai), oldB = getBlock(bi);
+                    sol.bay[ai]=A[1]; sol.ori[ai]=A[2]; sol.x[ai]=A[3];
+                    sol.y[ai]=A[4]; sol.e[ai]=A[5]; sol.f[ai]=fa;
+                    sol.bay[bi]=B[1]; sol.ori[bi]=B[2]; sol.x[bi]=B[3];
+                    sol.y[bi]=B[4]; sol.e[bi]=B[5]; sol.f[bi]=fb;
+                    sol.placed[ai]=sol.placed[bi]=1;
+                    sol.addIdx(ai); sol.addIdx(bi);
+                    bad = !(core::vpExactEvents(pb, sol, ai) &&
+                            core::vpExactEvents(pb, sol, bi));
+                    sol.delIdx(ai); sol.delIdx(bi);
+                    sol.bay[ai]=oldA[0]; sol.ori[ai]=oldA[1];
+                    sol.x[ai]=oldA[2]; sol.y[ai]=oldA[3];
+                    sol.e[ai]=oldA[4]; sol.f[ai]=oldA[5];
+                    sol.bay[bi]=oldB[0]; sol.ori[bi]=oldB[1];
+                    sol.x[bi]=oldB[2]; sol.y[bi]=oldB[3];
+                    sol.e[bi]=oldB[4]; sol.f[bi]=oldB[5];
+                    sol.placed[ai]=sol.placed[bi]=0;
                 }
                 if (bad) { out.push_back(a); out.push_back(b); }
             }
