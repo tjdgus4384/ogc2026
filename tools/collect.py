@@ -1,163 +1,135 @@
-"""Freeze a finished Slurm eval into results/<tag>.json and print a summary.
-
-Also compares against another frozen run when given --vs, using the leaderboard's
-own scoring shape: the competition ranks per instance (score = R - n_b, §3.3),
-so what matters is HOW MANY instances improved, not the mean percentage. The
-summary reports both, with wins/ties/losses first.
-
-Usage:
-    python tools/collect.py <tag> [--vs <other_tag>] [--tol 0.5]
-"""
+"""Validate and atomically freeze a completed Slurm evaluation."""
 import argparse
 import hashlib
 import json
 import pathlib
+import subprocess
 import sys
+
+from evidence import (data_hash, manifest_digest, named_files_hash, sha256_bytes,
+                      tree_hash, validate_records)
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 
 
 def load_run(tag):
-    d = ROOT / "runs" / tag
-    if not d.is_dir():
+    run = ROOT / "runs" / tag
+    if not run.is_dir():
         sys.exit(f"no runs/{tag}/ -- was the job submitted?")
-    recs = {}
-    for f in sorted(d.glob("prob_*.json")):
-        if f.name.endswith(".sol.json"):
-            continue  # OGC_SAVE_SOL boards, not run records
+    try:
+        meta = json.loads((run / "META.json").read_text())
+        manifest = json.loads((run / "RUN_MANIFEST.json").read_text())
+    except Exception as exc:
+        sys.exit(f"runs/{tag}/ has invalid metadata: {exc}")
+    records = {}
+    for path in sorted(run.glob("prob_*.json")):
+        if path.name.endswith(".sol.json"):
+            continue
         try:
-            r = json.loads(f.read_text())
+            rec = json.loads(path.read_text())
         except Exception:
             continue
-        if "inst" not in r:
-            continue
-        recs[r["inst"]] = r
-    meta = {}
-    if (d / "META.json").exists():
-        meta = json.loads((d / "META.json").read_text())
-    return meta, recs
+        if "inst" in rec:
+            if rec["inst"] in records:
+                sys.exit(f"runs/{tag}/ has duplicate record {rec['inst']}")
+            records[rec["inst"]] = rec
+    return run, meta, manifest, records
 
 
-def freeze(tag, meta, recs):
+def verify_snapshots(run, meta, manifest):
+    errors = []
+    expected = manifest.get("expected_instances", [])
+    solver = run / "solver_snapshot"
+    checker = run / "checker_snapshot.py"
+    harness = run / "harness_snapshot"
+    data_dir = run / "data_snapshot" / meta.get("data", "")
+    actual = {
+        "solver_snapshot_sha256": tree_hash(solver),
+        "checker_sha256": sha256_bytes(checker.read_bytes()),
+        "harness_sha256": named_files_hash(
+            [harness / "eval.sbatch", harness / "run_instance.py"]),
+        "runner_sha256": sha256_bytes((harness / "run_instance.py").read_bytes()),
+        "data_snapshot_sha256": data_hash(data_dir, expected),
+    }
+    for key, value in actual.items():
+        if value != meta.get(key) or value != manifest.get(key):
+            errors.append(f"snapshot drift: {key}")
+    for inst in expected:
+        path = data_dir / f"{inst}.json"
+        digest = sha256_bytes(path.read_bytes())
+        if digest != manifest.get("instance_sha256", {}).get(inst):
+            errors.append(f"snapshot drift: {inst}")
+    if manifest.get("manifest_sha256") != manifest_digest(manifest):
+        errors.append("run manifest digest mismatch")
+    return errors
+
+
+def scheduler_receipts(job_ids):
+    command = ["sacct", "-P", "-n", "-j", ",".join(map(str, job_ids)),
+               "--format=JobIDRaw,JobName,State,ExitCode,ElapsedRaw,MaxRSS,ReqMem,AllocCPUS,Partition"]
+    cp = subprocess.run(command, text=True, capture_output=True, check=False)
+    if cp.returncode != 0:
+        sys.exit(f"sacct failed: {cp.stderr.strip()}")
+    text = cp.stdout
+    errors = []
+    for job in map(str, job_ids):
+        rows = [line for line in text.splitlines()
+                if line.split("|", 1)[0] in {job, f"{job}.batch", f"{job}.extern"}
+                or line.startswith(f"{job}.")]
+        if not rows or not any("|COMPLETED|0:0|" in line for line in rows):
+            errors.append(f"job {job} lacks a successful completed accounting row")
+    if errors:
+        sys.exit("; ".join(errors))
+    return text
+
+
+def freeze(tag, meta, manifest, records, receipts):
     out = ROOT / "results" / f"{tag}.json"
     if out.exists():
-        print(f"results/{tag}.json exists -- not overwriting (frozen).")
-        return out
+        sys.exit(f"results/{tag}.json already exists -- frozen evidence is immutable")
+    payload = {"meta": meta, "manifest": manifest, "runs": records,
+               "scheduler_receipts": receipts}
+    body = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+    payload["evidence_sha256"] = sha256_bytes(body)
     out.parent.mkdir(exist_ok=True)
-    out.write_text(json.dumps({"meta": meta, "runs": recs}, indent=1, sort_keys=True))
-    print(f"froze results/{tag}.json")
-    return out
+    tmp = out.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(payload, indent=1, sort_keys=True) + "\n")
+    try:
+        tmp.replace(out)
+    finally:
+        tmp.unlink(missing_ok=True)
+    print(f"froze results/{tag}.json evidence={payload['evidence_sha256']}")
 
 
 def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("tag")
-    ap.add_argument("--vs", default=None, help="frozen tag to compare against")
-    ap.add_argument("--tol", type=float, default=0.5,
-                    help="percent band counted as a tie (default 0.5)")
-    ap.add_argument("--expect", type=int, default=40,
-                    help="instances required before freezing (default 40)")
-    ap.add_argument("--partial", action="store_true",
-                    help="inspect an unfinished run without freezing it")
-    a = ap.parse_args()
-
-    meta, recs = load_run(a.tag)
-    if not recs:
-        sys.exit(f"runs/{a.tag}/ has no completed instances yet.")
-
-    expected = a.expect
-    if len(recs) < expected and not a.partial:
-        sys.exit(f"runs/{a.tag}/ has {len(recs)}/{expected} instances -- refusing "
-                 f"to freeze a partial run (it would later read as a complete "
-                 f"one). Wait for the array, or pass --partial to inspect.")
-    if not a.partial:
-        required_meta = {
-            "tag", "timelimit", "instances", "data", "pseed",
-            "solver_commit", "solver_dirty", "solver_snapshot_sha256",
-            "checker_sha256", "harness_sha256", "data_snapshot_sha256",
-        }
-        missing_meta = sorted(required_meta - set(meta))
-        if missing_meta:
-            sys.exit(f"runs/{a.tag}/ metadata missing {missing_meta} -- refusing freeze")
-        if meta["tag"] != a.tag or meta["solver_dirty"]:
-            sys.exit(f"runs/{a.tag}/ has mismatched tag or dirty solver -- refusing freeze")
-        if len(recs) != expected:
-            sys.exit(f"runs/{a.tag}/ has {len(recs)} records, expected exactly {expected}")
-        data_dir = ROOT / "runs" / a.tag / "data_snapshot" / meta["data"]
-        expected_instance_hash = {}
-        for key in recs:
-            source = data_dir / f"{key}.json"
-            if not source.is_file():
-                sys.exit(f"runs/{a.tag}/ missing frozen input {source.name}")
-            expected_instance_hash[key] = hashlib.sha256(source.read_bytes()).hexdigest()
-        expected_tl = meta.get("timelimits", {})
-        bad_provenance = sorted(
-            k for k, r in recs.items()
-            if (r.get("data") != meta["data"]
-                or r.get("seed") != meta["pseed"]
-                or r.get("checker_sha256") != meta["checker_sha256"]
-                or r.get("harness_sha256") != meta["harness_sha256"]
-                or r.get("data_snapshot_sha256") != meta["data_snapshot_sha256"]
-                or r.get("instance_sha256") != expected_instance_hash.get(k)
-                or r.get("tl") != expected_tl.get(k, meta["timelimit"]))
-        )
-        if bad_provenance:
-            sys.exit(f"runs/{a.tag}/ provenance mismatch: {bad_provenance}")
-
-    infeas = sorted(k for k, r in recs.items() if not r.get("feasible"))
-    overrun = sorted(k for k, r in recs.items() if r.get("overrun"))
-    errs = sorted(k for k, r in recs.items() if r.get("error"))
-
-    print(f"tag={a.tag}  tl={meta.get('timelimit')}s  "
-          f"commit={meta.get('solver_commit')}"
-          f"{'  DIRTY' if meta.get('solver_dirty') else ''}")
-    print(f"instances {len(recs)}/{expected}   INFEASIBLE={infeas or '[]'}   "
-          f"OVERRUN={overrun or '[]'}   ERROR={errs or '[]'}")
-    if recs:
-        mw = max(r["wall"] for r in recs.values())
-        mm = max(r.get("maxrss_mb") or 0 for r in recs.values())
-        print(f"max wall {mw:.1f}s   max rss {mm:.0f} MB")
-    if not a.partial and (infeas or overrun or errs):
-        sys.exit("refusing to freeze non-adoptable evidence: "
-                 f"infeasible={infeas}, overrun={overrun}, errors={errs}")
-    if not a.partial:
-        over_mem = sorted(
-            k for k, r in recs.items()
-            if (r.get("maxrss_mb") or float("inf")) > 16 * 1024)
-        if over_mem:
-            sys.exit(f"refusing to freeze >16GB records: {over_mem}")
-
-    if not a.partial:
-        freeze(a.tag, meta, recs)
-
-    if not a.vs:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("tag")
+    parser.add_argument("--partial", action="store_true",
+                        help="inspect current coverage without freezing")
+    args = parser.parse_args()
+    run, meta, manifest, records = load_run(args.tag)
+    expected = manifest.get("expected_instances", [])
+    print(f"tag={args.tag} commit={meta.get('solver_commit')} "
+          f"instances={len(records)}/{len(expected)}")
+    if args.partial:
+        print(f"completed={sorted(records)}")
         return
-    ref = ROOT / "results" / f"{a.vs}.json"
-    if not ref.exists():
-        sys.exit(f"no results/{a.vs}.json to compare against")
-    old = json.loads(ref.read_text())["runs"]
-
-    win = tie = loss = 0
-    rows, deltas = [], []
-    for k in sorted(recs, key=lambda s: int(s.split("_")[1])):
-        n, o = recs[k], old.get(k)
-        if not o or not n.get("feasible") or not o.get("feasible"):
-            rows.append((k, None, "n/a"))
-            continue
-        d = 100.0 * (n["objective"] - o["objective"]) / o["objective"]
-        deltas.append(d)
-        verdict = "TIE" if abs(d) <= a.tol else ("WIN" if d < 0 else "LOSS")
-        win += verdict == "WIN"; tie += verdict == "TIE"; loss += verdict == "LOSS"
-        rows.append((k, d, verdict))
-
-    print(f"\nvs {a.vs}   WIN {win} / TIE {tie} / LOSS {loss}"
-          f"   (tie band +-{a.tol}%)")
-    if deltas:
-        print(f"mean delta {sum(deltas)/len(deltas):+.2f}%   "
-              f"median {sorted(deltas)[len(deltas)//2]:+.2f}%")
-    print("\n  instance      delta   verdict")
-    for k, d, v in rows:
-        print(f"  {k:<12} {'   n/a' if d is None else f'{d:+7.2f}%'}   {v}")
+    required = {"tag", "timelimit", "expected_instances", "data", "pseed",
+                "partition", "solver_commit", "solver_dirty",
+                "solver_snapshot_sha256", "checker_sha256", "harness_sha256",
+                "runner_sha256", "data_snapshot_sha256", "experiment_env",
+                "job_ids"}
+    missing = sorted(required - set(meta))
+    if missing:
+        sys.exit(f"metadata missing {missing}")
+    if meta["tag"] != args.tag or meta["solver_dirty"]:
+        sys.exit("mismatched tag or dirty solver snapshot")
+    errors = verify_snapshots(run, meta, manifest)
+    errors.extend(validate_records(meta, manifest, records))
+    if errors:
+        sys.exit("refusing freeze:\n  " + "\n  ".join(errors))
+    receipts = scheduler_receipts(manifest["job_ids"])
+    freeze(args.tag, meta, manifest, records, receipts)
 
 
 if __name__ == "__main__":

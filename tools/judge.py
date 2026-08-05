@@ -23,6 +23,7 @@ import json
 import math
 import pathlib
 import sys
+from evidence import validate_frozen_payload
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 REFS = json.load(open(ROOT / "data" / "prelim_refs.json"))
@@ -39,17 +40,20 @@ def score_of(prob, val):
     return max(1, NRANK + 1 - rank_of(prob, val))
 
 
-def _load_frozen(tag):
+def _load_frozen(tag, require_official=False):
     f = ROOT / "results" / f"{tag}.json"
     if not f.exists():
         sys.exit(f"results/{tag}.json not found (freeze with tools/collect.py first)")
     payload = json.loads(f.read_text())
+    errors = validate_frozen_payload(payload, require_official=require_official)
+    if errors:
+        sys.exit(f"{tag}: invalid frozen evidence:\n  " + "\n  ".join(errors))
     return payload.get("meta", {}), payload.get("runs", {})
 
 
 def load_p36(tag):
     """Load a complete, frozen, preliminary-test P3-P6 evidence set."""
-    meta, runs = _load_frozen(tag)
+    meta, runs = _load_frozen(tag, require_official=True)
     if meta.get("data") != "preliminary_test":
         sys.exit(f"{tag}: data={meta.get('data')!r}, expected preliminary_test")
     out = {}
@@ -98,7 +102,8 @@ def cmd_pair(ta, tb):
     meta_a, A = _evidence_of(ta)
     meta_b, B = _evidence_of(tb)
     comparable = ("data", "data_snapshot_sha256", "timelimit", "pseed",
-                  "checker_sha256", "harness_sha256", "instances")
+                  "checker_sha256", "harness_sha256", "runner_sha256",
+                  "expected_instances")
     missing = [k for k in comparable if k not in meta_a or k not in meta_b]
     mismatch = [k for k in comparable if meta_a.get(k) != meta_b.get(k)]
     if meta_a.get("timelimits") != meta_b.get("timelimits"):

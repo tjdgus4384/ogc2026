@@ -374,9 +374,12 @@ inline RunStats run(repair::Ctx& c, double seconds, const RunParams& rp,
         std::chrono::steady_clock::now() - t0).count(); };
     const bool savedHasDeadline = c.hasDeadline;
     const auto savedDeadline = c.deadline;
+    const auto localDeadline = t0
+        + std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+            std::chrono::duration<double>(std::max(0.0, seconds)));
     c.hasDeadline = true;
-    c.deadline = t0 + std::chrono::duration_cast<std::chrono::steady_clock::duration>(
-        std::chrono::duration<double>(std::max(0.0, seconds)));
+    c.deadline = savedHasDeadline ? std::min(savedDeadline, localDeadline)
+                                  : localDeadline;
 
     core::slackW() = 0.0;        // slack surrogate refuted (08-02 ablation)
     auto obj = [&]{
@@ -420,7 +423,8 @@ inline RunStats run(repair::Ctx& c, double seconds, const RunParams& rp,
     // cannot unwind under assignment constraints -- the K-frontier cliff).
     // Releasing the lock at 0.6*budget keeps the early guidance and
     // frees the tail to repair. Fires only when a lock is active.
-    while (now() < seconds &&
+    while (!repair::deadlineExpired(c) &&
+           now() < seconds &&
            (rp.maxIters <= 0 || st.iters < rp.maxIters)) {
         st.iters++;
         if (c.forcedBay &&

@@ -107,6 +107,11 @@ for src in sources:
 print(h.hexdigest())
 PY
 )
+RUNNER_HASH=$(python3 - "$HARNESS/run_instance.py" <<'PY'
+import hashlib, pathlib, sys
+print(hashlib.sha256(pathlib.Path(sys.argv[1]).read_bytes()).hexdigest())
+PY
+)
 DATA_SNAPSHOT_HASH=$(python3 - "$ROOT/data" "$DATA_SNAPSHOT" "${OGC_DATA:-train}" "$INSTS" <<'PY'
 import hashlib, pathlib, sys
 src, dst = map(pathlib.Path, sys.argv[1:3])
@@ -126,13 +131,27 @@ export OGC_DATA_ROOT="$DATA_SNAPSHOT"
 export OGC_DATA_SNAPSHOT_SHA256="$DATA_SNAPSHOT_HASH"
 export OGC_HARNESS_SHA256="$HARNESS_HASH"
 export OGC_CHECKER="$CHECKER_SNAPSHOT"
+EXPERIMENT_ENV=$(python3 - <<'PY'
+import json, os
+excluded = {
+    "OGC_CHECKER", "OGC_DATA", "OGC_DATA_ROOT", "OGC_DATA_SNAPSHOT_SHA256",
+    "OGC_DIAG", "OGC_HARNESS_SHA256", "OGC_ROOT", "OGC_SEED", "OGC_SOLVER",
+}
+print(json.dumps({
+    key: value for key, value in sorted(os.environ.items())
+    if key.startswith("OGC_") and key not in excluded
+}, separators=(",", ":")))
+PY
+)
 
 cat > "$ROOT/runs/$TAG/META.json" <<EOF
-{"tag": "$TAG", "timelimit": $TL_JSON$TL_MAP, "partition": "$PART", "instances": "$INSTSPEC",
+{"tag": "$TAG", "timelimit": $TL_JSON$TL_MAP, "partition": "$PART",
+ "instances": "$INSTSPEC", "expected_instances": $(printf '%s\n' "${ALL[@]}" | python3 -c 'import json,sys; print(json.dumps([f"prob_{x.strip()}" for x in sys.stdin if x.strip()]))'),
  "data": "${OGC_DATA:-train}",
  "solver_dir": "$(basename "$SOLVER")", "pseed": $PSEED,
  "solver_snapshot_sha256": "$SNAP_HASH", "checker_sha256": "$CHECKER_HASH",
- "harness_sha256": "$HARNESS_HASH",
+ "harness_sha256": "$HARNESS_HASH", "runner_sha256": "$RUNNER_HASH",
+ "experiment_env": $EXPERIMENT_ENV,
  "data_snapshot_sha256": "$DATA_SNAPSHOT_HASH",
  "solver_commit": "$(cd "$ROOT" && git rev-parse --short HEAD)",
  "solver_dirty": $(cd "$ROOT" && git diff --quiet HEAD -- solver && echo false || echo true),
@@ -148,6 +167,35 @@ for ((o = 0; o < ${#ALL[@]}; o += PERNODE)); do
           "$HARNESS/run_instance.py")
     JIDS+=("$JID")
 done
+python3 - "$ROOT/runs/$TAG" "${JIDS[*]}" <<'PY'
+import hashlib, json, pathlib, sys
+run = pathlib.Path(sys.argv[1])
+meta = json.loads((run / "META.json").read_text())
+meta["job_ids"] = sys.argv[2].split()
+inputs = {}
+for name in meta["expected_instances"]:
+    path = run / "data_snapshot" / meta["data"] / f"{name}.json"
+    inputs[name] = hashlib.sha256(path.read_bytes()).hexdigest()
+manifest = {
+    "schema_version": 1,
+    "tag": meta["tag"],
+    "expected_instances": meta["expected_instances"],
+    "job_ids": meta["job_ids"],
+    "solver_snapshot_sha256": meta["solver_snapshot_sha256"],
+    "checker_sha256": meta["checker_sha256"],
+    "harness_sha256": meta["harness_sha256"],
+    "runner_sha256": meta["runner_sha256"],
+    "data_snapshot_sha256": meta["data_snapshot_sha256"],
+    "experiment_env": meta["experiment_env"],
+    "instance_sha256": inputs,
+}
+payload = json.dumps(manifest, sort_keys=True, separators=(",", ":"))
+manifest["manifest_sha256"] = hashlib.sha256(payload.encode()).hexdigest()
+(run / "RUN_MANIFEST.json").write_text(json.dumps(manifest, indent=2) + "\n")
+(run / "META.json").write_text(json.dumps(meta, indent=2) + "\n")
+PY
+chmod -R a-w "$SNAP" "$CHECKER_SNAPSHOT" "$HARNESS" "$DATA_SNAPSHOT" \
+    "$ROOT/runs/$TAG/RUN_MANIFEST.json"
 
 echo "submitted ${#JIDS[@]} node-jobs (${JIDS[*]})  tag=$TAG  tl=$TL  partition=$PART"
 echo "  watch:   squeue -u \$USER"

@@ -21,6 +21,7 @@
 """
 import json
 import math
+from fractions import Fraction
 import os
 import random
 import re
@@ -619,8 +620,10 @@ def _slice_refine(p, eng, seed, until, hor):
     D = [int(round(b["due_date"])) for b in B]
     PREF = [[int(round(v)) for v in b["bay_preferences"]] for b in B]
     SMAX = [max(pr) for pr in PREF]
-    area_units = [int(round(float(b["width"]) * float(b["height"])))
-                  for b in bays]
+    bay_areas = [
+        Fraction(str(b["width"])) * Fraction(str(b["height"])) for b in bays]
+    area_scale = math.lcm(*(area.denominator for area in bay_areas))
+    area_units = [int(area * area_scale) for area in bay_areas]
     area_sum = sum(area_units)
     use_access_cohort = os.environ.get("OGC_ACCESS_COHORT") == "1"
     use_full_slice_obj = os.environ.get("OGC_FULL_SLICE_OBJ") == "1"
@@ -633,9 +636,15 @@ def _slice_refine(p, eng, seed, until, hor):
     rng = random.Random(seed * 7919 + 13)
     cur = eng.get_solution()
     best = eng.objective()[3]
-    # Runtime knobs let the evidence harness test genuinely global
-    # neighborhoods without changing the shipped K=25 / NCAND=30 defaults.
-    K = max(2, min(n, int(os.environ.get("OGC_EXACT_K", "25"))))
+    # A comma-separated radius portfolio exercises genuinely different exact
+    # neighborhoods in one run; the singleton default preserves the canonical path.
+    raw_k = os.environ.get("OGC_EXACT_K_SET",
+                           os.environ.get("OGC_EXACT_K", "25"))
+    K_SET = sorted({
+        max(2, min(n, int(token))) for token in raw_k.split(",") if token.strip()
+    })
+    if not K_SET:
+        K_SET = [25]
     NCAND = max(2, int(os.environ.get("OGC_EXACT_NCAND", "30")))
     exact_only = os.environ.get("OGC_EXACT_SLICE_ONLY") == "1"
     span = until - time.time()
@@ -644,6 +653,7 @@ def _slice_refine(p, eng, seed, until, hor):
     SLICE = max(3.0, span * 0.18)
     rate = {"p": None if cp else -1.0, "a": None}
     rounds = 0
+    exact_attempts = 0
     while time.time() < until - 3.0:
         rounds += 1
         if exact_only:
@@ -668,6 +678,8 @@ def _slice_refine(p, eng, seed, until, hor):
             rate["a"] = (b0 - best) / max(1e-9, time.time() - t1)
             continue
         while time.time() < end - 1.0:
+            K = K_SET[exact_attempts % len(K_SET)]
+            exact_attempts += 1
             tardy = [i for i in range(n) if cur[i*7+6] and cur[i*7+5] > D[i]]
             if tardy:
                 seed_i = rng.choice(tardy)
@@ -783,25 +795,34 @@ def _slice_refine(p, eng, seed, until, hor):
             for t2 in range(0, len(prs), 2):
                 (i, q), (k, r2) = idx[prs[t2]], idx[prs[t2 + 1]]
                 mdl.AddBoolOr([V[i][q].Not(), V[k][r2].Not()])
-            base_obj = sum(
-                (W["w1"] * max(0, c[4] + P[i] - D[i])
-                 + W["w3"] * (SMAX[i] - PREF[i][c[0]])) * V[i][q]
-                for i in free for q, c in enumerate(CAND[i]))
+            objective_terms = []
+            for i in free:
+                for q, c in enumerate(CAND[i]):
+                    coeff = (
+                        Fraction(str(W["w1"])) * max(0, c[4] + P[i] - D[i])
+                        + Fraction(str(W["w3"])) * (SMAX[i] - PREF[i][c[0]])
+                    )
+                    objective_terms.append((coeff, V[i][q]))
             if use_full_slice_obj:
                 common_area = math.lcm(*area_units)
-                z2_denom = len(bays) * common_area
-                fixed_load = [0.0] * len(bays)
+                workloads = [Fraction(str(b["workload"])) for b in B]
+                workload_scale = math.lcm(
+                    *(workload.denominator for workload in workloads))
+                workload_units = [
+                    int(workload * workload_scale) for workload in workloads]
+                z2_denom = len(bays) * common_area * workload_scale
+                fixed_load = [0] * len(bays)
                 free_set = set(free)
                 for i in range(n):
                     if cur[i*7+6] and i not in free_set:
-                        fixed_load[cur[i*7]] += float(B[i]["workload"])
+                        fixed_load[cur[i*7]] += workload_units[i]
                 load_expr = []
                 bound = 0
                 for j in range(len(bays)):
-                    expr = (area_sum * int(round(fixed_load[j]))
+                    expr = (area_sum * fixed_load[j]
                             * (common_area // area_units[j]))
                     for i in free:
-                        coeff = (area_sum * int(round(float(B[i]["workload"])))
+                        coeff = (area_sum * workload_units[i]
                                  * (common_area // area_units[j]))
                         bound += abs(coeff)
                         expr += sum(coeff * V[i][q]
@@ -809,7 +830,7 @@ def _slice_refine(p, eng, seed, until, hor):
                     load_expr.append(expr)
                 abs_diffs = []
                 bound = max(bound, 1) + max(
-                    abs(area_sum * int(round(fixed_load[j]))
+                    abs(area_sum * fixed_load[j]
                         * (common_area // area_units[j]))
                     for j in range(len(bays)))
                 for a in range(len(bays)):
@@ -827,8 +848,12 @@ def _slice_refine(p, eng, seed, until, hor):
                     # the same integer relation and remain interruptible.
                     mdl.Add(z2 * z2_denom <= max_abs)
                     mdl.Add(max_abs < (z2 + 1) * z2_denom)
-                    base_obj += W["w2"] * z2
-            mdl.Minimize(base_obj)
+                    objective_terms.append((Fraction(str(W["w2"])), z2))
+            objective_scale = math.lcm(
+                *(coef.denominator for coef, _ in objective_terms))
+            mdl.Minimize(sum(
+                int(coef * objective_scale) * var
+                for coef, var in objective_terms))
             new = None
             cuts = 0
             for _ in range(4 if use_branch_check else 1):
@@ -887,8 +912,8 @@ def _slice_refine(p, eng, seed, until, hor):
         rate["p"] = (b0 - best) / max(1e-9, time.time() - t1)
     eng.set_solution(cur)
     eng.build_occ(hor)
-    _diag("slice", rounds=rounds, obj=best,
-          rate_p=rate["p"], rate_a=rate["a"])
+    _diag("slice", rounds=rounds, exact_attempts=exact_attempts,
+          exact_k_set=K_SET, obj=best, rate_p=rate["p"], rate_a=rate["a"])
 
 
 def _arm_free(p, deadline, seed=7, tl=None):
@@ -1119,16 +1144,20 @@ def _trivial(p):
     return _recs_to_sol(recs)
 
 
+def _certified_trivial(p):
+    fallback = _trivial(p)
+    checked = _check(p, fallback)
+    if checked is None or not checked.get("feasible", False):
+        raise RuntimeError("no checker-certified fallback solution")
+    return fallback
+
+
 # -------------------------------------------------------------------- entry
 def algorithm(prob_info, timelimit=60):
     try:
         return _algorithm(prob_info, timelimit)
     except Exception:
-        fallback = _trivial(prob_info)
-        checked = _check(prob_info, fallback)
-        if checked is None or not checked.get("feasible", False):
-            raise RuntimeError("no checker-certified fallback solution")
-        return fallback
+        return _certified_trivial(prob_info)
 
 
 def _algorithm(prob_info, timelimit=60):
@@ -1173,4 +1202,4 @@ def _algorithm(prob_info, timelimit=60):
                 _diag("fallback", stage="rescued")
                 return sol
     _diag("fallback", stage="trivial")
-    return _trivial(prob_info)
+    return _certified_trivial(prob_info)

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #SBATCH --job-name=eval
 #SBATCH --nodes=1
-#SBATCH --ntasks=1
-#SBATCH --cpus-per-task=40
+#SBATCH --ntasks=10
+#SBATCH --cpus-per-task=4
 #SBATCH --mem=160G
 #SBATCH --output=/dev/null
 #
@@ -29,11 +29,9 @@ export OGC_SEED=$PSEED
 export OPENBLAS_NUM_THREADS=1
 export MKL_NUM_THREADS=1
 
-# Pin each slot to 4 of the cores Slurm actually gave us (absolute ids differ
-# per node, so read the cgroup mask instead of assuming 0..39).
-mapfile -t CPUS < <($PY -c "import os;print('\n'.join(map(str,sorted(os.sched_getaffinity(0)))))")
+CHECKER_HASH=$(sha256sum "$OGC_CHECKER" | cut -d' ' -f1)
+export OGC_CHECKER_SHA256="$CHECKER_HASH"
 
-k=0
 for i in $INSTS; do
     if [[ "$TL" == "official" ]]; then
         case "$i" in
@@ -44,13 +42,18 @@ for i in $INSTS; do
     else
         ITL="$TL"
     fi
-    span="${CPUS[$((k*4))]},${CPUS[$((k*4+1))]},${CPUS[$((k*4+2))]},${CPUS[$((k*4+3))]}"
+    INPUT="$OGC_DATA_ROOT/$OGC_DATA/prob_$i.json"
+    INPUT_HASH=$(sha256sum "$INPUT" | cut -d' ' -f1)
+    export "OGC_INSTANCE_SHA256_$i=$INPUT_HASH"
     (
-        ulimit -v $((16 * 1024 * 1024))
         timeout --signal=TERM --kill-after=10 "$(( ${ITL%.*} + 30 ))s" \
-            taskset -c "$span" "$PY" "$RUNNER" "$i" "$ITL" \
-            "$OUT/prob_$i.json"
+            srun --exclusive --nodes=1 --ntasks=1 --cpus-per-task=4 --mem=16G \
+            "$PY" "$RUNNER" "$i" "$ITL" "$OUT/prob_$i.json"
     ) > "$OUT/prob_$i.log" 2>&1 &
-    k=$((k+1))
 done
-wait
+status=0
+wait || status=$?
+sacct -P -n -j "$SLURM_JOB_ID" \
+    --format=JobIDRaw,JobName,State,ExitCode,ElapsedRaw,MaxRSS,ReqMem,AllocCPUS,Partition \
+    > "$OUT/sacct-$SLURM_JOB_ID.txt" || status=$?
+exit "$status"
