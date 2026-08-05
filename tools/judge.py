@@ -4,8 +4,8 @@
                               -> gap to the ALL-TIME prelim minima (report §3,
                               data/prelim_refs.json) + rank/score conversion
                               against the FINAL-STANDING leaderboard (§5,
-                              data/leaderboard.json). Reads runs/TAG/prob_N.json
-                              (fresh) or results/TAG.json (frozen).
+                              data/leaderboard.json). Reads only immutable
+                              results/TAG.json evidence.
   judge.py pair TAGA TAGB     robustness verdict: per-instance paired
                               comparison of two frozen sweeps (results/*.json,
                               typically train_final x T600), sign test
@@ -39,29 +39,26 @@ def score_of(prob, val):
     return max(1, NRANK + 1 - rank_of(prob, val))
 
 
-def load_p36(tag):
-    """{P3: rec, ...} from runs/<tag>/ (fresh) or results/<tag>.json (frozen)."""
-    out = {}
-    rd = ROOT / "runs" / tag
-    if rd.is_dir():
-        for p in (3, 4, 5, 6):
-            f = rd / f"prob_{p}.json"
-            if f.exists():
-                out[f"P{p}"] = json.loads(f.read_text())
-        if out:
-            return out
+def _load_frozen(tag):
     f = ROOT / "results" / f"{tag}.json"
-    if f.exists():
-        frozen = json.loads(f.read_text())
-        meta = frozen.get("meta", {})
-        src = meta.get("data") or meta.get("OGC_DATA")
-        if src and src != "preliminary_test":
-            print(f"WARNING {tag}: frozen run used data={src}, not preliminary_test "
-                  f"-- P3-P6 there are NOT the prelim boards; gap/rank is meaningless")
-        runs = frozen["runs"]
-        for p in (3, 4, 5, 6):
-            if f"prob_{p}" in runs:
-                out[f"P{p}"] = runs[f"prob_{p}"]
+    if not f.exists():
+        sys.exit(f"results/{tag}.json not found (freeze with tools/collect.py first)")
+    payload = json.loads(f.read_text())
+    return payload.get("meta", {}), payload.get("runs", {})
+
+
+def load_p36(tag):
+    """Load a complete, frozen, preliminary-test P3-P6 evidence set."""
+    meta, runs = _load_frozen(tag)
+    if meta.get("data") != "preliminary_test":
+        sys.exit(f"{tag}: data={meta.get('data')!r}, expected preliminary_test")
+    out = {}
+    for p in (3, 4, 5, 6):
+        r = runs.get(f"prob_{p}")
+        if (not r or not r.get("feasible") or r.get("error")
+                or r.get("overrun")):
+            sys.exit(f"{tag}: prob_{p} is missing or non-adoptable")
+        out[f"P{p}"] = r
     return out
 
 
@@ -93,26 +90,31 @@ def cmd_p36(tags):
           f"{{P3 {amin['P3']:,} / P4 {amin['P4']:,} / P5 {amin['P5']:,} / P6 {amin['P6']:,}}}")
 
 
-def _runs_of(tag):
-    f = ROOT / "results" / f"{tag}.json"
-    if not f.exists():
-        sys.exit(f"results/{tag}.json not found (freeze with tools/collect.py first)")
-    return json.loads(f.read_text())["runs"]
+def _evidence_of(tag):
+    return _load_frozen(tag)
 
 
 def cmd_pair(ta, tb):
-    A, B = _runs_of(ta), _runs_of(tb)
-    common = sorted(set(A) & set(B), key=lambda k: int(k.split("_")[1]))
+    meta_a, A = _evidence_of(ta)
+    meta_b, B = _evidence_of(tb)
+    comparable = ("data", "timelimit", "pseed", "checker_sha256",
+                  "harness_sha256", "instances")
+    missing = [k for k in comparable if k not in meta_a or k not in meta_b]
+    mismatch = [k for k in comparable if meta_a.get(k) != meta_b.get(k)]
+    if missing or mismatch:
+        sys.exit(f"non-comparable evidence: missing={missing}, mismatch={mismatch}")
+    if set(A) != set(B):
+        sys.exit("non-comparable evidence: instance coverage differs")
+    common = sorted(A, key=lambda k: int(k.split("_")[1]))
     diffs = []
-    bad = []
     for k in common:
         a, b = A[k].get("objective"), B[k].get("objective")
-        if not A[k].get("feasible") or not B[k].get("feasible") or not a:
-            bad.append(k)
-            continue
+        if any((not R.get("feasible") or R.get("error") or R.get("overrun"))
+               for R in (A[k], B[k])) or not a or b is None:
+            sys.exit(f"non-adoptable paired record: {k}")
         diffs.append((k, (b - a) / a * 100))
-    W = sum(1 for _, d in diffs if d < -1e-9)
-    L = sum(1 for _, d in diffs if d > 1e-9)
+    W = sum(1 for _, d in diffs if d < -1.0)
+    L = sum(1 for _, d in diffs if d > 1.0)
     T = len(diffs) - W - L
     n = W + L
     # two-sided binomial sign test, p0=0.5, ties dropped
@@ -125,16 +127,13 @@ def cmd_pair(ta, tb):
     print(f"  n={len(diffs)}  W/L/T={W}/{L}/{T}  mean={mean:+.2f}%  median={med:+.2f}%  "
           f"sign-test p={p:.3f}")
     movers = sorted(diffs, key=lambda kv: kv[1])
-    for k, d in movers[:3]:
+    shown = movers if len(movers) <= 6 else movers[:3] + movers[-3:]
+    for idx, (k, d) in enumerate(shown):
+        if len(movers) > 6 and idx == 3:
+            print("    ...")
         print(f"    {k:<9s} {d:+7.2f}%")
-    if len(movers) > 6:
-        print("    ...")
-    for k, d in movers[-3:]:
-        print(f"    {k:<9s} {d:+7.2f}%")
-    if bad:
-        print(f"  EXCLUDED (infeasible/missing): {', '.join(bad)}")
-    verdict = ("CLEAR WIN" if p < 0.05 and mean < 0 else
-               "CLEAR LOSS" if p < 0.05 and mean > 0 else "WASH (draw noise)")
+    verdict = ("CLEAR WIN" if p < 0.05 and W > L else
+               "CLEAR LOSS" if p < 0.05 and L > W else "WASH (draw noise)")
     print(f"  verdict: {verdict}  [discipline: adopt only clear or 10%-scale wins]")
 
 
