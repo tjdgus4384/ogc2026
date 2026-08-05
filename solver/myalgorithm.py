@@ -822,12 +822,12 @@ def _slice_refine(p, eng, seed, until, hor):
                 sv.parameters.max_time_in_seconds = max(0.2, min(4.0, left))
                 sv.parameters.num_search_workers = _THR
                 # Large exact-balance coefficients can make presolve dominate
-                # the advertised wall limit. The incumbent is already a valid
-                # candidate, so use bounded direct search and stop at the first
-                # feasible assignment; branch-and-check enforces geometry.
+                # the advertised wall limit. Use bounded direct search instead;
+                # branch-and-check enforces geometry outside the relaxation.
                 sv.parameters.cp_model_presolve = False
-                sv.parameters.stop_after_first_solution = True
-                sv.parameters.max_deterministic_time = 0.05
+                sv.parameters.stop_after_first_solution = False
+                sv.parameters.max_deterministic_time = 0.10
+                sv.parameters.random_seed = seed + rounds + cuts
                 _diag("slice-stage", stage="solve-start",
                       seconds_left=round(left, 3), cuts=cuts)
                 st = sv.Solve(mdl)
