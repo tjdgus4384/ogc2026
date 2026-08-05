@@ -4,6 +4,7 @@ import hashlib
 import json
 
 from evidence import manifest_digest, validate_frozen_payload
+from run_instance import _solution_bytes
 
 
 def payload():
@@ -43,6 +44,11 @@ def payload():
     return out
 
 
+ordered_solution = {"operations": {"2": [], "10": [], "100": []}}
+round_trip = json.loads(_solution_bytes(ordered_solution))
+assert list(round_trip["operations"]) == ["2", "10", "100"]
+
+
 good = payload()
 assert validate_frozen_payload(good, require_official=True) == []
 for mutate in (
@@ -55,4 +61,4 @@ for mutate in (
     bad = copy.deepcopy(good)
     mutate(bad)
     assert validate_frozen_payload(bad, require_official=True)
-print("EVIDENCE GATE PASS: coverage, finite objective, Slurm, manifest, digest")
+print("EVIDENCE GATE PASS: coverage, finite objective, Slurm, manifest, digest, event order")

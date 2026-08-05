@@ -49,6 +49,12 @@ def _experiment_env():
     }
 
 
+def _solution_bytes(solution):
+    # The checker consumes time-bucket insertion order. Sorting JSON object keys
+    # lexicographically changes that order (for example "100" before "20").
+    return json.dumps(solution, separators=(",", ":")).encode()
+
+
 
 def _runtime_identity():
     cpu_model = None
@@ -202,8 +208,7 @@ def main():
 
     if out_path and sol is not None:
         solution_path = pathlib.Path(out_path).with_suffix(".sol.json")
-        solution_bytes = json.dumps(
-            sol, separators=(",", ":")).encode()
+        solution_bytes = _solution_bytes(sol)
         solution_path.write_bytes(solution_bytes)
         rec["solution_sha256"] = hashlib.sha256(solution_bytes).hexdigest()
     line = json.dumps(rec)
