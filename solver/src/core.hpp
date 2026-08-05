@@ -192,6 +192,34 @@ inline bool restOverlap(const Problem& pb, const Sol& s, int a, int b) {
                                gb, l, s.x[b], s.y[b])) return true;
     return false;
 }
+// Whole-state exact audit without repeating every event once per resident.
+inline bool stateExactEvents(const Problem& pb, const Sol& s) {
+    std::vector<int> exits, entries;
+    for (int bay = 0; bay < pb.m; bay++) {
+        const auto& ids = s.byBay[bay];
+        for (size_t a = 0; a < ids.size(); a++) {
+            const int i = ids[a];
+            if (!s.placed[i]) continue;
+            for (size_t b = a + 1; b < ids.size(); b++) {
+                const int k = ids[b];
+                if (!s.placed[k]) continue;
+                if (s.e[i] < s.f[k] && s.e[k] < s.f[i] &&
+                    restOverlap(pb, s, i, k))
+                    return false;
+            }
+        }
+        std::vector<int> times;
+        for (int i : ids) if (s.placed[i]) {
+            times.push_back(s.e[i]);
+            times.push_back(s.f[i]);
+        }
+        std::sort(times.begin(), times.end());
+        times.erase(std::unique(times.begin(), times.end()), times.end());
+        for (int t : times)
+            if (!eventOrderAt(pb, s, bay, t, exits, entries)) return false;
+    }
+    return true;
+}
 
 // Feasibility of block A at its current (bay, ori, x, y, e, f) against every
 // resident of its bay -- the five checker rules from A's point of view:

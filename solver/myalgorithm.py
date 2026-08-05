@@ -624,6 +624,7 @@ def _slice_refine(p, eng, seed, until, hor):
     use_anchored_columns = os.environ.get("OGC_ANCHORED_COLUMNS") == "1"
     use_branch_check = os.environ.get("OGC_BRANCH_CHECK") == "1"
     use_stratified_columns = os.environ.get("OGC_STRATIFIED_COLUMNS") == "1"
+    use_balance_cohort = os.environ.get("OGC_BALANCE_COHORT") == "1"
     cp = _cpsat()
     rng = random.Random(seed * 7919 + 13)
     cur = eng.get_solution()
@@ -662,9 +663,35 @@ def _slice_refine(p, eng, seed, until, hor):
             continue
         while time.time() < end - 1.0:
             tardy = [i for i in range(n) if cur[i*7+6] and cur[i*7+5] > D[i]]
-            if not tardy:
+            if tardy:
+                seed_i = rng.choice(tardy)
+            elif use_full_slice_obj and use_balance_cohort:
+                # Z1-free boards still need exact neighborhoods: seed from the
+                # blocks that price the current assignment most heavily through
+                # preference regret or the normalized high-load bay.  The old
+                # tardy-only gate silently disabled the joint optimizer on P3.
+                load = [0.0] * len(bays)
+                for i in range(n):
+                    if cur[i*7+6]:
+                        j = cur[i*7]
+                        load[j] += float(B[i]["workload"]) * area_sum / area_units[j]
+                high = max(range(len(bays)), key=lambda j: load[j])
+                priced = []
+                for i in range(n):
+                    if not cur[i*7+6]:
+                        continue
+                    j = cur[i*7]
+                    regret = SMAX[i] - PREF[i][j]
+                    relief = (float(B[i]["workload"]) * area_sum / area_units[j]
+                              if j == high else 0.0)
+                    priced.append((W["w3"] * regret + W["w2"] * relief, i))
+                priced.sort(reverse=True)
+                frontier = [i for _, i in priced[:max(K, min(len(priced), 3*K))]]
+                if not frontier:
+                    break
+                seed_i = rng.choice(frontier)
+            else:
                 break
-            seed_i = rng.choice(tardy)
             if use_access_cohort:
                 free = list(eng.access_cohort(seed_i, K))
             else:
@@ -672,6 +699,8 @@ def _slice_refine(p, eng, seed, until, hor):
             pool = [i for i in range(n) if cur[i*7+6] and i not in set(free)]
             if len(free) < K:
                 free += rng.sample(pool, min(K - len(free), len(pool)))
+            _diag("slice-stage", stage="columns-start", free=len(free),
+                  seconds_left=round(end-time.time(), 3))
             part = list(cur)
             for i in free:
                 part[i*7+6] = 0
@@ -710,6 +739,9 @@ def _slice_refine(p, eng, seed, until, hor):
                             CAND[i].append(c)
                 eng.set_solution(part)
                 eng.build_occ(hor)
+            _diag("slice-stage", stage="columns-done",
+                  columns=sum(map(len, CAND.values())),
+                  seconds_left=round(end-time.time(), 3))
             if time.time() >= end - 1.0:
                 eng.set_solution(cur)
                 eng.build_occ(hor)
@@ -729,6 +761,8 @@ def _slice_refine(p, eng, seed, until, hor):
                 eng.set_solution(cur)
                 eng.build_occ(hor)
                 break
+            _diag("slice-stage", stage="relations-done",
+                  conflicts=len(prs)//2, seconds_left=round(end-time.time(), 3))
             for t2 in range(0, len(prs), 2):
                 (i, q), (k, r2) = idx[prs[t2]], idx[prs[t2 + 1]]
                 mdl.AddBoolOr([V[i][q].Not(), V[k][r2].Not()])
@@ -770,7 +804,12 @@ def _slice_refine(p, eng, seed, until, hor):
                     max_abs = mdl.NewIntVar(0, 2 * bound, "load_max")
                     mdl.AddMaxEquality(max_abs, abs_diffs)
                     z2 = mdl.NewIntVar(0, 2 * bound // z2_denom + 1, "z2_floor")
-                    mdl.AddDivisionEquality(z2, max_abs, z2_denom)
+                    # Exact floor without AddDivisionEquality: the latter's
+                    # large rational denominator sent CP-SAT into unbounded
+                    # presolve despite a wall limit. These linear bounds encode
+                    # the same integer relation and remain interruptible.
+                    mdl.Add(z2 * z2_denom <= max_abs)
+                    mdl.Add(max_abs < (z2 + 1) * z2_denom)
                     base_obj += W["w2"] * z2
             mdl.Minimize(base_obj)
             new = None
@@ -782,7 +821,18 @@ def _slice_refine(p, eng, seed, until, hor):
                 sv = cp.CpSolver()
                 sv.parameters.max_time_in_seconds = max(0.2, min(4.0, left))
                 sv.parameters.num_search_workers = _THR
+                # Large exact-balance coefficients can make presolve dominate
+                # the advertised wall limit. The incumbent is already a valid
+                # candidate, so use bounded direct search and stop at the first
+                # feasible assignment; branch-and-check enforces geometry.
+                sv.parameters.cp_model_presolve = False
+                sv.parameters.stop_after_first_solution = True
+                sv.parameters.max_deterministic_time = 0.05
+                _diag("slice-stage", stage="solve-start",
+                      seconds_left=round(left, 3), cuts=cuts)
                 st = sv.Solve(mdl)
+                _diag("slice-stage", stage="solve-done",
+                      status=int(st), seconds_left=round(end-time.time(), 3))
                 if st not in (cp.OPTIMAL, cp.FEASIBLE):
                     break
                 candidate = list(part)
@@ -796,9 +846,9 @@ def _slice_refine(p, eng, seed, until, hor):
                             break
                 eng.set_solution(candidate)
                 eng.build_occ(hor)
-                bad = [i for i in range(n)
-                       if candidate[i*7+6] and not eng.vp_ok(i)]
-                if not bad:
+                _diag("slice-stage", stage="audit-start",
+                      seconds_left=round(end-time.time(), 3))
+                if eng.exact_state_ok():
                     new = candidate
                     break
                 if not use_branch_check or not chosen:

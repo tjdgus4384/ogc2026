@@ -326,6 +326,9 @@ struct Engine {
         int bb = -1; int code = alns::audit(pb, sol, &bb, exactEvents_);
         return {code, bb};
     }
+    bool exactStateOK() {
+        return core::stateExactEvents(pb, sol);
+    }
 
     // assignment lock: persistent forcedBay for the whole engine -> repairs
     // keep every block in its locked bay, freezing Z2/Z3 at the locked
@@ -978,6 +981,7 @@ PYBIND11_MODULE(sscore, m) {
         .def("set_pref_p", &Engine::setPrefP)
         .def("set_exact_events", &Engine::setExactEvents)
         .def("ordered_events", &Engine::orderedEvents)
+        .def("exact_state_ok", &Engine::exactStateOK)
         .def("access_cohort", &Engine::accessCohort)
         .def("compact_event_schedule", &Engine::compactEventSchedule)
         .def("run_portfolio", &Engine::runPortfolio,
