@@ -187,7 +187,7 @@ def _spec_rule(p):
     return _saturation(p) < 1.0
 
 
-def _seed_free(p, diversify=True, asg=None, pref_p=-1.0):
+def _seed_free(p, diversify=True, asg=None, pref_p=-1.0, deadline=None):
     """kernel-native seeding, best-of-5 insertion orders (sec 87).
     asg: optional partial assignment lock (-1 = free) applied to every
     construction -- see _arm_free's partial-lock block."""
@@ -216,28 +216,25 @@ def _seed_free(p, diversify=True, asg=None, pref_p=-1.0):
     # Fast horizons first; the final max-release + serial-duration bound is a
     # guaranteed schedule horizon rather than another guessed multiplier.
     for hmul in (1, 2, 4, None):
+        if deadline is not None and time.time() >= deadline:
+            break
         eng, _, _ = _fresh(p, hmul, pref_p)
         cands = []                       # (objective, flat solution)
         best = None
         lockv = asg if asg is not None else [-1] * n
         for od in orders:
-            if eng.reconstruct_ordered(lockv, od, False, 7) == -1:
+            if deadline is not None and time.time() >= deadline:
+                break
+            budget = (0.0 if deadline is None else
+                      max(0.001, deadline - time.time()))
+            if eng.reconstruct_ordered(lockv, od, False, 7, budget) == -1:
                 ob = eng.objective()[3]      # [z1,z2,z3,total] -> total
                 cands.append((ob, eng.get_solution()))
                 if best is None or ob < best[0]:
-                    best = (ob, od)
+                    best = (ob, od, eng.get_solution())
         if best is not None:
-            if best[1] is not orders[-1]:
-                # The replay must carry the SAME lock the winning order was
-                # built under. Replaying with [-1]*n handed the portfolio an
-                # UNLOCKED board, so _arm_free's partial preference lock was
-                # silently discarded -- measured on P3 with an explicit
-                # assignment: 63 of 200 blocks already off their locked bay
-                # at the seed (results/campaign3/lockviol_counters_p3.log,
-                # job 63409). Judged
-                # quality-neutral: train_final 40 pairs 25W/13L median
-                # -0.22% p=0.073, p36 3 seeds +1.18/-1.68/+0.84%.
-                eng.reconstruct_ordered(lockv, best[1], False, 7)
+            eng.set_solution(best[2])
+            eng.build_occ(eng.horizon())
             # top DISTINCT seeds, best first: the portfolio's basin hedge
             # (different insertion orders often collapse to the same layout;
             # duplicates would waste a thread on the same basin).
@@ -911,10 +908,11 @@ def _arm_free(p, deadline, seed=7, tl=None):
     # measured 0.85 override only for unlocked spec boards, but make it
     # Engine-owned so sequential calls cannot inherit another instance's policy.
     pref_p = 0.85 if spec and asg is None else -1.0
-    eng, seeds = _seed_free(p, asg=asg, pref_p=pref_p)
+    eng, seeds = _seed_free(p, asg=asg, pref_p=pref_p, deadline=deadline)
     if eng is None and asg is not None:
         asg = None
-        eng, seeds = _seed_free(p, pref_p=0.85 if spec else -1.0)
+        eng, seeds = _seed_free(
+            p, pref_p=0.85 if spec else -1.0, deadline=deadline)
     if eng is None:
         return None, None
     # thread map (4 threads): best seed / fresh construction / 2nd / 3rd.
@@ -1147,7 +1145,7 @@ def _algorithm(prob_info, timelimit=60):
     # artifact. Ladder: fresh seed -> (if time) short anneal -> gate; else
     # gate the SEED ITSELF (sparse, so nudges/retimes almost always fix it)
     # -> trivial only when nothing checker-feasible fits the clock.
-    eng, _ = _seed_free(prob_info, diversify=False)
+    eng, _ = _seed_free(prob_info, diversify=False, deadline=deadline)
     if eng is not None:
         left = deadline - time.time()
         if left > 8.0:

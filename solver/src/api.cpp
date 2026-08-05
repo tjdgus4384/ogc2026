@@ -633,6 +633,9 @@ struct Engine {
         candSols.assign((size_t)threads, {});     // per-thread candidates
         rounds = std::max(1, rounds);
         auto wall0 = std::chrono::steady_clock::now();
+        const auto absoluteDeadline = wall0 + std::chrono::duration_cast<
+            std::chrono::steady_clock::duration>(
+                std::chrono::duration<double>(std::max(0.0, seconds)));
         auto elapsed = [&] { return std::chrono::duration<double>(
             std::chrono::steady_clock::now() - wall0).count(); };
         double perRound = seconds / rounds;
@@ -640,6 +643,7 @@ struct Engine {
         int chunks = 0;
 
         for (int r = 0; r < rounds; r++) {
+            if (std::chrono::steady_clock::now() >= absoluteDeadline) break;
             double roundT0 = elapsed();
             core::Sol roundStart = globalBest;
             double roundEnterBest = bestObj;
@@ -658,6 +662,8 @@ struct Engine {
                 c2.entryCap = ctx.entryCap;     // entry lock -> threads
                 c2.prefP = prefP_;
                 c2.exactEvents = exactEvents_;
+                c2.hasDeadline = true;
+                c2.deadline = absoluteDeadline;
                 bool constructed = false;
                 if (r == 0 && !starts.empty()) {
                     const auto& st0 = starts[tid % (int)starts.size()];
@@ -709,6 +715,8 @@ struct Engine {
                     c3.horizon=horizon_;
                     c3.prefP=prefP_;
                     c3.exactEvents=exactEvents_;
+                    c3.hasDeadline=true;
+                    c3.deadline=absoluteDeadline;
                     alns::spatialCompact(c3, 6);
                     alns::compactLeft(c3, 3);
                 }
@@ -772,7 +780,7 @@ struct Engine {
     // construction). Returns -1 on success, else the block that failed; the
     // previous solution is restored on failure.
     int reconstructOrdered(std::vector<int> asg, std::vector<int> order,
-                           bool tight, uint64_t seed) {
+                           bool tight, uint64_t seed, double maxSeconds = 0.0) {
         if ((int)asg.size() != pb.n || (int)order.size() != pb.n) return -2;
         core::Sol backup = sol;
         occ::OccIndex oc2; oc2.build(pb, horizon_);
@@ -781,6 +789,12 @@ struct Engine {
         c2.exactEvents = exactEvents_;
         c2.forcedBay = asg.data();
         c2.rng.seed(seed);
+        if (maxSeconds > 0.0) {
+            c2.hasDeadline = true;
+            c2.deadline = std::chrono::steady_clock::now()
+                + std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+                    std::chrono::duration<double>(maxSeconds));
+        }
         for (int i = 0; i < pb.n; i++) sol.placed[i] = 0;
         sol.rebuildIdx(pb.m);
         int bad = -1;
@@ -978,7 +992,9 @@ PYBIND11_MODULE(sscore, m) {
         .def("init_problem", &Engine::initProblem)
         .def("add_orient", &Engine::addOrient)
         .def("build_occ", &Engine::buildOcc)
-        .def("reconstruct_ordered", &Engine::reconstructOrdered)
+        .def("reconstruct_ordered", &Engine::reconstructOrdered,
+             py::arg("assignment"), py::arg("order"), py::arg("tight"),
+             py::arg("seed"), py::arg("maxSeconds") = 0.0)
         .def("set_pref_p", &Engine::setPrefP)
         .def("set_exact_events", &Engine::setExactEvents)
         .def("ordered_events", &Engine::orderedEvents)

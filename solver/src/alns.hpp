@@ -750,8 +750,10 @@ inline int spatialCompact(repair::Ctx& c, int passes) {
     const Problem& pb = *c.pb; Sol& s = *c.s;
     int moved = 0;
     for (int pass = 0; pass < passes; pass++) {
+        if (repair::deadlineExpired(c)) break;
         int mv = 0;
         for (int i = 0; i < pb.n; i++) {
+            if (repair::deadlineExpired(c)) break;
             if (!s.placed[i]) continue;
             int j = s.bay[i], oi = s.ori[i];
             const auto& bb = pb.geo[i].orients[oi].bb;
@@ -793,12 +795,14 @@ inline int compactLeft(repair::Ctx& c, int maxPasses) {
     const Problem& pb = *c.pb; Sol& s = *c.s;
     int totalMoved = 0;
     for (int pass = 0; pass < maxPasses; pass++) {
+        if (repair::deadlineExpired(c)) break;
         int moved = 0;
         std::vector<int> ids;
         for (int i = 0; i < pb.n; i++) if (s.placed[i]) ids.push_back(i);
         std::sort(ids.begin(), ids.end(),
                   [&](int a, int b){ return s.e[a] < s.e[b]; });
         for (int i : ids) {
+            if (repair::deadlineExpired(c)) break;
             if (s.e[i] <= pb.R[i]) continue;
             int oldE = s.e[i], oldF = s.f[i];
             std::vector<int> cand;
