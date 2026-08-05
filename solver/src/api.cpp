@@ -781,6 +781,7 @@ struct Engine {
     // previous solution is restored on failure.
     int reconstructOrdered(std::vector<int> asg, std::vector<int> order,
                            bool tight, uint64_t seed, double maxSeconds = 0.0) {
+        const auto callStart = std::chrono::steady_clock::now();
         if ((int)asg.size() != pb.n || (int)order.size() != pb.n) return -2;
         core::Sol backup = sol;
         occ::OccIndex oc2; oc2.build(pb, horizon_);
@@ -791,7 +792,7 @@ struct Engine {
         c2.rng.seed(seed);
         if (maxSeconds > 0.0) {
             c2.hasDeadline = true;
-            c2.deadline = std::chrono::steady_clock::now()
+            c2.deadline = callStart
                 + std::chrono::duration_cast<std::chrono::steady_clock::duration>(
                     std::chrono::duration<double>(maxSeconds));
         }
