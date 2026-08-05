@@ -950,12 +950,16 @@ def _arm_free(p, deadline, seed=7, tl=None):
     # population's edge is the tight regime (~1 s/block, the P3 class);
     # absolute-time windows overfit the train boards. Gate on the ratio.
     _pop_here = sec >= 150.0 and sec / max(1, n) <= 1.6
+    _pop_exact = (_pop_here and os.environ.get("OGC_POP_EXACT") == "1")
     # OGC_SLICE=0 is the shipped ablation switch (noslice variant measured
     # +2.1% mean on the 40-pair harness 08-03 -- keep ON; sh45 share and
     # k60 subset variants refuted there too).
     _rfshare = 0.0
-    if (sec > 60.0 and not _pop_here
-            and os.environ.get("OGC_SLICE", "1") == "1"):
+    if sec > 60.0 and _pop_exact:
+        _rfshare = 0.20 * sec
+        sec -= _rfshare
+    elif (sec > 60.0 and not _pop_here
+          and os.environ.get("OGC_SLICE", "1") == "1"):
         _rfshare = 0.30 * sec
         sec -= _rfshare
     rounds = 1 if sec > 110 else 2
@@ -981,7 +985,7 @@ def _arm_free(p, deadline, seed=7, tl=None):
         # memetic path had already polished, costing P3 4.1%. Skip the
         # whole pass there -- those boards are punctual anyway, so the
         # CP-SAT arm has nothing to rescue.
-        if _pop_here:
+        if _pop_here and not _pop_exact:
             raise StopIteration
         # STOP AT deadline-reserve, not at the deadline. The reserve is
         # what the checker gate and its repair moves run in; eating it
