@@ -526,13 +526,11 @@ def _population_search(p, eng, seed, sec, starts, base_asg):
     n = len(p["blocks"])
     t_end = time.time() + sec
     burst = max(20.0, sec / 8.0)
+    horizon = eng.horizon()
 
     def anneal(flat, locks, bsec, rseed):
         eng.set_solution(flat)
-        B = p["blocks"]
-        eng.build_occ(max(int(round(b["due_date"])) for b in B)
-                      + max(max(1, int(math.ceil(b["processing_time"]
-                                                 - 1e-9))) for b in B) + 40)
+        eng.build_occ(horizon)
         eng.set_assignment_lock(locks if locks is not None else
                                 (base_asg or []))
         eng.run_portfolio(_THR, bsec, 1, 0.05, 0.15, 0.002, 0.9995,
@@ -573,10 +571,7 @@ def _population_search(p, eng, seed, sec, starts, base_asg):
             pop[-1] = child
             pop.sort(key=lambda t: t[0])
     eng.set_solution(pop[0][1])
-    B = p["blocks"]
-    eng.build_occ(max(int(round(b["due_date"])) for b in B)
-                  + max(max(1, int(math.ceil(b["processing_time"] - 1e-9)))
-                        for b in B) + 40)
+    eng.build_occ(horizon)
 
 
 
@@ -627,6 +622,7 @@ def _slice_refine(p, eng, seed, until, hor):
     use_access_cohort = os.environ.get("OGC_ACCESS_COHORT") == "1"
     use_full_slice_obj = os.environ.get("OGC_FULL_SLICE_OBJ") == "1"
     use_anchored_columns = os.environ.get("OGC_ANCHORED_COLUMNS") == "1"
+    use_branch_check = os.environ.get("OGC_BRANCH_CHECK") == "1"
     cp = _cpsat()
     rng = random.Random(seed * 7919 + 13)
     cur = eng.get_solution()
@@ -765,23 +761,44 @@ def _slice_refine(p, eng, seed, until, hor):
                     mdl.AddDivisionEquality(z2, max_abs, z2_denom)
                     base_obj += W["w2"] * z2
             mdl.Minimize(base_obj)
-            sv = cp.CpSolver()
-            sv.parameters.max_time_in_seconds = max(
-                0.5, min(6.0, end - time.time()))
-            sv.parameters.num_search_workers = _THR
-            st = sv.Solve(mdl)
-            if st not in (cp.OPTIMAL, cp.FEASIBLE):
-                eng.set_solution(cur); eng.build_occ(hor); continue
-            new = list(part)
-            for i in free:
-                for q, c in enumerate(CAND[i]):
-                    if sv.Value(V[i][q]):
-                        new[i*7:i*7+7] = [c[0], c[1], c[2], c[3], c[4],
-                                          c[4] + P[i], 1]
-                        break
-            eng.set_solution(new); eng.build_occ(hor)
-            if any(new[i*7+6] and not eng.vp_ok(i) for i in range(n)):
-                eng.set_solution(cur); eng.build_occ(hor); continue
+            new = None
+            cuts = 0
+            for _ in range(4 if use_branch_check else 1):
+                left = end - time.time()
+                if left <= 0.3:
+                    break
+                sv = cp.CpSolver()
+                sv.parameters.max_time_in_seconds = max(0.2, min(4.0, left))
+                sv.parameters.num_search_workers = _THR
+                st = sv.Solve(mdl)
+                if st not in (cp.OPTIMAL, cp.FEASIBLE):
+                    break
+                candidate = list(part)
+                chosen = []
+                for i in free:
+                    for q, c in enumerate(CAND[i]):
+                        if sv.Value(V[i][q]):
+                            candidate[i*7:i*7+7] = [
+                                c[0], c[1], c[2], c[3], c[4], c[4] + P[i], 1]
+                            chosen.append(V[i][q])
+                            break
+                eng.set_solution(candidate)
+                eng.build_occ(hor)
+                bad = [i for i in range(n)
+                       if candidate[i*7+6] and not eng.vp_ok(i)]
+                if not bad:
+                    new = candidate
+                    break
+                if not use_branch_check or not chosen:
+                    break
+                mdl.AddBoolOr([lit.Not() for lit in chosen])
+                cuts += 1
+            if new is None:
+                eng.set_solution(cur)
+                eng.build_occ(hor)
+                continue
+            if cuts:
+                _diag("branch-check", cuts=cuts)
             v = eng.objective()[3]
             if v < best:
                 best, cur = v, new
