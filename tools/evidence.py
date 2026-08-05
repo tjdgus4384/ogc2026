@@ -91,6 +91,10 @@ def validate_records(meta, manifest, records, require_official=False):
                 or not isinstance(objective, (int, float)) or not math.isfinite(objective)
                 or objective < 0):
             errors.append(f"{inst}: non-adoptable result")
+        if not isinstance(rec.get("solution_sha256"), str):
+            errors.append(f"{inst}: missing solution digest")
+        if not isinstance(rec.get("runtime_sha256"), str) or not rec.get("runtime"):
+            errors.append(f"{inst}: missing runtime identity")
         if not rec.get("slurm_job_id") or str(rec.get("slurm_job_id")) not in jobs:
             errors.append(f"{inst}: unbound Slurm job")
         if rec.get("slurm_partition") != meta.get("partition"):
@@ -116,6 +120,17 @@ def validate_frozen_payload(payload, require_official=False):
                 or line.split("|", 1)[0].startswith(f"{job}.")]
         if not rows or not any("|COMPLETED|0:0|" in line for line in rows):
             errors.append(f"job {job}: missing completed scheduler receipt")
+    for inst, rec in records.items():
+        step = f"{rec.get('slurm_job_id')}.{rec.get('slurm_step_id')}"
+        rows = [line.split("|") for line in receipts.splitlines()
+                if line.split("|", 1)[0] == step]
+        valid = any(
+            len(row) >= 9 and row[2] == "COMPLETED" and row[3] == "0:0"
+            and row[6].startswith("16G") and row[7] == "4"
+            and row[8] == meta.get("partition")
+            for row in rows)
+        if not valid:
+            errors.append(f"{inst}: missing compliant completed step receipt {step}")
     body = dict(payload)
     digest = body.pop("evidence_sha256", None)
     actual = sha256_bytes(json.dumps(body, sort_keys=True, separators=(",", ":")).encode())

@@ -103,13 +103,20 @@ def cmd_pair(ta, tb):
     meta_b, B = _evidence_of(tb)
     comparable = ("data", "data_snapshot_sha256", "timelimit", "pseed",
                   "checker_sha256", "harness_sha256", "runner_sha256",
-                  "expected_instances")
+                  "expected_instances", "partition")
     missing = [k for k in comparable if k not in meta_a or k not in meta_b]
     mismatch = [k for k in comparable if meta_a.get(k) != meta_b.get(k)]
     if meta_a.get("timelimits") != meta_b.get("timelimits"):
         mismatch.append("timelimits")
     if missing or mismatch:
         sys.exit(f"non-comparable evidence: missing={missing}, mismatch={mismatch}")
+    treatment_a = meta_a.get("experiment_env", {})
+    treatment_b = meta_b.get("experiment_env", {})
+    treatment_diff = {
+        key: (treatment_a.get(key), treatment_b.get(key))
+        for key in sorted(set(treatment_a) | set(treatment_b))
+        if treatment_a.get(key) != treatment_b.get(key)
+    }
     if set(A) != set(B):
         sys.exit("non-comparable evidence: instance coverage differs")
     common = sorted(A, key=lambda k: int(k.split("_")[1]))
@@ -119,6 +126,8 @@ def cmd_pair(ta, tb):
         if any((not R.get("feasible") or R.get("error") or R.get("overrun"))
                for R in (A[k], B[k])) or not a or b is None:
             sys.exit(f"non-adoptable paired record: {k}")
+        if A[k].get("runtime_sha256") != B[k].get("runtime_sha256"):
+            sys.exit(f"non-comparable runtime/hardware identity: {k}")
         diffs.append((k, (b - a) / a * 100))
     W = sum(1 for _, d in diffs if d < -1.0)
     L = sum(1 for _, d in diffs if d > 1.0)
@@ -131,6 +140,7 @@ def cmd_pair(ta, tb):
     mean = sum(ds) / len(ds) if ds else float("nan")
     med = ds[len(ds) // 2] if ds else float("nan")
     print(f"pair: {tb} vs {ta}  (negative = {tb} better)")
+    print(f"  treatment env delta={treatment_diff or '{}'}")
     print(f"  n={len(diffs)}  W/L/T={W}/{L}/{T}  mean={mean:+.2f}%  median={med:+.2f}%  "
           f"sign-test p={p:.3f}")
     movers = sorted(diffs, key=lambda kv: kv[1])

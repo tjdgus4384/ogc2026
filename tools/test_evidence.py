@@ -27,13 +27,17 @@ def payload():
         "inst": "prob_3", "data": "preliminary_test", "seed": 7,
         "checker_sha256": "c", "harness_sha256": "h",
         "runner_sha256": "r", "data_snapshot_sha256": "d",
-        "experiment_env": {}, "instance_sha256": "i", "tl": 240,
+        "experiment_env": {}, "instance_sha256": "i", "solution_sha256": "x",
+        "tl": 240,
+        "runtime": {"python": "test"}, "runtime_sha256": "runtime",
         "feasible": True, "objective": 1.0, "error": None, "overrun": False,
         "slurm_job_id": "42", "slurm_step_id": "0",
         "slurm_partition": "titan", "cpus": 4, "maxrss_mb": 100,
     }
     out = {"meta": meta, "manifest": manifest, "runs": {"prob_3": record},
-           "scheduler_receipts": "42|eval|COMPLETED|0:0|240|100M|16G|4|titan\n"}
+           "scheduler_receipts": (
+               "42|eval|COMPLETED|0:0|240|100M|16G|4|titan\n"
+               "42.0|python|COMPLETED|0:0|240|100M|16G|4|titan\n")}
     body = json.dumps(out, sort_keys=True, separators=(",", ":")).encode()
     out["evidence_sha256"] = hashlib.sha256(body).hexdigest()
     return out

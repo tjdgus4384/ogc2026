@@ -9,9 +9,11 @@ Usage:  python tools/run_instance.py <prob_id> <timelimit_seconds> [out.json]
 """
 import hashlib
 import importlib.util
+import importlib.metadata
 import json
 import os
 import pathlib
+import platform
 import resource
 import signal
 import subprocess
@@ -46,6 +48,33 @@ def _experiment_env():
         and key not in excluded
     }
 
+
+
+def _runtime_identity():
+    cpu_model = None
+    try:
+        for line in pathlib.Path("/proc/cpuinfo").read_text().splitlines():
+            if line.startswith("model name"):
+                cpu_model = line.split(":", 1)[1].strip()
+                break
+    except OSError:
+        pass
+    packages = {}
+    for name in ("ortools", "shapely", "pybind11"):
+        try:
+            packages[name] = importlib.metadata.version(name)
+        except importlib.metadata.PackageNotFoundError:
+            packages[name] = None
+    identity = {
+        "python": sys.version,
+        "executable_sha256": _sha(sys.executable),
+        "machine": platform.machine(),
+        "kernel": platform.release(),
+        "cpu_model": cpu_model,
+        "packages": packages,
+    }
+    encoded = json.dumps(identity, sort_keys=True, separators=(",", ":")).encode()
+    return identity, hashlib.sha256(encoded).hexdigest()
 
 def _load_checker(expected_hash):
     source = CHECKER_PATH.read_bytes()
@@ -111,6 +140,7 @@ def main():
         raise RuntimeError("input drift before candidate execution")
     prob = json.loads(prob_path.read_text())
     checker, checker_hash = _load_checker(os.environ.get("OGC_CHECKER_SHA256"))
+    runtime, runtime_hash = _runtime_identity()
 
     t0 = time.monotonic()
     try:
@@ -145,6 +175,8 @@ def main():
         "slurm_step_id": os.environ.get("SLURM_STEP_ID"),
         "slurm_partition": os.environ.get("SLURM_JOB_PARTITION"),
         "cpus": len(os.sched_getaffinity(0)),
+        "runtime": runtime,
+        "runtime_sha256": runtime_hash,
         "tl": tl,
         "wall": round(wall, 2),
         "overrun": wall > tl,
@@ -168,12 +200,16 @@ def main():
             rec["stage"] = res.get("stage")
             rec["violations"] = [str(v) for v in res.get("violations", [])[:3]]
 
+    if out_path and sol is not None:
+        solution_path = pathlib.Path(out_path).with_suffix(".sol.json")
+        solution_bytes = json.dumps(
+            sol, sort_keys=True, separators=(",", ":")).encode()
+        solution_path.write_bytes(solution_bytes)
+        rec["solution_sha256"] = hashlib.sha256(solution_bytes).hexdigest()
     line = json.dumps(rec)
     print(line, flush=True)
     if out_path:
         pathlib.Path(out_path).write_text(line + "\n")
-        if sol is not None and os.environ.get("OGC_SAVE_SOL"):
-            pathlib.Path(out_path).with_suffix(".sol.json").write_text(json.dumps(sol))
 
 
 if __name__ == "__main__":

@@ -2,9 +2,11 @@
 import argparse
 import hashlib
 import json
+import os
 import pathlib
 import subprocess
 import sys
+import types
 
 from evidence import (data_hash, manifest_digest, named_files_hash, sha256_bytes,
                       tree_hash, validate_records)
@@ -64,7 +66,37 @@ def verify_snapshots(run, meta, manifest):
     return errors
 
 
-def scheduler_receipts(job_ids):
+def replay_solutions(run, meta, manifest, records):
+    source = (run / "checker_snapshot.py").read_bytes()
+    checker = types.ModuleType("_ogc_freeze_checker")
+    checker.__file__ = str(run / "checker_snapshot.py")
+    sys.modules[checker.__name__] = checker
+    exec(compile(source, checker.__file__, "exec"), checker.__dict__)
+    errors = []
+    data_dir = run / "data_snapshot" / meta["data"]
+    for inst in manifest["expected_instances"]:
+        solution_path = run / f"{inst}.sol.json"
+        if not solution_path.is_file():
+            errors.append(f"{inst}: missing authoritative solution")
+            continue
+        solution_bytes = solution_path.read_bytes()
+        if sha256_bytes(solution_bytes) != records[inst].get("solution_sha256"):
+            errors.append(f"{inst}: solution hash mismatch")
+            continue
+        prob = json.loads((data_dir / f"{inst}.json").read_text())
+        solution = json.loads(solution_bytes)
+        result = checker.check_feasibility(prob, solution)
+        record = records[inst]
+        if not result.get("feasible"):
+            errors.append(f"{inst}: collector checker rejected solution")
+            continue
+        for key in ("objective", "obj1", "obj2", "obj3"):
+            if result.get(key) != record.get(key):
+                errors.append(f"{inst}: replayed {key} mismatch")
+    return errors
+
+
+def scheduler_receipts(job_ids, records, partition):
     command = ["sacct", "-P", "-n", "-j", ",".join(map(str, job_ids)),
                "--format=JobIDRaw,JobName,State,ExitCode,ElapsedRaw,MaxRSS,ReqMem,AllocCPUS,Partition"]
     cp = subprocess.run(command, text=True, capture_output=True, check=False)
@@ -78,6 +110,17 @@ def scheduler_receipts(job_ids):
                 or line.startswith(f"{job}.")]
         if not rows or not any("|COMPLETED|0:0|" in line for line in rows):
             errors.append(f"job {job} lacks a successful completed accounting row")
+    for inst, record in records.items():
+        step = f"{record.get('slurm_job_id')}.{record.get('slurm_step_id')}"
+        rows = [line.split("|") for line in text.splitlines()
+                if line.split("|", 1)[0] == step]
+        valid = any(
+            len(row) >= 9 and row[2] == "COMPLETED" and row[3] == "0:0"
+            and row[6].startswith("16G") and row[7] == "4"
+            and row[8] == partition
+            for row in rows)
+        if not valid:
+            errors.append(f"{inst} lacks a compliant successful step {step}")
     if errors:
         sys.exit("; ".join(errors))
     return text
@@ -92,12 +135,22 @@ def freeze(tag, meta, manifest, records, receipts):
     body = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
     payload["evidence_sha256"] = sha256_bytes(body)
     out.parent.mkdir(exist_ok=True)
-    tmp = out.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(payload, indent=1, sort_keys=True) + "\n")
+    encoded = (json.dumps(payload, indent=1, sort_keys=True) + "\n").encode()
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
     try:
-        tmp.replace(out)
-    finally:
-        tmp.unlink(missing_ok=True)
+        fd = os.open(out, flags, 0o444)
+    except FileExistsError:
+        sys.exit(f"results/{tag}.json already exists -- frozen evidence is immutable")
+    try:
+        with os.fdopen(fd, "wb") as stream:
+            stream.write(encoded)
+            stream.flush()
+            os.fsync(stream.fileno())
+    except BaseException:
+        out.unlink(missing_ok=True)
+        raise
     print(f"froze results/{tag}.json evidence={payload['evidence_sha256']}")
 
 
@@ -126,9 +179,11 @@ def main():
         sys.exit("mismatched tag or dirty solver snapshot")
     errors = verify_snapshots(run, meta, manifest)
     errors.extend(validate_records(meta, manifest, records))
+    errors.extend(replay_solutions(run, meta, manifest, records))
     if errors:
         sys.exit("refusing freeze:\n  " + "\n  ".join(errors))
-    receipts = scheduler_receipts(manifest["job_ids"])
+    receipts = scheduler_receipts(
+        manifest["job_ids"], records, meta["partition"])
     freeze(args.tag, meta, manifest, records, receipts)
 
 
