@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "tag": "official-pop-exact-6d28d70",
+  "expected_instances": [
+    "prob_3",
+    "prob_4",
+    "prob_5",
+    "prob_6"
+  ],
+  "job_ids": [
+    "63707"
+  ],
+  "solver_snapshot_sha256": "d618b76f7f73d3d70f675f30688a3121e3cd0bb7964f3d2474f31c7e24c441dd",
+  "checker_sha256": "6d1e0e4b5e349f0bdc6f441969b4bb576af20f575d29e6cd8164653e03170025",
+  "harness_sha256": "c9c9f89cc8c086a813f8d66a52ce084703b4683ac57e5290bc01e5818cf2c686",
+  "runner_sha256": "b26070f15e18b855e507e90a4ba7f24e9543733905a4d63b9ba74aa524eda94b",
+  "data_snapshot_sha256": "16ce5c29f30234b5779f1b3cfcfac4e5e3075fbbc6c6e6e7e230130d82574dcc",
+  "experiment_env": {
+    "OGC_BALANCE_COHORT": "1",
+    "OGC_BRANCH_CHECK": "1",
+    "OGC_FULL_SLICE_OBJ": "1",
+    "OGC_POP_EXACT": "1",
+    "OGC_STRATIFIED_COLUMNS": "1"
+  },
+  "instance_sha256": {
+    "prob_3": "c4f47c17910cf7c4a8aceaff74e6a5b884f752c389383fdd95f2ae2ce9a708d4",
+    "prob_4": "6faa53137e705d44dc469a27e0f090fff07aec6b61712bb0edcaeba983d6d17a",
+    "prob_5": "823eb0f8211071ceafa56a275e45b0f7d01c3448fb2548c5e4798dd0e723db00",
+    "prob_6": "43b6103cd1f1be2cbcccaad6fb29da30302e6302d01e1e620c2c67cedb7244b2"
+  },
+  "manifest_sha256": "ac792284234cda8ab71dc20c63b13a7eff1881f0d6eee6408bad64e245a24a2a"
+}

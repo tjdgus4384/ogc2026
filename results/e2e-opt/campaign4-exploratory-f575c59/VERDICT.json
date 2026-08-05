@@ -1,0 +1,182 @@
+{
+  "adopted": [],
+  "authority": "exploratory-pre-solution-replay",
+  "matrix": {
+    "official-current-6d28d70": {
+      "P3": {
+        "feasible": true,
+        "obj1": 0.0,
+        "obj2": 3137,
+        "obj3": 427.0,
+        "objective": 79735.0,
+        "wall": 224.06
+      },
+      "P4": {
+        "feasible": true,
+        "obj1": 209.0,
+        "obj2": 4003,
+        "obj3": 3950.0,
+        "objective": 3407118.0,
+        "wall": 464.03
+      },
+      "P5": {
+        "feasible": true,
+        "obj1": 787.0,
+        "obj2": 3124,
+        "obj3": 4237.0,
+        "objective": 11078460.0,
+        "wall": 582.59
+      },
+      "P6": {
+        "feasible": true,
+        "obj1": 4260.0,
+        "obj2": 2093,
+        "obj3": 6658.0,
+        "objective": 29416864.0,
+        "wall": 879.36
+      }
+    },
+    "official-current-f575c59": {
+      "P3": {
+        "feasible": true,
+        "obj1": 0.0,
+        "obj2": 2988,
+        "obj3": 458.0,
+        "objective": 83640.0,
+        "wall": 224.25
+      },
+      "P4": {
+        "feasible": true,
+        "obj1": 207.0,
+        "obj2": 3067,
+        "obj3": 4087.0,
+        "objective": 3394450.0,
+        "wall": 464.18
+      },
+      "P5": {
+        "feasible": true,
+        "obj1": 814.0,
+        "obj2": 1707,
+        "obj3": 4426.0,
+        "objective": 11453669.0,
+        "wall": 582.71
+      },
+      "P6": {
+        "feasible": true,
+        "obj1": 4298.0,
+        "obj2": 2032,
+        "obj3": 7232.0,
+        "objective": 29755822.0,
+        "wall": 879.44
+      }
+    },
+    "official-multiscale-f575c59": {
+      "P3": {
+        "feasible": true,
+        "obj1": 0.0,
+        "obj2": 2988,
+        "obj3": 458.0,
+        "objective": 83640.0,
+        "wall": 224.2
+      },
+      "P4": {
+        "feasible": true,
+        "obj1": 216.0,
+        "obj2": 2345,
+        "obj3": 3974.0,
+        "objective": 3492443.0,
+        "wall": 465.17
+      },
+      "P5": {
+        "feasible": true,
+        "obj1": 797.0,
+        "obj2": 3956,
+        "obj3": 4643.0,
+        "objective": 11271612.0,
+        "wall": 582.75
+      },
+      "P6": {
+        "feasible": true,
+        "obj1": 4446.0,
+        "obj2": 668,
+        "obj3": 6984.0,
+        "objective": 30694426.0,
+        "wall": 879.53
+      }
+    },
+    "official-pop-exact-6d28d70": {
+      "P3": {
+        "feasible": true,
+        "obj1": 0.0,
+        "obj2": 3274,
+        "obj3": 432.0,
+        "objective": 81170.0,
+        "wall": 221.69
+      },
+      "P4": {
+        "feasible": true,
+        "obj1": 196.0,
+        "obj2": 3922,
+        "obj3": 3899.0,
+        "objective": 3225572.0,
+        "wall": 464.05
+      },
+      "P5": {
+        "feasible": true,
+        "obj1": 779.0,
+        "obj2": 2209,
+        "obj3": 4763.0,
+        "objective": 11035349.0,
+        "wall": 582.71
+      },
+      "P6": {
+        "feasible": true,
+        "obj1": 4382.0,
+        "obj2": 1507,
+        "obj3": 7578.0,
+        "objective": 30363550.0,
+        "wall": 880.53
+      }
+    },
+    "official-v53-f575c59": {
+      "P3": {
+        "feasible": true,
+        "obj1": 0.0,
+        "obj2": 2988,
+        "obj3": 458.0,
+        "objective": 83640.0,
+        "wall": 228.44
+      },
+      "P4": {
+        "feasible": true,
+        "obj1": 190.0,
+        "obj2": 3117,
+        "obj3": 4390.0,
+        "objective": 3213589.0,
+        "wall": 468.62
+      },
+      "P5": {
+        "feasible": true,
+        "obj1": 751.0,
+        "obj2": 3033,
+        "obj3": 4750.0,
+        "objective": 10666064.0,
+        "wall": 587.59
+      },
+      "P6": {
+        "feasible": true,
+        "obj1": 4265.0,
+        "obj2": 2230,
+        "obj3": 6813.0,
+        "objective": 29474545.0,
+        "wall": 887.08
+      }
+    }
+  },
+  "reason": "All outputs were checker-feasible, but multiscale regressed versus v5.3 on P4-P6 and population-plus-exact regressed versus its matched current control on P3. Runs predate mandatory solution replay/runtime binding and are not final adoption evidence.",
+  "rejected": [
+    "multiscale-full-objective K={15,25,40,60}",
+    "population-plus-exact"
+  ],
+  "schema_version": 1
+}
