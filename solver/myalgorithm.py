@@ -618,6 +618,11 @@ def _slice_refine(p, eng, seed, until, hor):
     D = [int(round(b["due_date"])) for b in B]
     PREF = [[float(v) for v in b["bay_preferences"]] for b in B]
     SMAX = [max(pr) for pr in PREF]
+    area_units = [int(round(float(b["width"]) * float(b["height"])))
+                  for b in bays]
+    area_sum = sum(area_units)
+    use_access_cohort = os.environ.get("OGC_ACCESS_COHORT") == "1"
+    use_full_slice_obj = os.environ.get("OGC_FULL_SLICE_OBJ") == "1"
     cp = _cpsat()
     rng = random.Random(seed * 7919 + 13)
     cur = eng.get_solution()
@@ -659,7 +664,10 @@ def _slice_refine(p, eng, seed, until, hor):
             if not tardy:
                 break
             seed_i = rng.choice(tardy)
-            free = [seed_i]
+            if use_access_cohort:
+                free = list(eng.access_cohort(seed_i, K))
+            else:
+                free = [seed_i]
             pool = [i for i in range(n) if cur[i*7+6] and i not in set(free)]
             if len(free) < K:
                 free += rng.sample(pool, min(K - len(free), len(pool)))
@@ -688,10 +696,47 @@ def _slice_refine(p, eng, seed, until, hor):
             for t2 in range(0, len(prs), 2):
                 (i, q), (k, r2) = idx[prs[t2]], idx[prs[t2 + 1]]
                 mdl.AddBoolOr([V[i][q].Not(), V[k][r2].Not()])
-            mdl.Minimize(sum((W["w1"] * max(0, c[4] + P[i] - D[i])
-                              + W["w3"] * (SMAX[i] - PREF[i][c[0]])) * V[i][q]
-                             for i in free
-                             for q, c in enumerate(CAND[i])))
+            base_obj = sum(
+                (W["w1"] * max(0, c[4] + P[i] - D[i])
+                 + W["w3"] * (SMAX[i] - PREF[i][c[0]])) * V[i][q]
+                for i in free for q, c in enumerate(CAND[i]))
+            if use_full_slice_obj:
+                common_area = math.lcm(*area_units)
+                z2_denom = len(bays) * common_area
+                fixed_load = [0.0] * len(bays)
+                free_set = set(free)
+                for i in range(n):
+                    if cur[i*7+6] and i not in free_set:
+                        fixed_load[cur[i*7]] += float(B[i]["workload"])
+                load_expr = []
+                bound = 0
+                for j in range(len(bays)):
+                    expr = (area_sum * int(round(fixed_load[j]))
+                            * (common_area // area_units[j]))
+                    for i in free:
+                        coeff = (area_sum * int(round(float(B[i]["workload"])))
+                                 * (common_area // area_units[j]))
+                        bound += abs(coeff)
+                        expr += sum(coeff * V[i][q]
+                                    for q, c in enumerate(CAND[i]) if c[0] == j)
+                    load_expr.append(expr)
+                abs_diffs = []
+                bound = max(bound, 1) + max(
+                    abs(area_sum * int(round(fixed_load[j]))
+                        * (common_area // area_units[j]))
+                    for j in range(len(bays)))
+                for a in range(len(bays)):
+                    for b in range(a + 1, len(bays)):
+                        av = mdl.NewIntVar(0, 2 * bound, "load_abs_%d_%d" % (a, b))
+                        mdl.AddAbsEquality(av, load_expr[a] - load_expr[b])
+                        abs_diffs.append(av)
+                if abs_diffs:
+                    max_abs = mdl.NewIntVar(0, 2 * bound, "load_max")
+                    mdl.AddMaxEquality(max_abs, abs_diffs)
+                    z2 = mdl.NewIntVar(0, 2 * bound // z2_denom + 1, "z2_floor")
+                    mdl.AddDivisionEquality(z2, max_abs, z2_denom)
+                    base_obj += W["w2"] * z2
+            mdl.Minimize(base_obj)
             sv = cp.CpSolver()
             sv.parameters.max_time_in_seconds = max(
                 0.5, min(6.0, end - time.time()))

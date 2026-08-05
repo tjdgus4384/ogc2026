@@ -7,6 +7,7 @@
 #include <pybind11/stl.h>
 #include <atomic>
 #include <stdexcept>
+#include <tuple>
 #include "alns.hpp"
 #ifdef _OPENMP
 #include <omp.h>
@@ -223,7 +224,52 @@ struct Engine {
         }
         return rows;
     }
-    bool vpOK(int A) { return core::vpConservative(pb, sol, A); }
+    std::vector<int> accessCohort(int seed, int limit) {
+        std::vector<int> out;
+        if (seed < 0 || seed >= pb.n || limit <= 0 || !sol.placed[seed])
+            return out;
+        std::vector<uint8_t> seen(pb.n, 0);
+        std::vector<int> queue{seed};
+        seen[seed] = 1;
+        for (size_t q = 0; q < queue.size() && (int)out.size() < limit; q++) {
+            const int a = queue[q];
+            out.push_back(a);
+            std::vector<int> blockers;
+            const int target = std::max(pb.R[a], pb.D[a] - pb.P[a]);
+            core::collectEntryBlockers(pb, sol, a, target, blockers);
+            std::sort(blockers.begin(), blockers.end(), [&](int x, int y) {
+                const int tx = std::max(0, sol.f[x] - pb.D[x]);
+                const int ty = std::max(0, sol.f[y] - pb.D[y]);
+                return std::make_pair(-tx, x) < std::make_pair(-ty, y);
+            });
+            for (int b : blockers)
+                if (!seen[b]) { seen[b] = 1; queue.push_back(b); }
+        }
+        std::vector<int> rest;
+        rest.reserve(pb.n);
+        for (int i = 0; i < pb.n; i++) if (sol.placed[i] && !seen[i])
+            rest.push_back(i);
+        const int seedBay = sol.bay[seed];
+        const int seedTarget = std::max(pb.R[seed], pb.D[seed] - pb.P[seed]);
+        std::sort(rest.begin(), rest.end(), [&](int a, int b) {
+            auto key = [&](int i) {
+                const int sameBay = sol.bay[i] == seedBay ? 0 : 1;
+                const int distance = std::abs(sol.e[i] - seedTarget);
+                const int tardy = -std::max(0, sol.f[i] - pb.D[i]);
+                return std::make_tuple(sameBay, distance, tardy, i);
+            };
+            return key(a) < key(b);
+        });
+        for (int i : rest) {
+            if ((int)out.size() >= limit) break;
+            out.push_back(i);
+        }
+        return out;
+    }
+    bool vpOK(int A) {
+        return exactEvents_ ? core::vpExactEvents(pb, sol, A)
+                            : core::vpConservative(pb, sol, A);
+    }
     std::vector<int> auditState() {
         int bb = -1; int code = alns::audit(pb, sol, &bb);
         return {code, bb};
@@ -819,6 +865,7 @@ PYBIND11_MODULE(sscore, m) {
         .def("set_wait_stays", &Engine::setWaitStays)
         .def("set_exact_events", &Engine::setExactEvents)
         .def("ordered_events", &Engine::orderedEvents)
+        .def("access_cohort", &Engine::accessCohort)
         .def("run_portfolio", &Engine::runPortfolio,
              py::arg("threads"), py::arg("seconds"), py::arg("rounds"),
              py::arg("qlo"), py::arg("qhi"), py::arg("T0mul"),
