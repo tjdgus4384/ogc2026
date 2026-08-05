@@ -68,6 +68,10 @@ struct Ctx {
 inline bool deadlineExpired(const Ctx& c) {
     return c.hasDeadline && std::chrono::steady_clock::now() >= c.deadline;
 }
+inline bool placementFeasible(const Ctx& c, int A) {
+    return c.exactEvents ? core::vpExactEvents(*c.pb, *c.s, A)
+                         : core::vpConservative(*c.pb, *c.s, A);
+}
 
 // Area screen for bay j over [e,f) -- a SPEED HEURISTIC, never a verdict.
 // It compares bbox-area sums (areaUsed) against bay area with 2% slack, and
@@ -166,8 +170,7 @@ inline bool tryPlacement(Ctx& c, int A, int j, int oi, int x, int y, int e) {
     s.bay[A]=j; s.ori[A]=oi; s.x[A]=x; s.y[A]=y;
     s.e[A]=e; s.f[A]=e+pb.P[A]; s.placed[A]=1;
     s.addIdx(A);
-    const bool ok = c.exactEvents ? core::vpExactEvents(pb, s, A)
-                                  : core::vpConservative(pb, s, A);
+    const bool ok = placementFeasible(c, A);
     if (ok) {
         c.oc->stamp(pb, s, A, true);
         return true;

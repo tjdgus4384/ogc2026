@@ -768,12 +768,12 @@ struct Engine {
         int ox = sol.x[i], oy = sol.y[i];
         oc.stamp(pb, sol, i, false);
         sol.x[i] = ox + dx; sol.y[i] = oy + dy;
-        bool ok = core::vpConservative(pb, sol, i);
+        bool ok = vpOK(i);
         if (ok) {
             for (int k : sol.byBay[sol.bay[i]]) {
                 if (k == i || !sol.placed[k]) continue;
                 if (!(sol.e[k] < sol.f[i] && sol.e[i] < sol.f[k])) continue;
-                if (!core::vpConservative(pb, sol, k)) { ok = false; break; }
+                if (!vpOK(k)) { ok = false; break; }
             }
         }
         if (ok) { oc.stamp(pb, sol, i, true); return true; }
@@ -796,13 +796,13 @@ struct Engine {
         if (ne < pb.R[i] || nf - ne < pb.P[i] || nf > horizon_) return false;
         oc.stamp(pb, sol, i, false);
         sol.e[i] = ne; sol.f[i] = nf;
-        bool ok = core::vpConservative(pb, sol, i);
+        bool ok = vpOK(i);
         if (ok) {
             int lo = std::min(oe, ne), hi = std::max(of, nf);
             for (int k : sol.byBay[sol.bay[i]]) {
                 if (k == i || !sol.placed[k]) continue;
                 if (!(sol.e[k] < hi && lo < sol.f[k])) continue;
-                if (!core::vpConservative(pb, sol, k)) { ok = false; break; }
+                if (!vpOK(k)) { ok = false; break; }
             }
         }
         if (ok) { oc.stamp(pb, sol, i, true); return true; }
@@ -856,13 +856,12 @@ struct Engine {
         sol.rebuildIdx(pb.m);
         oc.stamp(pb, sol, i, true);
         oc.stamp(pb, sol, j, true);
-        bool ok = core::vpConservative(pb, sol, i)
-               && core::vpConservative(pb, sol, j);
+        bool ok = vpOK(i) && vpOK(j);
         if (ok)
             for (int b2 : {aB, bB}) {
                 for (int k : sol.byBay[b2]) {
                     if (k == i || k == j || !sol.placed[k]) continue;
-                    if (!core::vpConservative(pb, sol, k)) { ok=false; break; }
+                    if (!vpOK(k)) { ok=false; break; }
                 }
                 if (!ok) break;
             }
