@@ -4,22 +4,22 @@ The only solver tree. Two layers: C++ kernel (`src/` → `sscore*.so`) +
 python driver. One-page control-flow map: `docs/PIPELINE.md`; deep
 history: `archive/docs-early/KERNEL_SPEC.md`, git log.
 
-v5 = v4.1 semantics with every refuted experiment path excised (48%
-less code, canary-verified byte-identical shipped trajectory). The
-whole config surface is `src/knobs.hpp` (kernel) + three env hooks
-(driver): OGC_SEED (portfolio seed), OGC_DIAG (stderr diagnostics),
-OGC_SLICE=0 (slice-refine ablation).
+v5 = v4.1 semantics with refuted production paths removed. Canonical
+production controls remain `src/knobs.hpp` plus `OGC_SEED`, `OGC_DIAG`,
+and `OGC_SLICE`. Experimental `OGC_*` mechanisms are inert unless
+explicitly enabled and every Slurm treatment records their values in
+`experiment_env`; they are not adopted without frozen checker evidence.
 
 ```
 myalgorithm.py   entry point. _seed_free (6 insertion orders, top-3
-                 distinct layouts) -> run_portfolio (4 arms x anneal
-                 legs, exploit/explore personas, iteration-governed
-                 rounds) or _population_search (memetic, fires when
-                 sec/block <= 1.6 and sec >= 150) -> _slice_refine tail
-                 (30% of TL: anneal bursts race CP-SAT exact
-                 re-placement of ~25-block tardy-seeded subsets;
-                 anneal-only without ortools) -> checker gate + rescue
-                 ladder (nudge -> retime -> move) -> _trivial safety
+                 distinct layouts) -> run_portfolio (4 wall-budgeted arms
+                 with exploit/explore personas) or _population_search
+                 (memetic, opt-in habitat) -> _slice_refine tail
+                 (anneal bursts race a restricted generated-column CP-SAT
+                 neighborhood). CP exactness covers only its declared finite
+                 candidate domain; whole-state audit precedes the official
+                 checker gate. The checker is final authority. Rescue ladder
+                 (nudge -> retime -> move) -> cached checker-certified safety
                  net. Never raises.
 utils.py         the official checker (byte-authority; never modified).
 src/
