@@ -716,7 +716,9 @@ def _slice_refine(p, eng, seed, until, hor):
                 budget = max(0.02, min(
                     0.35, (end - time.time() - 2.0)
                     / max(1, len(free) - pos)))
-                ncols = min(NCAND, 20) if use_anchored_columns else NCAND
+                per_block_cap = max(6, 600 // max(1, len(free)))
+                ncols = (min(NCAND, 20, per_block_cap)
+                         if use_anchored_columns else min(NCAND, per_block_cap))
                 raw = (eng.feasible_positions(
                     i, ncols, 0, budget,
                     3 if use_stratified_columns else 1,
@@ -755,7 +757,7 @@ def _slice_refine(p, eng, seed, until, hor):
                 eng.build_occ(hor)
                 break
             mdl = cp.CpModel()
-            V, flatc, idx = {}, [], []
+            V, flatc, idx, incumbent_vars = {}, [], [], []
             for i in free:
                 V[i] = [mdl.NewBoolVar("z%d_%d" % (i, q))
                         for q in range(len(CAND[i]))]
@@ -763,6 +765,13 @@ def _slice_refine(p, eng, seed, until, hor):
                 for q, (j, oi, x, y, e) in enumerate(CAND[i]):
                     flatc += [i, j, oi, x, y, e]
                     idx.append((i, q))
+                incumbent = tuple(cur[i*7:i*7+5])
+                for q, c in enumerate(CAND[i]):
+                    mdl.AddHint(V[i][q], int(c == incumbent))
+                    if c == incumbent:
+                        incumbent_vars.append(V[i][q])
+            mdl.AddDecisionStrategy(
+                incumbent_vars, cp.CHOOSE_FIRST, cp.SELECT_MAX_VALUE)
             prs = eng.pair_conflicts(
                 flatc, max(0.1, min(2.0, end - time.time() - 1.0)))
             if prs and prs[0] < 0:
@@ -836,6 +845,7 @@ def _slice_refine(p, eng, seed, until, hor):
                 sv.parameters.stop_after_first_solution = False
                 sv.parameters.max_deterministic_time = 0.10
                 sv.parameters.random_seed = seed + rounds + cuts
+                sv.parameters.search_branching = cp.FIXED_SEARCH
                 _diag("slice-stage", stage="solve-start",
                       seconds_left=round(left, 3), cuts=cuts)
                 st = sv.Solve(mdl)
