@@ -630,11 +630,11 @@ def _slice_refine(p, eng, seed, until, hor):
     rng = random.Random(seed * 7919 + 13)
     cur = eng.get_solution()
     best = eng.objective()[3]
-    # subset size / candidate count: standalone sweeps preferred K=60
-    # (P6 -4.24% vs -4.06% at K=25; P5 -2.09%) but k60 REFUTED on the
-    # 40-pair harness (08-03, -16 rank pts); fixed shipped values.
-    K = 25
-    NCAND = 30
+    # Runtime knobs let the evidence harness test genuinely global
+    # neighborhoods without changing the shipped K=25 / NCAND=30 defaults.
+    K = max(2, min(n, int(os.environ.get("OGC_EXACT_K", "25"))))
+    NCAND = max(2, int(os.environ.get("OGC_EXACT_NCAND", "30")))
+    exact_only = os.environ.get("OGC_EXACT_SLICE_ONLY") == "1"
     span = until - time.time()
     if span <= 8.0:
         return
@@ -643,7 +643,9 @@ def _slice_refine(p, eng, seed, until, hor):
     rounds = 0
     while time.time() < until - 3.0:
         rounds += 1
-        if rate["p"] is None:
+        if exact_only:
+            arm = "p"
+        elif rate["p"] is None:
             arm = "p"
         elif rate["a"] is None:
             arm = "a"
@@ -711,7 +713,7 @@ def _slice_refine(p, eng, seed, until, hor):
                 budget = max(0.02, min(
                     0.35, (end - time.time() - 2.0)
                     / max(1, len(free) - pos)))
-                ncols = 20 if use_anchored_columns else NCAND
+                ncols = min(NCAND, 20) if use_anchored_columns else NCAND
                 raw = (eng.feasible_positions(
                     i, ncols, 0, budget,
                     3 if use_stratified_columns else 1,
