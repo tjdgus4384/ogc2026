@@ -29,6 +29,36 @@ inline BBox bbox(const Poly& p) {
     }
     return b;
 }
+inline double signedArea2(const Poly& p) {
+    double a = 0.0;
+    for (int i = 0, j = (int)p.size() - 1; i < (int)p.size(); j = i++)
+        a += p[j].x * p[i].y - p[i].x * p[j].y;
+    return a;
+}
+
+inline bool collinearInteriorOverlap(const Pt& a1, const Pt& a2,
+                                     double orientA,
+                                     const Pt& b1, const Pt& b2,
+                                     double orientB) {
+    const double adx = a2.x - a1.x, ady = a2.y - a1.y;
+    const double bdx = b2.x - b1.x, bdy = b2.y - b1.y;
+    const double scale = std::hypot(adx, ady) + std::hypot(bdx, bdy) + 1.0;
+    if (std::fabs(adx * bdy - ady * bdx) > EPS * scale ||
+        std::fabs(cross(a1, a2, b1)) > EPS * scale ||
+        std::fabs(cross(a1, a2, b2)) > EPS * scale)
+        return false;
+    const bool useX = std::fabs(adx) >= std::fabs(ady);
+    const double alo = std::min(useX ? a1.x : a1.y, useX ? a2.x : a2.y);
+    const double ahi = std::max(useX ? a1.x : a1.y, useX ? a2.x : a2.y);
+    const double blo = std::min(useX ? b1.x : b1.y, useX ? b2.x : b2.y);
+    const double bhi = std::max(useX ? b1.x : b1.y, useX ? b2.x : b2.y);
+    if (std::min(ahi, bhi) - std::max(alo, blo) <= EPS)
+        return false;
+    // For a consistently oriented polygon, orient*leftNormal(edge) points
+    // inward. Equal inward half-planes along a shared segment imply a
+    // positive-area intersection; opposite half-planes are boundary touch.
+    return orientA * orientB * (adx * bdx + ady * bdy) > EPS;
+}
 
 // Proper (interior) segment crossing: the open segments intersect at a single
 // interior point. Collinear overlap and endpoint touching are NOT proper.
@@ -101,10 +131,17 @@ inline bool overlapsAreaIP(const Poly& A, const Pt& ipA,
                            const Poly& B, const Pt& ipB) {
     if (A.size() < 3 || B.size() < 3) return false;
     int na = (int)A.size(), nb = (int)B.size();
+    const double orientA = signedArea2(A) >= 0.0 ? 1.0 : -1.0;
+    const double orientB = signedArea2(B) >= 0.0 ? 1.0 : -1.0;
     for (int i = 0; i < na; i++) {
         const Pt& a1 = A[i]; const Pt& a2 = A[(i + 1) % na];
-        for (int j = 0; j < nb; j++)
-            if (properCross(a1, a2, B[j], B[(j + 1) % nb])) return true;
+        for (int j = 0; j < nb; j++) {
+            const Pt& b1 = B[j]; const Pt& b2 = B[(j + 1) % nb];
+            if (properCross(a1, a2, b1, b2) ||
+                collinearInteriorOverlap(a1, a2, orientA,
+                                         b1, b2, orientB))
+                return true;
+        }
     }
     if (strictlyInside(B, ipA)) return true;
     if (strictlyInside(A, ipB)) return true;

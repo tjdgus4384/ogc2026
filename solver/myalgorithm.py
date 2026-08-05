@@ -1030,10 +1030,12 @@ def _arm_free(p, deadline, seed=7, tl=None):
               thread_best=[round(x) for x in r[3:]])
     else:
         _diag("population", best=round(eng.objective()[3]))
-    if os.environ.get("OGC_EVENT_SCHEDULE") == "1":
+    polish_deadline = deadline - reserve
+    if (os.environ.get("OGC_EVENT_SCHEDULE") == "1"
+            and time.time() < polish_deadline):
         moved = eng.compact_event_schedule()
         _diag("event-schedule", moved=moved, obj=eng.objective()[3])
-    _assign_descent(p, eng, deadline)
+    _assign_descent(p, eng, polish_deadline)
     # The gate consumes the portfolio's candidate SET, best first. Whether a
     # layout carries a measure-zero checker artifact is an independent
     # lottery per candidate, so runner-ups are auditioned in two cases:

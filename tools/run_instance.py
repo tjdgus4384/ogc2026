@@ -8,6 +8,8 @@ that failure mode -- see archive/notes-2026-06/SUBMISSIONS.md, p3fix-congested).
 Usage:  python tools/run_instance.py <prob_id> <timelimit_seconds> [out.json]
 """
 import json
+import hashlib
+import importlib.util
 import os
 import pathlib
 import resource
@@ -21,8 +23,17 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 # so a candidate is never compared against a mutated baseline.
 SOLVER = pathlib.Path(os.environ.get("OGC_SOLVER", ROOT / "solver")).resolve()
 sys.path.insert(0, str(SOLVER))
+CHECKER_PATH = pathlib.Path(
+    os.environ.get("OGC_CHECKER", ROOT / "solver" / "utils.py")).resolve()
+_checker_spec = importlib.util.spec_from_file_location("utils", CHECKER_PATH)
+if _checker_spec is None or _checker_spec.loader is None:
+    raise RuntimeError(f"cannot load canonical checker: {CHECKER_PATH}")
+utils = importlib.util.module_from_spec(_checker_spec)
+sys.modules["utils"] = utils
+_checker_spec.loader.exec_module(utils)
 
-import utils          # noqa: E402  -- competition checker, never edited
+# The candidate imports the already-bound canonical ``utils`` module above;
+# a candidate-local utils.py can neither score itself nor alter driver repair.
 import myalgorithm    # noqa: E402
 
 
@@ -47,6 +58,9 @@ def main():
     rec = {
         "inst": f"prob_{pid}",
         "solver": SOLVER.name,
+        "data": data,
+        "seed": int(os.environ.get("OGC_SEED", "7")),
+        "checker_sha256": hashlib.sha256(CHECKER_PATH.read_bytes()).hexdigest(),
         "tl": tl,
         "wall": round(wall, 2),
         "overrun": wall > tl,

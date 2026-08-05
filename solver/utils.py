@@ -1049,6 +1049,10 @@ def check_feasibility(prob_info: dict, solution: dict) -> dict:
             return {**_INFEASIBLE, "violations": [
                 f"operations key '{_t_str}' cannot be converted to an integer time"
             ]}
+        if str(_t_str) != str(int(_t)):
+            return {**_INFEASIBLE, "violations": [
+                f"operations key '{_t_str}' is not canonical integer text"
+            ]}
         if not isinstance(_ops_at_t, list):
             return {**_INFEASIBLE, "violations": [
                 f"operations['{_t_str}'] must be a list, got {type(_ops_at_t).__name__}"
@@ -1065,6 +1069,11 @@ def check_feasibility(prob_info: dict, solution: dict) -> dict:
                         f"operations['{_t_str}']: op missing required key '{_req}': {_op!r}"
                     ]}
             _bid = _op["block_id"]
+            if (isinstance(_bid, bool) or not isinstance(_bid, int)
+                    or _bid < 0 or _bid >= n_blocks):
+                return {**_INFEASIBLE, "violations": [
+                    f"operations['{_t_str}'] has invalid block_id {_bid!r}"
+                ]}
             if _op["type"] == "ENTRY":
                 _entry_count[_bid] = _entry_count.get(_bid, 0) + 1
                 _asgn_tmp[_bid] = {
