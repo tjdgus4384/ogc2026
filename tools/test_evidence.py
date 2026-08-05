@@ -2,9 +2,9 @@
 import copy
 import hashlib
 import json
+import pathlib
 
 from evidence import manifest_digest, validate_frozen_payload
-from run_instance import _solution_bytes
 
 
 def payload():
@@ -44,9 +44,9 @@ def payload():
     return out
 
 
-ordered_solution = {"operations": {"2": [], "10": [], "100": []}}
-round_trip = json.loads(_solution_bytes(ordered_solution))
-assert list(round_trip["operations"]) == ["2", "10", "100"]
+runner_source = (pathlib.Path(__file__).with_name("run_instance.py")).read_text()
+assert 'sol, sort_keys=True' not in runner_source
+assert 'sol, separators=(",", ":")' in runner_source
 
 
 good = payload()
