@@ -26,7 +26,8 @@ struct RunStats { long iters=0, accepted=0, improved=0, failed=0; double best;
 // Full-state audit -- the development assertion tool. Run it (auditEvery) when
 // a new operator misbehaves and it tells you WHERE the state broke:
 // 0 ok; 1 byBay out of bounds; 2 stale member; 3 dup/missing; 4 vp violation.
-inline int audit(const core::Problem& pb, core::Sol& s, int* badBlock = nullptr) {
+inline int audit(const core::Problem& pb, core::Sol& s, int* badBlock = nullptr,
+                 bool exactEvents = false) {
     std::vector<int> cnt(pb.n, 0);
     for (int j = 0; j < pb.m; j++)
         for (int i : s.byBay[j]) {
@@ -39,7 +40,8 @@ inline int audit(const core::Problem& pb, core::Sol& s, int* badBlock = nullptr)
         if (!s.placed[i] && cnt[i] != 0) { if (badBlock) *badBlock = i; return 3; }
     }
     for (int i = 0; i < pb.n; i++)
-        if (s.placed[i] && !core::vpConservative(pb, s, i)) {
+        if (s.placed[i] && !(exactEvents ? core::vpExactEvents(pb, s, i)
+                                         : core::vpConservative(pb, s, i))) {
             if (badBlock) *badBlock = i; return 4;
         }
     return 0;
@@ -604,7 +606,7 @@ no_swap:
         }
         long t1 = tmr ? tick() : 0;
         if (auditEvery > 0) {
-            int bb = -1; int code = audit(pb, s, &bb);
+            int bb = -1; int code = audit(pb, s, &bb, c.exactEvents);
             if (code) { st.badIter = st.iters; st.badKind = kind;
                 st.badPhase = 10000 + code * 1000 + bb; break; }
         }
@@ -641,7 +643,7 @@ no_swap:
             }
         }
         if (auditEvery > 0 && ok) {
-            int bb = -1; int code = audit(pb, s, &bb);
+            int bb = -1; int code = audit(pb, s, &bb, c.exactEvents);
             if (code) { st.badIter = st.iters; st.badKind = kind;
                 st.badPhase = 20000 + code * 1000 + bb; break; }
         }
@@ -702,7 +704,7 @@ no_swap:
             sinceBest = 0;
         }
         if (auditEvery > 0 && (st.iters % auditEvery) == 0) {
-            int bb = -1; int code = audit(pb, s, &bb);
+            int bb = -1; int code = audit(pb, s, &bb, c.exactEvents);
             if (code) { st.badIter = st.iters; st.badKind = kind;
                 st.badPhase = code * 1000 + bb; break; }
         }

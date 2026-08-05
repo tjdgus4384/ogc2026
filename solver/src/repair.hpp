@@ -50,7 +50,6 @@ struct Ctx {
                                       // final basin.
     bool prefStrong = false;          // z1==0 regime: chase preferred bays hard.
     double prefP = -1.0;                 // instance-owned override; <0 uses regime default
-    bool allowWait = false;               // permit f>e+P at resident-exit events
     bool exactEvents = false;             // checker-order replay for same-day events
                                       // Predicate lives in alns::run (sec 148):
                                       // z1<=0 AND z3<n -- a measured two-order
@@ -154,33 +153,16 @@ inline void cornerSets(const Ctx& c, int A, int oi, int j, int e, int f,
     cornerSetsRB(c, A, oi, j, rbs, xs, ys);
 }
 
-// Commit a site at its minimum processing stay, or (when enabled) at the
-// earliest later resident-exit event that makes the full access schedule legal.
-// Extending a stay cannot repair a resting collision, so callers retain their
-// minimum-interval occupancy prefilter; vpConservative rechecks every event and
-// all collisions over each extended interval.
+// Commit one candidate through the selected event semantics.
 inline bool tryPlacement(Ctx& c, int A, int j, int oi, int x, int y, int e) {
     const Problem& pb = *c.pb;
     Sol& s = *c.s;
-    const int minF = e + pb.P[A];
-    thread_local std::vector<int> exits;
-    exits.clear();
-    exits.push_back(minF);
-    if (c.allowWait) {
-        for (int k : s.byBay[j]) {
-            if (!s.placed[k]) continue;
-            const int f = s.f[k];
-            if (f > minF && f < c.horizon) exits.push_back(f);
-        }
-        std::sort(exits.begin() + 1, exits.end());
-        exits.erase(std::unique(exits.begin(), exits.end()), exits.end());
-    }
-    s.bay[A]=j; s.ori[A]=oi; s.x[A]=x; s.y[A]=y; s.e[A]=e; s.placed[A]=1;
+    s.bay[A]=j; s.ori[A]=oi; s.x[A]=x; s.y[A]=y;
+    s.e[A]=e; s.f[A]=e+pb.P[A]; s.placed[A]=1;
     s.addIdx(A);
-    for (int f : exits) {
-        s.f[A]=f;
-        if (!(c.exactEvents ? core::vpExactEvents(pb, s, A)
-                            : core::vpConservative(pb, s, A))) continue;
+    const bool ok = c.exactEvents ? core::vpExactEvents(pb, s, A)
+                                  : core::vpConservative(pb, s, A);
+    if (ok) {
         c.oc->stamp(pb, s, A, true);
         return true;
     }

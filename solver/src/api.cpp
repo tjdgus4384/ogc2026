@@ -38,7 +38,6 @@ struct Engine {
     int horizon_ = 0;
     uint64_t generation_ = 0;
     double prefP_ = -1.0;
-    bool allowWait_ = false;
     bool exactEvents_ = false;
 
     // ------------------------------------------------------------- loading
@@ -160,10 +159,6 @@ struct Engine {
         prefP_ = (value >= 0.0 && value <= 1.0) ? value : -1.0;
         ctx.prefP = prefP_;
     }
-    void setWaitStays(bool enabled) {
-        allowWait_ = enabled;
-        ctx.allowWait = enabled;
-    }
     void setExactEvents(bool enabled) {
         exactEvents_ = enabled;
         ctx.exactEvents = enabled;
@@ -271,7 +266,7 @@ struct Engine {
                             : core::vpConservative(pb, sol, A);
     }
     std::vector<int> auditState() {
-        int bb = -1; int code = alns::audit(pb, sol, &bb);
+        int bb = -1; int code = alns::audit(pb, sol, &bb, exactEvents_);
         return {code, bb};
     }
 
@@ -554,7 +549,6 @@ struct Engine {
                 c2.forcedBay = ctx.forcedBay;   // assignment lock -> threads
                 c2.entryCap = ctx.entryCap;     // entry lock -> threads
                 c2.prefP = prefP_;
-                c2.allowWait = allowWait_;
                 c2.exactEvents = exactEvents_;
                 bool constructed = false;
                 if (r == 0 && !starts.empty()) {
@@ -606,7 +600,6 @@ struct Engine {
                     repair::Ctx c3; c3.pb=&pb; c3.s=&s2; c3.oc=&oc2;
                     c3.horizon=horizon_;
                     c3.prefP=prefP_;
-                    c3.allowWait=allowWait_;
                     c3.exactEvents=exactEvents_;
                     alns::spatialCompact(c3, 6);
                     alns::compactLeft(c3, 3);
@@ -676,7 +669,6 @@ struct Engine {
         occ::OccIndex oc2; oc2.build(pb, horizon_);
         repair::Ctx c2; c2.pb=&pb; c2.s=&sol; c2.oc=&oc2; c2.horizon=horizon_;
         c2.prefP = prefP_;
-        c2.allowWait = allowWait_;
         c2.exactEvents = exactEvents_;
         c2.forcedBay = asg.data();
         c2.rng.seed(seed);
@@ -880,7 +872,6 @@ PYBIND11_MODULE(sscore, m) {
         .def("build_occ", &Engine::buildOcc)
         .def("reconstruct_ordered", &Engine::reconstructOrdered)
         .def("set_pref_p", &Engine::setPrefP)
-        .def("set_wait_stays", &Engine::setWaitStays)
         .def("set_exact_events", &Engine::setExactEvents)
         .def("ordered_events", &Engine::orderedEvents)
         .def("access_cohort", &Engine::accessCohort)

@@ -90,7 +90,6 @@ def _build_engine(p, pref_p=-1.0):
         [float(b["height"]) for b in bays],
         float(w["w1"]), float(w["w2"]), float(w["w3"]))
     eng.set_pref_p(float(pref_p))
-    eng.set_wait_stays(os.environ.get("OGC_WAIT_STAYS") == "1")
     eng.set_exact_events(os.environ.get("OGC_EXACT_EVENTS") == "1")
     for i in range(n):
         for oi in range(len(B[i]["shape"])):
@@ -107,7 +106,13 @@ def _fresh(p, hmul=1, pref_p=-1.0):
     D = [int(round(b["due_date"])) for b in B]
     P = [max(1, int(math.ceil(b["processing_time"] - 1e-9))) for b in B]
     eng = _build_engine(p, pref_p)
-    eng.build_occ((max(D) + max(P) + 40) * hmul)
+    base = max(D) + max(P) + 40
+    if hmul is None:
+        releases = [int(math.ceil(b["release_time"] - 1e-9)) for b in B]
+        horizon = max(base, max(releases) + sum(P) + 1)
+    else:
+        horizon = base * hmul
+    eng.build_occ(horizon)
     return eng, D, P
 
 
@@ -208,11 +213,9 @@ def _seed_free(p, diversify=True, asg=None, pref_p=-1.0):
             sorted(range(n), key=lambda i: D[i] + random.uniform(-8, 8)),
             sorted(range(n), key=lambda i: D[i] + random.uniform(-8, 8)),
         ]
-    # adaptive-horizon ladder (sec 103): on congested giants the loose
-    # insert overflows the base occupancy horizon (P6 board: total seed
-    # failure -> _trivial's 4.2e9). Doubling the horizon is sound (a
-    # superset of feasible times) and bounded (two retries).
-    for hmul in (1, 2, 4):
+    # Fast horizons first; the final max-release + serial-duration bound is a
+    # guaranteed schedule horizon rather than another guessed multiplier.
+    for hmul in (1, 2, 4, None):
         eng, _, _ = _fresh(p, hmul, pref_p)
         cands = []                       # (objective, flat solution)
         best = None
