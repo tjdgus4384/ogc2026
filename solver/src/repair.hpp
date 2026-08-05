@@ -51,6 +51,7 @@ struct Ctx {
     bool prefStrong = false;          // z1==0 regime: chase preferred bays hard.
     double prefP = -1.0;                 // instance-owned override; <0 uses regime default
     bool allowWait = false;               // permit f>e+P at resident-exit events
+    bool exactEvents = false;             // checker-order replay for same-day events
                                       // Predicate lives in alns::run (sec 148):
                                       // z1<=0 AND z3<n -- a measured two-order
                                       // regime gap, not a tuned constant.
@@ -175,13 +176,15 @@ inline bool tryPlacement(Ctx& c, int A, int j, int oi, int x, int y, int e) {
         exits.erase(std::unique(exits.begin(), exits.end()), exits.end());
     }
     s.bay[A]=j; s.ori[A]=oi; s.x[A]=x; s.y[A]=y; s.e[A]=e; s.placed[A]=1;
+    s.addIdx(A);
     for (int f : exits) {
         s.f[A]=f;
-        if (!core::vpConservative(pb, s, A)) continue;
-        s.addIdx(A);
+        if (!(c.exactEvents ? core::vpExactEvents(pb, s, A)
+                            : core::vpConservative(pb, s, A))) continue;
         c.oc->stamp(pb, s, A, true);
         return true;
     }
+    s.delIdx(A);
     s.placed[A]=0;
     return false;
 }

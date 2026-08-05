@@ -91,6 +91,7 @@ def _build_engine(p, pref_p=-1.0):
         float(w["w1"]), float(w["w2"]), float(w["w3"]))
     eng.set_pref_p(float(pref_p))
     eng.set_wait_stays(os.environ.get("OGC_WAIT_STAYS") == "1")
+    eng.set_exact_events(os.environ.get("OGC_EXACT_EVENTS") == "1")
     for i in range(n):
         for oi in range(len(B[i]["shape"])):
             L = [[list(v) for v in lay]
@@ -119,7 +120,17 @@ def _extract(eng, n):
     return out
 
 
-def _recs_to_sol(recs):
+def _recs_to_sol(recs, event_rows=None):
+    if event_rows is not None:
+        ops = {}
+        for t, kind, i, j in event_rows:
+            row = {"type": "EXIT" if kind == 0 else "ENTRY",
+                   "block_id": int(i), "bay_id": int(j)}
+            if kind != 0:
+                v = recs[int(i)]
+                row.update(x=int(v[1]), y=int(v[2]), orient_idx=int(v[3]))
+            ops.setdefault(str(int(t)), []).append(row)
+        return {"operations": ops}
     ent, ext = {}, {}
     for i, v in recs.items():
         ext.setdefault(int(v[5]), []).append(i)
@@ -284,7 +295,7 @@ def _gate(p, eng, n, deadline=None):
     (the server kills overruns; a rescue that misses the deadline is worth
     negative points).
     """
-    sol = _recs_to_sol(_extract(eng, n))
+    sol = _recs_to_sol(_extract(eng, n), eng.ordered_events())
     t0 = time.time()
     res = _check(p, sol)
     ck = max(0.3, time.time() - t0)          # measured checker cost (max seen)
@@ -302,7 +313,7 @@ def _gate(p, eng, n, deadline=None):
 
     def recheck(stage):
         nonlocal sol, res, ck
-        sol = _recs_to_sol(_extract(eng, n))
+        sol = _recs_to_sol(_extract(eng, n), eng.ordered_events())
         t1 = time.time()
         res = _check(p, sol)
         ck = max(ck, time.time() - t1)       # keep the worst-case estimate

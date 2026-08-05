@@ -6,6 +6,9 @@
 #include <cmath>
 #include <cstdint>
 #include <chrono>
+#include <algorithm>
+#include <functional>
+#include <unordered_set>
 
 namespace core {
 using crane::OrientGeom; using crane::BlockGeom; using crane::Placement;
@@ -57,6 +60,120 @@ struct Sol {
             if (placed[i]) byBay[bay[i]].push_back(i);
     }
 };
+inline bool restOverlap(const Problem& pb, const Sol& s, int a, int b);
+// Exact checker-order replay for one bay/day. Exits are monotone (removing a
+// block cannot obstruct a later exit), while same-day entries require a small
+// subset search because adding one block may obstruct another. The returned
+// orders are directly usable by the solution emitter.
+inline bool eventOrderAt(const Problem& pb, const Sol& s, int bay, int t,
+                         std::vector<int>& exitOrder,
+                         std::vector<int>& entryOrder) {
+    exitOrder.clear();
+    entryOrder.clear();
+    std::vector<int> present, exits, entries;
+    for (int i : s.byBay[bay]) {
+        if (!s.placed[i]) continue;
+        if (s.e[i] < t && t <= s.f[i]) present.push_back(i);
+        if (s.f[i] == t) exits.push_back(i);
+        if (s.e[i] == t) entries.push_back(i);
+    }
+    auto placements = [&](const std::vector<int>& ids) {
+        std::vector<Placement> out;
+        out.reserve(ids.size());
+        for (int i : ids)
+            out.push_back({&pb.geo[i].orients[s.ori[i]],
+                           (double)s.x[i], (double)s.y[i]});
+        return out;
+    };
+
+    std::sort(exits.begin(), exits.end());
+    while (!exits.empty()) {
+        bool progressed = false;
+        for (size_t q = 0; q < exits.size(); q++) {
+            const int id = exits[q];
+            auto it = std::find(present.begin(), present.end(), id);
+            if (it == present.end()) return false;
+            std::vector<Placement> ps = placements(present);
+            const size_t target = (size_t)(it - present.begin());
+            if (!crane::exitOK(ps, (int)target)) continue;
+            exitOrder.push_back(id);
+            present.erase(it);
+            exits.erase(exits.begin() + q);
+            progressed = true;
+            break;
+        }
+        if (!progressed) return false;
+    }
+
+    std::sort(entries.begin(), entries.end());
+    if (entries.size() > 63) {
+        // Pathological same-day batches avoid exponential state. Greedy is
+        // fail-closed: it may reject an order but never admits an invalid one.
+        while (!entries.empty()) {
+            bool progressed = false;
+            for (size_t q = 0; q < entries.size(); q++) {
+                const int id = entries[q];
+                std::vector<Placement> ps = placements(present);
+                const auto& g = pb.geo[id].orients[s.ori[id]];
+                if (!crane::entryOK(pb.bayW[bay], pb.bayH[bay], ps, g,
+                                    s.x[id], s.y[id])) continue;
+                entryOrder.push_back(id);
+                present.push_back(id);
+                entries.erase(entries.begin() + q);
+                progressed = true;
+                break;
+            }
+            if (!progressed) return false;
+        }
+        return true;
+    }
+
+    const std::vector<int> basePresent = present;
+    std::unordered_set<uint64_t> failed;
+    std::function<bool(uint64_t)> dfs = [&](uint64_t used) {
+        if (used == ((entries.size() == 64) ? ~0ull
+                                             : ((1ull << entries.size()) - 1)))
+            return true;
+        if (failed.count(used)) return false;
+        std::vector<int> ids = basePresent;
+        for (size_t q = 0; q < entries.size(); q++)
+            if (used & (1ull << q)) ids.push_back(entries[q]);
+        std::vector<Placement> ps = placements(ids);
+        for (size_t q = 0; q < entries.size(); q++) {
+            if (used & (1ull << q)) continue;
+            const int id = entries[q];
+            const auto& g = pb.geo[id].orients[s.ori[id]];
+            if (!crane::entryOK(pb.bayW[bay], pb.bayH[bay], ps, g,
+                                s.x[id], s.y[id])) continue;
+            entryOrder.push_back(id);
+            if (dfs(used | (1ull << q))) return true;
+            entryOrder.pop_back();
+        }
+        failed.insert(used);
+        return false;
+    };
+    return dfs(0);
+}
+
+inline bool vpExactEvents(const Problem& pb, const Sol& s, int A) {
+    const int bay = s.bay[A], e = s.e[A], f = s.f[A];
+    for (int k : s.byBay[bay]) {
+        if (k == A || !s.placed[k]) continue;
+        if (s.e[k] < f && e < s.f[k] && restOverlap(pb, s, A, k))
+            return false;
+    }
+    std::vector<int> times{e, f}, xo, en;
+    for (int k : s.byBay[bay]) {
+        if (k == A || !s.placed[k]) continue;
+        if (e <= s.e[k] && s.e[k] < f) times.push_back(s.e[k]);
+        if (e < s.f[k] && s.f[k] <= f) times.push_back(s.f[k]);
+    }
+    std::sort(times.begin(), times.end());
+    times.erase(std::unique(times.begin(), times.end()), times.end());
+    for (int t : times)
+        if (!eventOrderAt(pb, s, bay, t, xo, en)) return false;
+    return true;
+}
 
 // same-layer positive-area overlap between two placed blocks (rule 1 helper)
 inline bool restOverlap(const Problem& pb, const Sol& s, int a, int b) {

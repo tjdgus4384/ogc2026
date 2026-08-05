@@ -38,6 +38,7 @@ struct Engine {
     uint64_t generation_ = 0;
     double prefP_ = -1.0;
     bool allowWait_ = false;
+    bool exactEvents_ = false;
 
     // ------------------------------------------------------------- loading
     void initProblem(int n, int m,
@@ -162,6 +163,10 @@ struct Engine {
         allowWait_ = enabled;
         ctx.allowWait = enabled;
     }
+    void setExactEvents(bool enabled) {
+        exactEvents_ = enabled;
+        ctx.exactEvents = enabled;
+    }
 
     // ----------------------------------------------------- solution access
     void setBlock(int i, int bay, int ori, int x, int y, int e, int f, bool placed) {
@@ -194,6 +199,29 @@ struct Engine {
     std::vector<double> objective() {
         auto o = core::evaluate(pb, sol);
         return {o.z1, o.z2, o.z3, o.total};
+    }
+    std::vector<std::vector<int>> orderedEvents() {
+        std::vector<int> times;
+        for (int i = 0; i < pb.n; i++) if (sol.placed[i]) {
+            times.push_back(sol.e[i]);
+            times.push_back(sol.f[i]);
+        }
+        std::sort(times.begin(), times.end());
+        times.erase(std::unique(times.begin(), times.end()), times.end());
+        std::vector<std::vector<int>> rows;
+        std::vector<int> exits, entries;
+        for (int t : times) {
+            std::vector<std::vector<int>> dayExits, dayEntries;
+            for (int j = 0; j < pb.m; j++) {
+                if (!core::eventOrderAt(pb, sol, j, t, exits, entries))
+                    return {};
+                for (int i : exits) dayExits.push_back({t, 0, i, j});
+                for (int i : entries) dayEntries.push_back({t, 1, i, j});
+            }
+            rows.insert(rows.end(), dayExits.begin(), dayExits.end());
+            rows.insert(rows.end(), dayEntries.begin(), dayEntries.end());
+        }
+        return rows;
     }
     bool vpOK(int A) { return core::vpConservative(pb, sol, A); }
     std::vector<int> auditState() {
@@ -463,6 +491,7 @@ struct Engine {
                 c2.entryCap = ctx.entryCap;     // entry lock -> threads
                 c2.prefP = prefP_;
                 c2.allowWait = allowWait_;
+                c2.exactEvents = exactEvents_;
                 bool constructed = false;
                 if (r == 0 && !starts.empty()) {
                     const auto& st0 = starts[tid % (int)starts.size()];
@@ -514,6 +543,7 @@ struct Engine {
                     c3.horizon=horizon_;
                     c3.prefP=prefP_;
                     c3.allowWait=allowWait_;
+                    c3.exactEvents=exactEvents_;
                     alns::spatialCompact(c3, 6);
                     alns::compactLeft(c3, 3);
                 }
@@ -583,6 +613,7 @@ struct Engine {
         repair::Ctx c2; c2.pb=&pb; c2.s=&sol; c2.oc=&oc2; c2.horizon=horizon_;
         c2.prefP = prefP_;
         c2.allowWait = allowWait_;
+        c2.exactEvents = exactEvents_;
         c2.forcedBay = asg.data();
         c2.rng.seed(seed);
         for (int i = 0; i < pb.n; i++) sol.placed[i] = 0;
@@ -786,6 +817,8 @@ PYBIND11_MODULE(sscore, m) {
         .def("reconstruct_ordered", &Engine::reconstructOrdered)
         .def("set_pref_p", &Engine::setPrefP)
         .def("set_wait_stays", &Engine::setWaitStays)
+        .def("set_exact_events", &Engine::setExactEvents)
+        .def("ordered_events", &Engine::orderedEvents)
         .def("run_portfolio", &Engine::runPortfolio,
              py::arg("threads"), py::arg("seconds"), py::arg("rounds"),
              py::arg("qlo"), py::arg("qhi"), py::arg("T0mul"),
