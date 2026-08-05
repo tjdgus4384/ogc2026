@@ -723,7 +723,12 @@ def _slice_refine(p, eng, seed, until, hor):
                 for q, (j, oi, x, y, e) in enumerate(CAND[i]):
                     flatc += [i, j, oi, x, y, e]
                     idx.append((i, q))
-            prs = eng.pair_conflicts(flatc)
+            prs = eng.pair_conflicts(
+                flatc, max(0.1, min(2.0, end - time.time() - 1.0)))
+            if prs and prs[0] < 0:
+                eng.set_solution(cur)
+                eng.build_occ(hor)
+                break
             for t2 in range(0, len(prs), 2):
                 (i, q), (k, r2) = idx[prs[t2]], idx[prs[t2 + 1]]
                 mdl.AddBoolOr([V[i][q].Not(), V[k][r2].Not()])

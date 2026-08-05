@@ -404,14 +404,21 @@ struct Engine {
     // cand = flat [block, bay, ori, x, y, entry] * N.
     // returns flat pairs (a, b) of conflicting candidate indices.
     int horizonValue() const { return horizon_; }
-    std::vector<int> pairConflicts(const std::vector<int>& cand) {
+    std::vector<int> pairConflicts(const std::vector<int>& cand,
+                                   double maxSeconds = 0.0) {
         const int N = (int)cand.size() / 6;
         std::vector<int> out;
+        const auto started = std::chrono::steady_clock::now();
+        auto expired = [&] {
+            return maxSeconds > 0.0 && std::chrono::duration<double>(
+                std::chrono::steady_clock::now() - started).count() >= maxSeconds;
+        };
         for (int a = 0; a < N; a++) {
             const int* A = &cand[a * 6];
             const auto& ga = pb.geo[A[0]].orients[A[2]];
             const int fa = A[5] + pb.P[A[0]];
             for (int b = a + 1; b < N; b++) {
+                if (expired()) return std::vector<int>{-1};
                 const int* B = &cand[b * 6];
                 if (A[0] == B[0]) continue;      // same block, handled by
                 if (A[1] != B[1]) continue;      // exactly-one; other bay
@@ -947,7 +954,8 @@ PYBIND11_MODULE(sscore, m) {
         .def("last_ops", &Engine::lastOps)
         .def("last_stats", &Engine::lastStats)
         .def("horizon", [](Engine& e){ return e.horizonValue(); })
-        .def("pair_conflicts", &Engine::pairConflicts)
+        .def("pair_conflicts", &Engine::pairConflicts,
+             py::arg("cand"), py::arg("maxSeconds") = 0.0)
         .def("set_assignment_lock", &Engine::setAssignmentLock)
         .def("set_entry_lock", &Engine::setEntryLock)
         .def("compact_left", &Engine::compactLeft)
