@@ -69,6 +69,29 @@ def main():
         sys.exit(f"runs/{a.tag}/ has {len(recs)}/{expected} instances -- refusing "
                  f"to freeze a partial run (it would later read as a complete "
                  f"one). Wait for the array, or pass --partial to inspect.")
+    if not a.partial:
+        required_meta = {
+            "tag", "timelimit", "instances", "data", "pseed",
+            "solver_commit", "solver_dirty", "solver_snapshot_sha256",
+            "checker_sha256", "harness_sha256",
+        }
+        missing_meta = sorted(required_meta - set(meta))
+        if missing_meta:
+            sys.exit(f"runs/{a.tag}/ metadata missing {missing_meta} -- refusing freeze")
+        if meta["tag"] != a.tag or meta["solver_dirty"]:
+            sys.exit(f"runs/{a.tag}/ has mismatched tag or dirty solver -- refusing freeze")
+        if len(recs) != expected:
+            sys.exit(f"runs/{a.tag}/ has {len(recs)} records, expected exactly {expected}")
+        bad_provenance = sorted(
+            k for k, r in recs.items()
+            if (r.get("data") != meta["data"]
+                or r.get("seed") != meta["pseed"]
+                or r.get("checker_sha256") != meta["checker_sha256"]
+                or r.get("harness_sha256") != meta["harness_sha256"]
+                or r.get("tl") != meta["timelimit"])
+        )
+        if bad_provenance:
+            sys.exit(f"runs/{a.tag}/ provenance mismatch: {bad_provenance}")
 
     infeas = sorted(k for k, r in recs.items() if not r.get("feasible"))
     overrun = sorted(k for k, r in recs.items() if r.get("overrun"))
@@ -77,12 +100,21 @@ def main():
     print(f"tag={a.tag}  tl={meta.get('timelimit')}s  "
           f"commit={meta.get('solver_commit')}"
           f"{'  DIRTY' if meta.get('solver_dirty') else ''}")
-    print(f"instances {len(recs)}/40   INFEASIBLE={infeas or '[]'}   "
+    print(f"instances {len(recs)}/{expected}   INFEASIBLE={infeas or '[]'}   "
           f"OVERRUN={overrun or '[]'}   ERROR={errs or '[]'}")
     if recs:
         mw = max(r["wall"] for r in recs.values())
         mm = max(r.get("maxrss_mb") or 0 for r in recs.values())
         print(f"max wall {mw:.1f}s   max rss {mm:.0f} MB")
+    if not a.partial and (infeas or overrun or errs):
+        sys.exit("refusing to freeze non-adoptable evidence: "
+                 f"infeasible={infeas}, overrun={overrun}, errors={errs}")
+    if not a.partial:
+        over_mem = sorted(
+            k for k, r in recs.items()
+            if (r.get("maxrss_mb") or float("inf")) > 16 * 1024)
+        if over_mem:
+            sys.exit(f"refusing to freeze >16GB records: {over_mem}")
 
     if not a.partial:
         freeze(a.tag, meta, recs)

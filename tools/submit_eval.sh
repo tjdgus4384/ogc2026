@@ -60,8 +60,9 @@ WALL=$(python3 -c "import math;print(int(math.ceil(($TL+600)/60)))")
 mkdir -p "$ROOT/runs/$TAG"
 SNAP="$ROOT/runs/$TAG/solver_snapshot"
 CHECKER_SNAPSHOT="$ROOT/runs/$TAG/checker_snapshot.py"
-if [[ -e "$SNAP" || -e "$CHECKER_SNAPSHOT" ]]; then
-    echo "runs/$TAG already contains a snapshot -- pick a new tag." >&2
+HARNESS="$ROOT/runs/$TAG/harness_snapshot"
+if [[ -e "$SNAP" || -e "$CHECKER_SNAPSHOT" || -e "$HARNESS" ]]; then
+    echo "runs/$TAG already contains immutable snapshots -- pick a new tag." >&2
     exit 1
 fi
 SNAP_HASH=$(python3 - "$SOLVER" "$SNAP" "$ROOT/solver/utils.py" "$CHECKER_SNAPSHOT" <<'PY'
@@ -83,6 +84,20 @@ import hashlib, pathlib, sys
 print(hashlib.sha256(pathlib.Path(sys.argv[1]).read_bytes()).hexdigest())
 PY
 )
+HARNESS_HASH=$(python3 - "$HARNESS" "$ROOT/tools/eval.sbatch" "$ROOT/tools/run_instance.py" <<'PY'
+import hashlib, pathlib, shutil, sys
+dst, *sources = map(pathlib.Path, sys.argv[1:])
+dst.mkdir()
+h = hashlib.sha256()
+for src in sources:
+    target = dst / src.name
+    shutil.copy2(src, target)
+    data = target.read_bytes()
+    h.update(src.name.encode()); h.update(len(data).to_bytes(8, 'big')); h.update(data)
+print(h.hexdigest())
+PY
+)
+export OGC_HARNESS_SHA256="$HARNESS_HASH"
 export OGC_CHECKER="$CHECKER_SNAPSHOT"
 
 cat > "$ROOT/runs/$TAG/META.json" <<EOF
@@ -90,6 +105,7 @@ cat > "$ROOT/runs/$TAG/META.json" <<EOF
  "data": "${OGC_DATA:-train}",
  "solver_dir": "$(basename "$SOLVER")", "pseed": $PSEED,
  "solver_snapshot_sha256": "$SNAP_HASH", "checker_sha256": "$CHECKER_HASH",
+ "harness_sha256": "$HARNESS_HASH",
  "solver_commit": "$(cd "$ROOT" && git rev-parse --short HEAD)",
  "solver_dirty": $(cd "$ROOT" && git diff --quiet HEAD -- solver && echo false || echo true),
  "submitted": "$(date -Iseconds)"}
@@ -100,7 +116,8 @@ for ((o = 0; o < ${#ALL[@]}; o += PERNODE)); do
     CHUNK="${ALL[@]:o:PERNODE}"
     JID=$(sbatch --parsable --partition="$PART" --time="$WALL" \
           --job-name="eval" \
-          "$ROOT/tools/eval.sbatch" "$TAG" "$TL" "$SNAP" "$CHUNK" "$PSEED")
+          "$HARNESS/eval.sbatch" "$TAG" "$TL" "$SNAP" "$CHUNK" "$PSEED" \
+          "$HARNESS/run_instance.py")
     JIDS+=("$JID")
 done
 

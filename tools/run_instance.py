@@ -16,7 +16,9 @@ import resource
 import sys
 import time
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent
+ROOT = pathlib.Path(
+    os.environ.get("OGC_ROOT", pathlib.Path(__file__).resolve().parent.parent)
+).resolve()
 
 # Which build to measure. Defaults to the live solver/; experiments set
 # OGC_SOLVER to an exp/<name>/ directory holding its own myalgorithm.py + .so,
@@ -61,6 +63,7 @@ def main():
         "data": data,
         "seed": int(os.environ.get("OGC_SEED", "7")),
         "checker_sha256": hashlib.sha256(CHECKER_PATH.read_bytes()).hexdigest(),
+        "harness_sha256": os.environ.get("OGC_HARNESS_SHA256"),
         "tl": tl,
         "wall": round(wall, 2),
         "overrun": wall > tl,

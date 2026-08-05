@@ -15,11 +15,13 @@ ROOT=/data_fast/home/tjdgus4384/priv/ogc2026
 PY=$ROOT/.miniforge/envs/ogc2026/bin/python
 
 TAG="$1"; TL="$2"; SOLVER="$3"; INSTS="$4"; PSEED="${5:-7}"
+RUNNER="${6:-$ROOT/tools/run_instance.py}"
 
 OUT=$ROOT/runs/$TAG
 mkdir -p "$OUT"
 
 export OGC_SOLVER="$SOLVER"
+export OGC_ROOT="$ROOT"
 export OGC_DATA="${OGC_DATA:-train}"
 export OMP_NUM_THREADS=4
 export OGC_DIAG=1
@@ -34,8 +36,12 @@ mapfile -t CPUS < <($PY -c "import os;print('\n'.join(map(str,sorted(os.sched_ge
 k=0
 for i in $INSTS; do
     span="${CPUS[$((k*4))]},${CPUS[$((k*4+1))]},${CPUS[$((k*4+2))]},${CPUS[$((k*4+3))]}"
-    taskset -c "$span" "$PY" "$ROOT/tools/run_instance.py" "$i" "$TL" \
-        "$OUT/prob_$i.json" > "$OUT/prob_$i.log" 2>&1 &
+    (
+        ulimit -v $((16 * 1024 * 1024))
+        timeout --signal=TERM --kill-after=10 "$(( ${TL%.*} + 30 ))s" \
+            taskset -c "$span" "$PY" "$RUNNER" "$i" "$TL" \
+            "$OUT/prob_$i.json"
+    ) > "$OUT/prob_$i.log" 2>&1 &
     k=$((k+1))
 done
 wait
