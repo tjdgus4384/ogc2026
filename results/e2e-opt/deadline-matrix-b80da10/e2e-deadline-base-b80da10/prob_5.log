@@ -1,0 +1,13 @@
+{"diag": "slice", "rounds": 6, "obj": 10715883.0, "rate_p": 1003.6420743353798, "rate_a": 1964.124179411925}
+{"diag": "repair", "iters": 675356, "failed": 19, "fail_pct": 0.0}
+{"diag": "ops", "used": [142, 94, 58, 45, 54, 31, 33, 31, 0, 33], "imp": [786, 124, 178, 113, 84, 104, 135, 73, 0, 8]}
+{"diag": "portfolio", "winner": 3, "iters": 523514, "chunks": 1, "phase_us": [1825794, 62198809, 37330, 18], "thread_best": [12389970, 11912370, 13192257, 11704220]}
+{"diag": "assign", "moves": 0, "obj": 10715883.0}
+{"diag": "checker", "state": "infeasible", "stage": "raw", "nviol": 1}
+{"diag": "gate", "stage": "raw", "feasible": false, "nviol": 1, "first": "Stage2: t=33: block 79 entry obstructed by block 181 (new_layer=0, exist_layer=0, kind=collision, area=0.000)"}
+{"diag": "gate", "stage": "nudge", "feasible": false, "nviol": 1}
+{"diag": "gate", "stage": "retime", "feasible": false, "nviol": 1}
+{"diag": "gate", "stage": "retime", "feasible": false, "nviol": 1}
+{"diag": "gate", "stage": "retime", "feasible": false, "nviol": 1}
+{"diag": "gate", "stage": "move21", "feasible": true, "nviol": 0}
+{"inst": "prob_5", "solver": "solver", "tl": 600.0, "wall": 587.37, "overrun": false, "maxrss_mb": 733.7, "n": 200, "m": 4, "error": null, "feasible": true, "objective": 10715883.0, "obj1": 758.0, "obj2": 3885, "obj3": 4378.0}
