@@ -1,0 +1,56 @@
+{"diag": "slice-stage", "stage": "columns-start", "free": 25, "seconds_left": 25.026}
+{"diag": "slice-stage", "stage": "columns-done", "columns": 565, "seconds_left": 22.917}
+{"diag": "slice-stage", "stage": "relations-done", "conflicts": 13892, "seconds_left": 22.884}
+{"diag": "slice-stage", "stage": "solve-start", "seconds_left": 22.731, "cuts": 0}
+{"diag": "slice-stage", "stage": "solve-done", "status": 4, "seconds_left": 21.968}
+{"diag": "slice-stage", "stage": "audit-start", "seconds_left": 21.929}
+{"diag": "slice-stage", "stage": "columns-start", "free": 25, "seconds_left": 21.89}
+{"diag": "slice-stage", "stage": "columns-done", "columns": 565, "seconds_left": 19.788}
+{"diag": "slice-stage", "stage": "relations-done", "conflicts": 13892, "seconds_left": 19.76}
+{"diag": "slice-stage", "stage": "solve-start", "seconds_left": 19.609, "cuts": 0}
+{"diag": "slice-stage", "stage": "solve-done", "status": 4, "seconds_left": 18.865}
+{"diag": "slice-stage", "stage": "audit-start", "seconds_left": 18.827}
+{"diag": "slice-stage", "stage": "columns-start", "free": 25, "seconds_left": 18.788}
+{"diag": "slice-stage", "stage": "columns-done", "columns": 565, "seconds_left": 16.687}
+{"diag": "slice-stage", "stage": "relations-done", "conflicts": 13892, "seconds_left": 16.659}
+{"diag": "slice-stage", "stage": "solve-start", "seconds_left": 16.511, "cuts": 0}
+{"diag": "slice-stage", "stage": "solve-done", "status": 4, "seconds_left": 15.766}
+{"diag": "slice-stage", "stage": "audit-start", "seconds_left": 15.727}
+{"diag": "slice-stage", "stage": "columns-start", "free": 25, "seconds_left": 15.688}
+{"diag": "slice-stage", "stage": "columns-done", "columns": 527, "seconds_left": 13.744}
+{"diag": "slice-stage", "stage": "relations-done", "conflicts": 17239, "seconds_left": 13.712}
+{"diag": "slice-stage", "stage": "solve-start", "seconds_left": 13.527, "cuts": 0}
+{"diag": "slice-stage", "stage": "solve-done", "status": 4, "seconds_left": 13.157}
+{"diag": "slice-stage", "stage": "audit-start", "seconds_left": 13.118}
+{"diag": "slice-stage", "stage": "columns-start", "free": 25, "seconds_left": 13.116}
+{"diag": "slice-stage", "stage": "columns-done", "columns": 541, "seconds_left": 10.887}
+{"diag": "slice-stage", "stage": "relations-done", "conflicts": 24457, "seconds_left": 10.855}
+{"diag": "slice-stage", "stage": "solve-start", "seconds_left": 10.599, "cuts": 0}
+{"diag": "slice-stage", "stage": "solve-done", "status": 4, "seconds_left": 10.209}
+{"diag": "slice-stage", "stage": "audit-start", "seconds_left": 10.171}
+{"diag": "slice-stage", "stage": "columns-start", "free": 25, "seconds_left": 10.132}
+{"diag": "slice-stage", "stage": "columns-done", "columns": 565, "seconds_left": 8.3}
+{"diag": "slice-stage", "stage": "relations-done", "conflicts": 17352, "seconds_left": 8.268}
+{"diag": "slice-stage", "stage": "solve-start", "seconds_left": 8.082, "cuts": 0}
+{"diag": "slice-stage", "stage": "solve-done", "status": 4, "seconds_left": 7.186}
+{"diag": "slice-stage", "stage": "audit-start", "seconds_left": 7.147}
+{"diag": "slice-stage", "stage": "columns-start", "free": 25, "seconds_left": 7.145}
+{"diag": "slice-stage", "stage": "columns-done", "columns": 543, "seconds_left": 4.88}
+{"diag": "slice-stage", "stage": "relations-done", "conflicts": 18614, "seconds_left": 4.851}
+{"diag": "slice-stage", "stage": "solve-start", "seconds_left": 4.652, "cuts": 0}
+{"diag": "slice-stage", "stage": "solve-done", "status": 2, "seconds_left": 3.222}
+{"diag": "slice-stage", "stage": "audit-start", "seconds_left": 3.184}
+{"diag": "slice-stage", "stage": "columns-start", "free": 25, "seconds_left": 3.144}
+{"diag": "slice-stage", "stage": "columns-done", "columns": 531, "seconds_left": 1.913}
+{"diag": "slice-stage", "stage": "relations-done", "conflicts": 12702, "seconds_left": 1.883}
+{"diag": "slice-stage", "stage": "solve-start", "seconds_left": 1.746, "cuts": 0}
+{"diag": "slice-stage", "stage": "solve-done", "status": 4, "seconds_left": 1.122}
+{"diag": "slice-stage", "stage": "audit-start", "seconds_left": 1.083}
+{"diag": "slice-stage", "stage": "columns-start", "free": 25, "seconds_left": 1.044}
+{"diag": "slice-stage", "stage": "columns-done", "columns": 25, "seconds_left": 0.97}
+{"diag": "slice", "rounds": 6, "obj": 2898507.0, "rate_p": 660.4321603410636, "rate_a": 7.574819469717043}
+{"diag": "repair", "iters": 796654, "failed": 23, "fail_pct": 0.0}
+{"diag": "ops", "used": [263, 105, 87, 85, 88, 46, 40, 38, 0, 40], "imp": [450, 114, 129, 58, 63, 99, 78, 38, 0, 3]}
+{"diag": "portfolio", "winner": 3, "iters": 588820, "chunks": 1, "phase_us": [1573830, 52538176, 44255, 22], "thread_best": [3648557, 4043619, 3664301, 3164678]}
+{"diag": "assign", "moves": 0, "obj": 2898507.0}
+{"inst": "prob_4", "solver": "solver", "tl": 480.0, "wall": 470.55, "overrun": false, "maxrss_mb": 674.4, "n": 150, "m": 3, "error": null, "feasible": true, "objective": 2898507.0, "obj1": 167.0, "obj2": 3328, "obj3": 4324.0}
