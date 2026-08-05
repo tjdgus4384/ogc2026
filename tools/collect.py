@@ -9,6 +9,7 @@ Usage:
     python tools/collect.py <tag> [--vs <other_tag>] [--tol 0.5]
 """
 import argparse
+import hashlib
 import json
 import pathlib
 import sys
@@ -73,7 +74,7 @@ def main():
         required_meta = {
             "tag", "timelimit", "instances", "data", "pseed",
             "solver_commit", "solver_dirty", "solver_snapshot_sha256",
-            "checker_sha256", "harness_sha256",
+            "checker_sha256", "harness_sha256", "data_snapshot_sha256",
         }
         missing_meta = sorted(required_meta - set(meta))
         if missing_meta:
@@ -82,12 +83,21 @@ def main():
             sys.exit(f"runs/{a.tag}/ has mismatched tag or dirty solver -- refusing freeze")
         if len(recs) != expected:
             sys.exit(f"runs/{a.tag}/ has {len(recs)} records, expected exactly {expected}")
+        data_dir = ROOT / "runs" / a.tag / "data_snapshot" / meta["data"]
+        expected_instance_hash = {}
+        for key in recs:
+            source = data_dir / f"{key}.json"
+            if not source.is_file():
+                sys.exit(f"runs/{a.tag}/ missing frozen input {source.name}")
+            expected_instance_hash[key] = hashlib.sha256(source.read_bytes()).hexdigest()
         bad_provenance = sorted(
             k for k, r in recs.items()
             if (r.get("data") != meta["data"]
                 or r.get("seed") != meta["pseed"]
                 or r.get("checker_sha256") != meta["checker_sha256"]
                 or r.get("harness_sha256") != meta["harness_sha256"]
+                or r.get("data_snapshot_sha256") != meta["data_snapshot_sha256"]
+                or r.get("instance_sha256") != expected_instance_hash.get(k)
                 or r.get("tl") != meta["timelimit"])
         )
         if bad_provenance:

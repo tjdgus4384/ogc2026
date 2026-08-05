@@ -61,7 +61,9 @@ mkdir -p "$ROOT/runs/$TAG"
 SNAP="$ROOT/runs/$TAG/solver_snapshot"
 CHECKER_SNAPSHOT="$ROOT/runs/$TAG/checker_snapshot.py"
 HARNESS="$ROOT/runs/$TAG/harness_snapshot"
-if [[ -e "$SNAP" || -e "$CHECKER_SNAPSHOT" || -e "$HARNESS" ]]; then
+DATA_SNAPSHOT="$ROOT/runs/$TAG/data_snapshot"
+if [[ -e "$SNAP" || -e "$CHECKER_SNAPSHOT" || -e "$HARNESS" ||
+      -e "$DATA_SNAPSHOT" ]]; then
     echo "runs/$TAG already contains immutable snapshots -- pick a new tag." >&2
     exit 1
 fi
@@ -97,6 +99,23 @@ for src in sources:
 print(h.hexdigest())
 PY
 )
+DATA_SNAPSHOT_HASH=$(python3 - "$ROOT/data" "$DATA_SNAPSHOT" "${OGC_DATA:-train}" "$INSTS" <<'PY'
+import hashlib, pathlib, sys
+src, dst = map(pathlib.Path, sys.argv[1:3])
+dataset, insts = sys.argv[3], sys.argv[4].split()
+target = dst / dataset
+target.mkdir(parents=True)
+h = hashlib.sha256()
+for ident in insts:
+    name = f"prob_{ident}.json"
+    data = (src / dataset / name).read_bytes()
+    (target / name).write_bytes(data)
+    h.update(name.encode()); h.update(len(data).to_bytes(8, 'big')); h.update(data)
+print(h.hexdigest())
+PY
+)
+export OGC_DATA_ROOT="$DATA_SNAPSHOT"
+export OGC_DATA_SNAPSHOT_SHA256="$DATA_SNAPSHOT_HASH"
 export OGC_HARNESS_SHA256="$HARNESS_HASH"
 export OGC_CHECKER="$CHECKER_SNAPSHOT"
 
@@ -106,6 +125,7 @@ cat > "$ROOT/runs/$TAG/META.json" <<EOF
  "solver_dir": "$(basename "$SOLVER")", "pseed": $PSEED,
  "solver_snapshot_sha256": "$SNAP_HASH", "checker_sha256": "$CHECKER_HASH",
  "harness_sha256": "$HARNESS_HASH",
+ "data_snapshot_sha256": "$DATA_SNAPSHOT_HASH",
  "solver_commit": "$(cd "$ROOT" && git rev-parse --short HEAD)",
  "solver_dirty": $(cd "$ROOT" && git diff --quiet HEAD -- solver && echo false || echo true),
  "submitted": "$(date -Iseconds)"}

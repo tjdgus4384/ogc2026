@@ -97,8 +97,8 @@ def _evidence_of(tag):
 def cmd_pair(ta, tb):
     meta_a, A = _evidence_of(ta)
     meta_b, B = _evidence_of(tb)
-    comparable = ("data", "timelimit", "pseed", "checker_sha256",
-                  "harness_sha256", "instances")
+    comparable = ("data", "data_snapshot_sha256", "timelimit", "pseed",
+                  "checker_sha256", "harness_sha256", "instances")
     missing = [k for k in comparable if k not in meta_a or k not in meta_b]
     mismatch = [k for k in comparable if meta_a.get(k) != meta_b.get(k)]
     if missing or mismatch:

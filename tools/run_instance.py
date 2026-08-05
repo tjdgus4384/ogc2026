@@ -19,6 +19,8 @@ import time
 ROOT = pathlib.Path(
     os.environ.get("OGC_ROOT", pathlib.Path(__file__).resolve().parent.parent)
 ).resolve()
+DATA_ROOT = pathlib.Path(
+    os.environ.get("OGC_DATA_ROOT", ROOT / "data")).resolve()
 
 # Which build to measure. Defaults to the live solver/; experiments set
 # OGC_SOLVER to an exp/<name>/ directory holding its own myalgorithm.py + .so,
@@ -47,7 +49,8 @@ def main():
     # OGC_DATA picks the instance set: train (default) or preliminary_test
     # (the REAL P1-P6, published 2026-07-29 with the preliminary report).
     data = os.environ.get("OGC_DATA", "train")
-    prob = json.loads((ROOT / "data" / data / f"prob_{pid}.json").read_text())
+    prob_path = DATA_ROOT / data / f"prob_{pid}.json"
+    prob = json.loads(prob_path.read_text())
 
     t0 = time.time()
     try:
@@ -64,6 +67,8 @@ def main():
         "seed": int(os.environ.get("OGC_SEED", "7")),
         "checker_sha256": hashlib.sha256(CHECKER_PATH.read_bytes()).hexdigest(),
         "harness_sha256": os.environ.get("OGC_HARNESS_SHA256"),
+        "instance_sha256": hashlib.sha256(prob_path.read_bytes()).hexdigest(),
+        "data_snapshot_sha256": os.environ.get("OGC_DATA_SNAPSHOT_SHA256"),
         "tl": tl,
         "wall": round(wall, 2),
         "overrun": wall > tl,
