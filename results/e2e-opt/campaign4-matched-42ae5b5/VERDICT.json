@@ -34,6 +34,14 @@
       "versus_v5_3": {"wins": 1, "losses": 2, "ties": 1, "mean_percent": 1.12, "verdict": "WASH"}
     }
   },
+  "top_tier_gate": {
+    "all_time_minima": {"P3": 64695, "P4": 1908043, "P5": 7718486, "P6": 25452695},
+    "v5_3": {"score": 2370, "estimated_rank": 14},
+    "current": {"score": 2329, "estimated_rank": 22},
+    "restricted_exact_assignment_geometry_time": {"score": 2368, "estimated_rank": 14},
+    "event_time_compaction": {"score": 2360, "estimated_rank": 15},
+    "verdict": "no treatment improves the canonical estimated rank"
+  },
   "other_mechanisms": {
     "large_neighborhood_and_population_diversity": {
       "verdict": "refuted_or_unproven",
