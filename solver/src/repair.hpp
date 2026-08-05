@@ -27,6 +27,7 @@
 #include "occ.hpp"
 #include <random>
 #include <algorithm>
+#include <chrono>
 
 namespace repair {
 using core::Problem; using core::Sol;
@@ -61,7 +62,12 @@ struct Ctx {
     // live dominance gate for op 8: is the priced preference loss the dominant
     // objective term? Parameter-free (w3*z3 > w1*z1), set by the obj lambda.
     bool z3dom = false;
+    bool hasDeadline = false;          // bounded ALNS repair; seeding stays unbounded
+    std::chrono::steady_clock::time_point deadline;
 };
+inline bool deadlineExpired(const Ctx& c) {
+    return c.hasDeadline && std::chrono::steady_clock::now() >= c.deadline;
+}
 
 // Area screen for bay j over [e,f) -- a SPEED HEURISTIC, never a verdict.
 // It compares bbox-area sums (areaUsed) against bay area with 2% slack, and
@@ -177,15 +183,18 @@ inline bool tryPlacement(Ctx& c, int A, int j, int oi, int x, int y, int e) {
 inline bool scanBayAt(Ctx& c, int A, int j, int e, const std::vector<int>& oris,
                       std::vector<int>& xs, std::vector<int>& ys) {
     const Problem& pb = *c.pb; Sol& s = *c.s;
+    if (deadlineExpired(c)) return false;
     int f = e + pb.P[A];
     thread_local occ::OccIndex::Snap sn;
     c.oc->buildSnap(j, e, f, sn);
     thread_local std::vector<RB> rbs;
     rbCollect(c, j, e, f, rbs);
     for (int oi : oris) {
+        if (deadlineExpired(c)) return false;
         cornerSetsRB(c, A, oi, j, rbs, xs, ys);
         for (int y : ys) {
             for (int x : xs) {
+                if (deadlineExpired(c)) return false;
                 if (c.oc->hitsSnap(sn, A, oi, x, y)) continue;
                 if (tryPlacement(c, A, j, oi, x, y, e)) return true;
             }
@@ -201,6 +210,7 @@ inline bool scanBayAt(Ctx& c, int A, int j, int e, const std::vector<int>& oris,
 // trig only.
 inline bool scanLocal(Ctx& c, int A, int trig, int e, double areaA) {
     const Problem& pb = *c.pb; Sol& s = *c.s;
+    if (deadlineExpired(c)) return false;
     int f = e + pb.P[A];
     int j = s.bay[trig];
     if (c.forcedBay && c.forcedBay[A] >= 0 && c.forcedBay[A] != j) return false;
@@ -217,6 +227,7 @@ inline bool scanLocal(Ctx& c, int A, int trig, int e, double areaA) {
     thread_local std::vector<RB> rbs;
     rbCollect(c, j, e, f, rbs);
     for (size_t oo = 0; oo < pb.geo[A].orients.size(); oo++) {
+        if (deadlineExpired(c)) return false;
         int oi = (int)oo;
         const auto& g = pb.geo[A].orients[oi];
         double W = pb.bayW[j], H = pb.bayH[j];
@@ -248,6 +259,7 @@ inline bool scanLocal(Ctx& c, int A, int trig, int e, double areaA) {
         std::sort(lys.begin(), lys.end());
         lys.erase(std::unique(lys.begin(), lys.end()), lys.end());
         for (int yv : lys) for (int xv : lxs) {
+            if (deadlineExpired(c)) return false;
             if (c.oc->hitsSnap(sn, A, oi, xv, yv)) continue;
             if (tryPlacement(c, A, j, oi, xv, yv, e)) return true;
         }
@@ -260,6 +272,7 @@ inline void removeBlock(Ctx& c, int A);
 
 inline bool insertGreedy(Ctx& c, int A, int eCap = -1) {
     const Problem& pb = *c.pb; Sol& s = *c.s;
+    if (deadlineExpired(c)) return false;
     if (c.entryCap && c.entryCap[A] >= 0 &&
         (eCap < 0 || c.entryCap[A] < eCap))
         eCap = c.entryCap[A];
@@ -343,6 +356,7 @@ inline bool insertGreedy(Ctx& c, int A, int eCap = -1) {
     {
         int e = eBot, f = e + pb.P[A];
         for (int j : bays) {
+            if (deadlineExpired(c)) return false;
             if (!areaRoom(c, j, areaA, e, f)) { areaRej[j] = 1; continue; }
             if (scanBayAt(c, A, j, e, oris, xs, ys)) return true;
         }
@@ -356,6 +370,7 @@ inline bool insertGreedy(Ctx& c, int A, int eCap = -1) {
                 fev.push_back({s.f[k], k});
     std::sort(fev.begin(), fev.end());
     for (auto& pr : fev) {
+        if (deadlineExpired(c)) return false;
         int e = pr.first, jt = s.bay[pr.second], f = e + pb.P[A];
         if (areaRej[jt]) {
             // bay skipped while area-saturated: once area fits again, restore
@@ -374,13 +389,17 @@ inline bool insertGreedy(Ctx& c, int A, int eCap = -1) {
     // its comment), NOT the same-layer snapshot the fast phases use.
     int stride = (eTop - eBot <= 24) ? 1 : knobs::stride();
     for (int e = eBot; e <= eTop; e += stride) {
+        if (deadlineExpired(c)) return false;
         int f = e + pb.P[A];
         for (int j : bays) {
+            if (deadlineExpired(c)) return false;
             thread_local std::vector<RB> rbs;
             rbCollect(c, j, e, f, rbs);
             for (int oi : oris) {
+                if (deadlineExpired(c)) return false;
                 cornerSetsRB(c, A, oi, j, rbs, xs, ys);
                 for (int y : ys) for (int x : xs) {
+                    if (deadlineExpired(c)) return false;
                     if (c.oc->hits(A, oi, j, x, y, e, f)) continue;
                     if (tryPlacement(c, A, j, oi, x, y, e)) return true;
                 }

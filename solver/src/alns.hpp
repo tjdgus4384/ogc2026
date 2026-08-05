@@ -372,6 +372,11 @@ inline RunStats run(repair::Ctx& c, double seconds, const RunParams& rp,
     auto t0 = std::chrono::steady_clock::now();
     auto now = [&]{ return std::chrono::duration<double>(
         std::chrono::steady_clock::now() - t0).count(); };
+    const bool savedHasDeadline = c.hasDeadline;
+    const auto savedDeadline = c.deadline;
+    c.hasDeadline = true;
+    c.deadline = t0 + std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+        std::chrono::duration<double>(std::max(0.0, seconds)));
 
     core::slackW() = 0.0;        // slack surrogate refuted (08-02 ablation)
     auto obj = [&]{
@@ -709,6 +714,8 @@ no_swap:
                 st.badPhase = code * 1000 + bb; break; }
         }
     }
+    c.hasDeadline = savedHasDeadline;
+    c.deadline = savedDeadline;
     s = bestSol;
     for (int k = 0; k < 10; k++) {          // per-operator contribution
         st.opUsed[k] = ds.used[k];
