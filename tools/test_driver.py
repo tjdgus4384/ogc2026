@@ -15,6 +15,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "solver"))
 os.environ.pop("OGC_SEED", None)          # dispatch path, server-like
 import myalgorithm as M
+import utils as U
 
 probs = [json.load(open(os.path.join(
     ROOT, "data", "preliminary_test", f"prob_{p}.json"))) for p in range(1, 7)]
@@ -29,4 +30,18 @@ ops = M._recs_to_sol(recs)["operations"]["9"]
 exits = [op["block_id"] for op in ops if op["type"] == "EXIT"]
 assert exits == [2, 3, 1], f"EXIT order broke invariant 7: {exits}"
 
-print("DRIVER GATE PASS: spec", specs, "exit-order OK")
+# 3. The terminal serial fallback must be complete and checker-authorized.
+for idx, prob in enumerate(probs, 1):
+    fallback = M._trivial(prob)
+    checked = U.check_feasibility(prob, fallback)
+    assert checked["feasible"], f"P{idx} fallback: {checked.get('violations')}"
+
+# 4. Malformed IDs and timestamp aliases fail closed before checker indexing/replay.
+bad_id = {"operations": {"0": [
+    {"type": "ENTRY", "block_id": -1, "bay_id": 0}
+]}}
+bad_time = {"operations": {"00": []}}
+assert not U.check_feasibility(probs[0], bad_id)["feasible"]
+assert not U.check_feasibility(probs[0], bad_time)["feasible"]
+
+print("DRIVER GATE PASS: spec", specs, "exit-order, fallback, checker-input OK")
