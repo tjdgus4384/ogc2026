@@ -8,8 +8,9 @@ import subprocess
 import sys
 import types
 
-from evidence import (data_hash, manifest_digest, named_files_hash, sha256_bytes,
-                      tree_hash, validate_records)
+from evidence import (data_hash, manifest_digest, named_files_hash,
+                      scheduler_step_is_compliant, sha256_bytes, tree_hash,
+                      validate_records)
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 
@@ -111,15 +112,10 @@ def scheduler_receipts(job_ids, records, partition):
         if not rows or not any("|COMPLETED|0:0|" in line for line in rows):
             errors.append(f"job {job} lacks a successful completed accounting row")
     for inst, record in records.items():
-        step = f"{record.get('slurm_job_id')}.{record.get('slurm_step_id')}"
-        rows = [line.split("|") for line in text.splitlines()
-                if line.split("|", 1)[0] == step]
-        valid = any(
-            len(row) >= 9 and row[2] == "COMPLETED" and row[3] == "0:0"
-            and row[6].startswith("16G") and row[7] == "4"
-            and row[8] == partition
-            for row in rows)
-        if not valid:
+        if not scheduler_step_is_compliant(
+                text, record.get("slurm_job_id"), record.get("slurm_step_id"),
+                partition):
+            step = f"{record.get('slurm_job_id')}.{record.get('slurm_step_id')}"
             errors.append(f"{inst} lacks a compliant successful step {step}")
     if errors:
         sys.exit("; ".join(errors))

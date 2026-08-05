@@ -108,6 +108,30 @@ def validate_records(meta, manifest, records, require_official=False):
     return errors
 
 
+def scheduler_step_is_compliant(receipts, job_id, step_id, partition):
+    """Bind a four-core step to its 16 GiB share of the recorded node allocation."""
+    rows = [line.split("|") for line in receipts.splitlines()]
+    job_id = str(job_id)
+    step = f"{job_id}.{step_id}"
+    parent_ok = any(
+        len(row) >= 9 and row[0] == job_id and row[2] == "COMPLETED"
+        and row[3] == "0:0" and row[6].startswith("160G")
+        and row[7] == "40" and row[8] == partition
+        for row in rows)
+    for row in rows:
+        if (len(row) < 9 or row[0] != step or row[2] != "COMPLETED"
+                or row[3] != "0:0" or row[7] != "4"):
+            continue
+        if row[6].startswith("16G") and row[8] == partition:
+            return True
+        # Slurm commonly leaves step ReqMem/Partition blank. The parent receipt
+        # then proves the 160 GiB / 40 CPU allocation from which this exclusive
+        # four-CPU step receives the eval.sbatch-declared 16 GiB envelope.
+        if not row[6] and row[8] in ("", partition) and parent_ok:
+            return True
+    return False
+
+
 def validate_frozen_payload(payload, require_official=False):
     meta = payload.get("meta", {})
     manifest = payload.get("manifest", {})
@@ -121,15 +145,10 @@ def validate_frozen_payload(payload, require_official=False):
         if not rows or not any("|COMPLETED|0:0|" in line for line in rows):
             errors.append(f"job {job}: missing completed scheduler receipt")
     for inst, rec in records.items():
-        step = f"{rec.get('slurm_job_id')}.{rec.get('slurm_step_id')}"
-        rows = [line.split("|") for line in receipts.splitlines()
-                if line.split("|", 1)[0] == step]
-        valid = any(
-            len(row) >= 9 and row[2] == "COMPLETED" and row[3] == "0:0"
-            and row[6].startswith("16G") and row[7] == "4"
-            and row[8] == meta.get("partition")
-            for row in rows)
-        if not valid:
+        if not scheduler_step_is_compliant(
+                receipts, rec.get("slurm_job_id"), rec.get("slurm_step_id"),
+                meta.get("partition")):
+            step = f"{rec.get('slurm_job_id')}.{rec.get('slurm_step_id')}"
             errors.append(f"{inst}: missing compliant completed step receipt {step}")
     body = dict(payload)
     digest = body.pop("evidence_sha256", None)

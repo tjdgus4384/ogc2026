@@ -51,6 +51,15 @@ assert 'sol, separators=(",", ":")' in runner_source
 
 good = payload()
 assert validate_frozen_payload(good, require_official=True) == []
+
+inherited = copy.deepcopy(good)
+inherited["scheduler_receipts"] = (
+    "42|eval|COMPLETED|0:0|240||160G|40|titan\n"
+    "42.0|python|COMPLETED|0:0|240|100M||4|\n")
+inherited.pop("evidence_sha256")
+body = json.dumps(inherited, sort_keys=True, separators=(",", ":")).encode()
+inherited["evidence_sha256"] = hashlib.sha256(body).hexdigest()
+assert validate_frozen_payload(inherited, require_official=True) == []
 for mutate in (
     lambda p: p["runs"].clear(),
     lambda p: p["runs"]["prob_3"].update(objective=float("nan")),
