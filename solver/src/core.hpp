@@ -130,7 +130,9 @@ inline bool eventOrderAt(const Problem& pb, const Sol& s, int bay, int t,
 
     const std::vector<int> basePresent = present;
     std::unordered_set<uint64_t> failed;
+    size_t searchNodes = 0;
     std::function<bool(uint64_t)> dfs = [&](uint64_t used) {
+        if (++searchNodes > 512) return false;
         if (used == ((entries.size() == 64) ? ~0ull
                                              : ((1ull << entries.size()) - 1)))
             return true;

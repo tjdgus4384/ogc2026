@@ -312,14 +312,22 @@ struct Engine {
     // enumerate up to k vp-feasible placements of UNPLACED block A at its
     // earliest feasible entry per bay (probe primitive for placement-depth
     // experiments): returns flat rows [bay, ori, x, y, e] x k.
-    std::vector<int> feasiblePositions(int A, int k, int eMin = 0) {
+    std::vector<int> feasiblePositions(int A, int k, int eMin = 0,
+                                       double maxSeconds = 0.0) {
         std::vector<int> out;
+        const auto started = std::chrono::steady_clock::now();
+        auto expired = [&] {
+            return maxSeconds > 0.0 && std::chrono::duration<double>(
+                std::chrono::steady_clock::now() - started).count() >= maxSeconds;
+        };
         if (sol.placed[A]) return out;
         std::vector<int> xs, ys, oris;
         for (size_t o = 0; o < pb.geo[A].orients.size(); o++)
             oris.push_back((int)o);
         for (int j = 0; j < pb.m && (int)out.size() / 5 < k; j++) {
+            if (expired()) return out;
             for (int e = std::max(pb.R[A], eMin); e + pb.P[A] <= horizon_; e++) {
+                if (expired()) return out;
                 int f = e + pb.P[A];
                 occ::OccIndex::Snap sn;
                 oc.buildSnap(j, e, f, sn);
@@ -329,11 +337,15 @@ struct Engine {
                 for (int oi : oris) {
                     repair::cornerSetsRB(ctx, A, oi, j, rbs, xs, ys);
                     for (int y : ys) { for (int x : xs) {
+                    if (expired()) return out;
                         if (oc.hitsSnap(sn, A, oi, x, y)) continue;
                         sol.bay[A]=j; sol.ori[A]=oi; sol.x[A]=x;
                         sol.y[A]=y; sol.e[A]=e; sol.f[A]=f;
                         sol.placed[A]=1;
-                        bool ok = core::vpConservative(pb, sol, A);
+                        if (exactEvents_) sol.addIdx(A);
+                        bool ok = exactEvents_ ? core::vpExactEvents(pb, sol, A)
+                                               : core::vpConservative(pb, sol, A);
+                        if (exactEvents_) sol.delIdx(A);
                         sol.placed[A]=0;
                         if (ok) {
                             out.insert(out.end(), {j, oi, x, y, e});
@@ -352,8 +364,14 @@ struct Engine {
         if (sol.placed[A]) return false;
         sol.bay[A]=bay; sol.ori[A]=ori; sol.x[A]=x; sol.y[A]=y;
         sol.e[A]=e; sol.f[A]=e + pb.P[A]; sol.placed[A]=1;
-        if (!core::vpConservative(pb, sol, A)) { sol.placed[A]=0; return false; }
         sol.addIdx(A);
+        const bool ok = exactEvents_ ? core::vpExactEvents(pb, sol, A)
+                                     : core::vpConservative(pb, sol, A);
+        if (!ok) {
+            sol.delIdx(A);
+            sol.placed[A]=0;
+            return false;
+        }
         oc.stamp(pb, sol, A, true);
         return true;
     }
@@ -888,7 +906,8 @@ PYBIND11_MODULE(sscore, m) {
         .def("reconstruct_assigned", &Engine::reconstructAssigned)
         .def("insert_capped", &Engine::insertCapped)
         .def("feasible_positions", &Engine::feasiblePositions,
-             py::arg("A"), py::arg("k"), py::arg("eMin") = 0)
+             py::arg("A"), py::arg("k"), py::arg("eMin") = 0,
+             py::arg("maxSeconds") = 0.0)
         .def("place_at", &Engine::placeAt)
         .def("last_chunks", &Engine::lastChunks)
         .def("last_phase", &Engine::lastPhase)

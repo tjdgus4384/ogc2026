@@ -623,6 +623,7 @@ def _slice_refine(p, eng, seed, until, hor):
     area_sum = sum(area_units)
     use_access_cohort = os.environ.get("OGC_ACCESS_COHORT") == "1"
     use_full_slice_obj = os.environ.get("OGC_FULL_SLICE_OBJ") == "1"
+    use_anchored_columns = os.environ.get("OGC_ANCHORED_COLUMNS") == "1"
     cp = _cpsat()
     rng = random.Random(seed * 7919 + 13)
     cur = eng.get_solution()
@@ -676,13 +677,37 @@ def _slice_refine(p, eng, seed, until, hor):
                 part[i*7+6] = 0
             eng.set_solution(part); eng.build_occ(hor)
             CAND = {}
-            for i in free:
-                raw = eng.feasible_positions(i, NCAND, 0)
+            for pos, i in enumerate(free):
+                budget = max(0.02, min(
+                    0.35, (end - time.time() - 2.0)
+                    / max(1, len(free) - pos)))
+                raw = (eng.feasible_positions(
+                    i, 20 if use_anchored_columns else NCAND, 0, budget)
+                       if time.time() < end - 2.0 else [])
                 cs = [tuple(raw[q:q+5]) for q in range(0, len(raw), 5)]
                 c0 = tuple(cur[i*7:i*7+5])
                 if c0 not in cs:
                     cs.append(c0)
                 CAND[i] = cs
+            if use_anchored_columns:
+                for i in free:
+                    if time.time() >= end - 2.0:
+                        break
+                    anchored = list(cur)
+                    anchored[i*7+6] = 0
+                    eng.set_solution(anchored)
+                    eng.build_occ(hor)
+                    raw = eng.feasible_positions(i, 10, 0, 0.12)
+                    for q in range(0, len(raw), 5):
+                        c = tuple(raw[q:q+5])
+                        if c not in CAND[i] and len(CAND[i]) < NCAND:
+                            CAND[i].append(c)
+                eng.set_solution(part)
+                eng.build_occ(hor)
+            if time.time() >= end - 1.0:
+                eng.set_solution(cur)
+                eng.build_occ(hor)
+                break
             mdl = cp.CpModel()
             V, flatc, idx = {}, [], []
             for i in free:
