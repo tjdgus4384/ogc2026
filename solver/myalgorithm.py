@@ -625,6 +625,7 @@ def _slice_refine(p, eng, seed, until, hor):
     use_branch_check = os.environ.get("OGC_BRANCH_CHECK") == "1"
     use_stratified_columns = os.environ.get("OGC_STRATIFIED_COLUMNS") == "1"
     use_balance_cohort = os.environ.get("OGC_BALANCE_COHORT") == "1"
+    use_shape_contacts = os.environ.get("OGC_SHAPE_CONTACTS") == "1"
     cp = _cpsat()
     rng = random.Random(seed * 7919 + 13)
     cur = eng.get_solution()
@@ -714,7 +715,8 @@ def _slice_refine(p, eng, seed, until, hor):
                 raw = (eng.feasible_positions(
                     i, ncols, 0, budget,
                     3 if use_stratified_columns else 1,
-                    math.ceil(ncols / len(bays)) if use_stratified_columns else 0)
+                    math.ceil(ncols / len(bays)) if use_stratified_columns else 0,
+                    use_shape_contacts)
                        if time.time() < end - 2.0 else [])
                 cs = [tuple(raw[q:q+5]) for q in range(0, len(raw), 5)]
                 c0 = tuple(cur[i*7:i*7+5])
@@ -732,7 +734,8 @@ def _slice_refine(p, eng, seed, until, hor):
                     raw = eng.feasible_positions(
                         i, 10, 0, 0.12,
                         2 if use_stratified_columns else 1,
-                        math.ceil(10 / len(bays)) if use_stratified_columns else 0)
+                        math.ceil(10 / len(bays)) if use_stratified_columns else 0,
+                        use_shape_contacts)
                     for q in range(0, len(raw), 5):
                         c = tuple(raw[q:q+5])
                         if c not in CAND[i] and len(CAND[i]) < NCAND:

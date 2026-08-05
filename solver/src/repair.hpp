@@ -162,6 +162,44 @@ inline void cornerSets(const Ctx& c, int A, int oi, int j, int e, int f,
     rbCollect(c, j, e, f, rbs);
     cornerSetsRB(c, A, oi, j, rbs, xs, ys);
 }
+// Add integer translations induced by irregular polygon vertex contacts.
+inline void shapeContactSets(const Ctx& c, int A, int oi, int j, int e, int f,
+                             std::vector<int>& xs, std::vector<int>& ys,
+                             size_t axisCap = 96) {
+    const auto& ga = c.pb->geo[A].orients[oi];
+    const int x0 = (int)std::ceil(-ga.bb.x0);
+    const int x1 = (int)std::floor(c.pb->bayW[j] - ga.bb.x1);
+    const int y0 = (int)std::ceil(-ga.bb.y0);
+    const int y1 = (int)std::floor(c.pb->bayH[j] - ga.bb.y1);
+    auto add = [](std::vector<int>& out, double v, int lo, int hi, size_t cap) {
+        if (out.size() >= cap) return;
+        for (int q : {(int)std::floor(v), (int)std::ceil(v)})
+            if (q >= lo && q <= hi) out.push_back(q);
+    };
+    for (int k : c.s->byBay[j]) {
+        if (xs.size() >= axisCap && ys.size() >= axisCap) break;
+        if (!c.s->placed[k] || !(c.s->e[k] < f && e < c.s->f[k])) continue;
+        const auto& gk = c.pb->geo[k].orients[c.s->ori[k]];
+        for (const auto& pa : ga.layers) {
+            for (const auto& va : pa) {
+                for (const auto& pk : gk.layers) {
+                    for (const auto& vk : pk) {
+                        add(xs, vk.x + c.s->x[k] - va.x, x0, x1, axisCap);
+                        add(ys, vk.y + c.s->y[k] - va.y, y0, y1, axisCap);
+                        if (xs.size() >= axisCap && ys.size() >= axisCap) break;
+                    }
+                    if (xs.size() >= axisCap && ys.size() >= axisCap) break;
+                }
+                if (xs.size() >= axisCap && ys.size() >= axisCap) break;
+            }
+            if (xs.size() >= axisCap && ys.size() >= axisCap) break;
+        }
+    }
+    std::sort(xs.begin(), xs.end());
+    xs.erase(std::unique(xs.begin(), xs.end()), xs.end());
+    std::sort(ys.begin(), ys.end());
+    ys.erase(std::unique(ys.begin(), ys.end()), ys.end());
+}
 
 // Commit one candidate through the selected event semantics.
 inline bool tryPlacement(Ctx& c, int A, int j, int oi, int x, int y, int e) {

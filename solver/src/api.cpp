@@ -371,7 +371,8 @@ struct Engine {
     std::vector<int> feasiblePositions(int A, int k, int eMin = 0,
                                        double maxSeconds = 0.0,
                                        int maxDaysPerBay = 1,
-                                       int maxPerBay = 0) {
+                                       int maxPerBay = 0,
+                                       bool shapeContacts = false) {
         std::vector<int> out;
         const auto started = std::chrono::steady_clock::now();
         auto expired = [&] {
@@ -404,6 +405,8 @@ struct Engine {
                     if ((int)out.size()/5 - bayStart >= bayCap ||
                         (int)out.size()/5 - dayStart >= dayCap) break;
                     repair::cornerSetsRB(ctx, A, oi, j, rbs, xs, ys);
+                    if (shapeContacts)
+                        repair::shapeContactSets(ctx, A, oi, j, e, f, xs, ys);
                     for (int y : ys) {
                         if ((int)out.size()/5 - bayStart >= bayCap ||
                             (int)out.size()/5 - dayStart >= dayCap) break;
@@ -1008,7 +1011,8 @@ PYBIND11_MODULE(sscore, m) {
         .def("feasible_positions", &Engine::feasiblePositions,
              py::arg("A"), py::arg("k"), py::arg("eMin") = 0,
              py::arg("maxSeconds") = 0.0,
-             py::arg("maxDaysPerBay") = 1, py::arg("maxPerBay") = 0)
+             py::arg("maxDaysPerBay") = 1, py::arg("maxPerBay") = 0,
+             py::arg("shapeContacts") = false)
         .def("place_at", &Engine::placeAt)
         .def("last_chunks", &Engine::lastChunks)
         .def("last_phase", &Engine::lastPhase)
