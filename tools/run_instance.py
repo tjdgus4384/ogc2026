@@ -203,7 +203,7 @@ def main():
     if out_path and sol is not None:
         solution_path = pathlib.Path(out_path).with_suffix(".sol.json")
         solution_bytes = json.dumps(
-            sol, sort_keys=True, separators=(",", ":")).encode()
+            sol, separators=(",", ":")).encode()
         solution_path.write_bytes(solution_bytes)
         rec["solution_sha256"] = hashlib.sha256(solution_bytes).hexdigest()
     line = json.dumps(rec)
