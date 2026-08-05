@@ -174,7 +174,9 @@ inline void shapeContactSets(const Ctx& c, int A, int oi, int j, int e, int f,
     auto add = [](std::vector<int>& out, double v, int lo, int hi, size_t cap) {
         if (out.size() >= cap) return;
         for (int q : {(int)std::floor(v), (int)std::ceil(v)})
-            if (q >= lo && q <= hi) out.push_back(q);
+            if (q >= lo && q <= hi &&
+                std::find(out.begin(), out.end(), q) == out.end())
+                out.push_back(q);
     };
     for (int k : c.s->byBay[j]) {
         if (xs.size() >= axisCap && ys.size() >= axisCap) break;
