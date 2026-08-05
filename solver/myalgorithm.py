@@ -444,6 +444,8 @@ def _assign_descent(p, eng, deadline):
     u = [(sum(areas) / m) / a for a in areas]
     w1 = float(W["w1"]); w2 = float(W["w2"]); w3 = float(W["w3"])
     D = [int(round(b["due_date"])) for b in B]
+    P = [max(1, int(math.ceil(b["processing_time"] - 1e-9))) for b in B]
+    R = [int(math.ceil(b["release_time"] - 1e-9)) for b in B]
     hor = eng.horizon()
 
     def z2_of(S):
@@ -487,8 +489,12 @@ def _assign_descent(p, eng, deadline):
                                + (pref[k][b] - pref[k][a]))
                         S2 = list(S)
                         S2[a] += L[k] - L[i]; S2[b] += L[i] - L[k]
+                        n_ie = max(R[i], blk[k][4])
+                        n_ke = max(R[k], blk[i][4])
+                        new_tard = (max(0.0, n_ie + P[i] - D[i])
+                                    + max(0.0, n_ke + P[k] - D[k]))
                         d = (w2 * (z2_of(S2) - z2) + w3 * dz3
-                             - w1 * (tard[i] + tard[k]))
+                             + w1 * (new_tard - tard[i] - tard[k]))
                         if d < -1e-9:
                             cands.append((d, 1, i, k))
         if not cands:
@@ -1081,13 +1087,19 @@ def _trivial(p):
             w_i = max(xs) - min(xs)
             h_i = max(ys) - min(ys)
             for j in range(len(bays)):
-                m = min(bays[j]["width"] - w_i, bays[j]["height"] - h_i)
-                if best is None or m > best[0]:
-                    # checker translates the RAW polygon by (x,y): align
-                    # the raw min-corner to the bay origin.
-                    best = (m, j, oi,
-                            int(math.ceil(-min(xs) + 1e-9)),
-                            int(math.ceil(-min(ys) + 1e-9)))
+                margin = min(bays[j]["width"] - w_i,
+                             bays[j]["height"] - h_i)
+                x = int(math.ceil(-min(xs)))
+                y = int(math.ceil(-min(ys)))
+                fits = (x + max(xs) <= bays[j]["width"] + 1e-9
+                        and y + max(ys) <= bays[j]["height"] + 1e-9)
+                if fits and (best is None or margin > best[0]):
+                    # The checker translates the raw polygon by (x,y).
+                    # Integer-aware ceil aligns its minimum to the first
+                    # legal integral coordinate without an extra unit shift.
+                    best = (margin, j, oi, x, y)
+        if best is None:
+            raise RuntimeError(f"block {i} has no containing bay/orientation")
         _, j, oi, x, y = best
         R = int(math.ceil(B[i]["release_time"] - 1e-9))
         P = max(1, int(math.ceil(B[i]["processing_time"] - 1e-9)))
@@ -1102,10 +1114,11 @@ def algorithm(prob_info, timelimit=60):
     try:
         return _algorithm(prob_info, timelimit)
     except Exception:
-        try:
-            return _trivial(prob_info)
-        except Exception:
-            return {"operations": {}}
+        fallback = _trivial(prob_info)
+        checked = _check(prob_info, fallback)
+        if checked is None or not checked.get("feasible", False):
+            raise RuntimeError("no checker-certified fallback solution")
+        return fallback
 
 
 def _algorithm(prob_info, timelimit=60):

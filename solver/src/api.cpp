@@ -115,13 +115,9 @@ struct Engine {
             if (bb2 < 1e17) { sp += bp; sb += bb2; }
         }
         double fill = (sb > 0.0) ? std::min(1.0, sp / sb) : 1.0;
-        // The cap can never sit below what the instance REQUIRES: on
-        // any day, blocks whose [release, due) window covers that day
-        // must be somewhere, so their polygon area over total bay area
-        // is a hard lower bound on the density a punctual board needs.
-        // Saturated instances (P3-class) therefore relax the screener
-        // automatically instead of having their dense packings
-        // rejected, while roomy ones keep the tight, fast filter.
+        // A punctual block with start in [R,D-P] occupies every discrete
+        // day in the compulsory interval [D-P,R+P).  Only that intersection
+        // is a valid hard density lower bound; the whole start window is not.
         double capArea = 0.0;
         for (int j = 0; j < pb.m; j++) capArea += pb.bayW[j]*pb.bayH[j];
         int Tmax = 0;
@@ -132,7 +128,8 @@ struct Engine {
             for (const auto& g : pb.geo[i].orients)
                 a = std::min(a, g.parea > 0 ? g.parea :
                              (g.bb.x1-g.bb.x0)*(g.bb.y1-g.bb.y0));
-            int lo = pb.R[i], hi = std::max(pb.R[i], pb.D[i] - pb.P[i]);
+            int lo = std::max(pb.R[i], pb.D[i] - pb.P[i]);
+            int hi = std::min(pb.D[i] - 1, pb.R[i] + pb.P[i] - 1);
             for (int t = lo; t <= hi && t <= Tmax; t++) need[t] += a;
         }
         double req = 0.0;
@@ -759,6 +756,7 @@ struct Engine {
         }
         lastChunks_ = chunks;
         sol = globalBest;
+        buildOcc(horizon_);
         // [totIters, bestObj, winnerTid, perThreadBest...] -- winnerTid tells
         // which start (seed slot / construction) actually won the merge:
         // the observable that decides future portfolio composition.
