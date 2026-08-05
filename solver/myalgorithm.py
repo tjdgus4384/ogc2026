@@ -623,6 +623,7 @@ def _slice_refine(p, eng, seed, until, hor):
     use_full_slice_obj = os.environ.get("OGC_FULL_SLICE_OBJ") == "1"
     use_anchored_columns = os.environ.get("OGC_ANCHORED_COLUMNS") == "1"
     use_branch_check = os.environ.get("OGC_BRANCH_CHECK") == "1"
+    use_stratified_columns = os.environ.get("OGC_STRATIFIED_COLUMNS") == "1"
     cp = _cpsat()
     rng = random.Random(seed * 7919 + 13)
     cur = eng.get_solution()
@@ -680,8 +681,11 @@ def _slice_refine(p, eng, seed, until, hor):
                 budget = max(0.02, min(
                     0.35, (end - time.time() - 2.0)
                     / max(1, len(free) - pos)))
+                ncols = 20 if use_anchored_columns else NCAND
                 raw = (eng.feasible_positions(
-                    i, 20 if use_anchored_columns else NCAND, 0, budget)
+                    i, ncols, 0, budget,
+                    3 if use_stratified_columns else 1,
+                    math.ceil(ncols / len(bays)) if use_stratified_columns else 0)
                        if time.time() < end - 2.0 else [])
                 cs = [tuple(raw[q:q+5]) for q in range(0, len(raw), 5)]
                 c0 = tuple(cur[i*7:i*7+5])
@@ -696,7 +700,10 @@ def _slice_refine(p, eng, seed, until, hor):
                     anchored[i*7+6] = 0
                     eng.set_solution(anchored)
                     eng.build_occ(hor)
-                    raw = eng.feasible_positions(i, 10, 0, 0.12)
+                    raw = eng.feasible_positions(
+                        i, 10, 0, 0.12,
+                        2 if use_stratified_columns else 1,
+                        math.ceil(10 / len(bays)) if use_stratified_columns else 0)
                     for q in range(0, len(raw), 5):
                         c = tuple(raw[q:q+5])
                         if c not in CAND[i] and len(CAND[i]) < NCAND:

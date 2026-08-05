@@ -304,11 +304,14 @@ struct Engine {
         ctx.forcedBay = save;
         return ok;
     }
-    // enumerate up to k vp-feasible placements of UNPLACED block A at its
-    // earliest feasible entry per bay (probe primitive for placement-depth
-    // experiments): returns flat rows [bay, ori, x, y, e] x k.
+    // Enumerate checker-feasible site/time columns. Defaults preserve the
+    // historical earliest-day scan; optional caps stratify the vocabulary
+    // across bays and several feasible days so one roomy bay cannot consume
+    // the entire exact-neighborhood domain.
     std::vector<int> feasiblePositions(int A, int k, int eMin = 0,
-                                       double maxSeconds = 0.0) {
+                                       double maxSeconds = 0.0,
+                                       int maxDaysPerBay = 1,
+                                       int maxPerBay = 0) {
         std::vector<int> out;
         const auto started = std::chrono::steady_clock::now();
         auto expired = [&] {
@@ -316,40 +319,56 @@ struct Engine {
                 std::chrono::steady_clock::now() - started).count() >= maxSeconds;
         };
         if (sol.placed[A]) return out;
+        maxDaysPerBay = std::max(1, maxDaysPerBay);
+        const int bayCap = maxPerBay > 0 ? maxPerBay : k;
+        const int dayCap = std::max(1, (bayCap + maxDaysPerBay - 1)
+                                       / maxDaysPerBay);
         std::vector<int> xs, ys, oris;
         for (size_t o = 0; o < pb.geo[A].orients.size(); o++)
             oris.push_back((int)o);
         for (int j = 0; j < pb.m && (int)out.size() / 5 < k; j++) {
             if (expired()) return out;
-            for (int e = std::max(pb.R[A], eMin); e + pb.P[A] <= horizon_; e++) {
+            const int bayStart = (int)out.size() / 5;
+            int feasibleDays = 0;
+            for (int e = std::max(pb.R[A], eMin);
+                 e + pb.P[A] <= horizon_ &&
+                 (int)out.size()/5 - bayStart < bayCap; e++) {
                 if (expired()) return out;
-                int f = e + pb.P[A];
+                const int f = e + pb.P[A];
                 occ::OccIndex::Snap sn;
                 oc.buildSnap(j, e, f, sn);
                 thread_local std::vector<repair::RB> rbs;
                 repair::rbCollect(ctx, j, e, f, rbs);
-                bool any = false;
+                const int dayStart = (int)out.size() / 5;
                 for (int oi : oris) {
+                    if ((int)out.size()/5 - bayStart >= bayCap ||
+                        (int)out.size()/5 - dayStart >= dayCap) break;
                     repair::cornerSetsRB(ctx, A, oi, j, rbs, xs, ys);
-                    for (int y : ys) { for (int x : xs) {
-                    if (expired()) return out;
-                        if (oc.hitsSnap(sn, A, oi, x, y)) continue;
-                        sol.bay[A]=j; sol.ori[A]=oi; sol.x[A]=x;
-                        sol.y[A]=y; sol.e[A]=e; sol.f[A]=f;
-                        sol.placed[A]=1;
-                        if (exactEvents_) sol.addIdx(A);
-                        bool ok = exactEvents_ ? core::vpExactEvents(pb, sol, A)
-                                               : core::vpConservative(pb, sol, A);
-                        if (exactEvents_) sol.delIdx(A);
-                        sol.placed[A]=0;
-                        if (ok) {
+                    for (int y : ys) {
+                        if ((int)out.size()/5 - bayStart >= bayCap ||
+                            (int)out.size()/5 - dayStart >= dayCap) break;
+                        for (int x : xs) {
+                            if ((int)out.size()/5 - bayStart >= bayCap ||
+                                (int)out.size()/5 - dayStart >= dayCap) break;
+                            if (expired()) return out;
+                            if (oc.hitsSnap(sn, A, oi, x, y)) continue;
+                            sol.bay[A]=j; sol.ori[A]=oi; sol.x[A]=x;
+                            sol.y[A]=y; sol.e[A]=e; sol.f[A]=f;
+                            sol.placed[A]=1;
+                            if (exactEvents_) sol.addIdx(A);
+                            const bool ok = exactEvents_
+                                ? core::vpExactEvents(pb, sol, A)
+                                : core::vpConservative(pb, sol, A);
+                            if (exactEvents_) sol.delIdx(A);
+                            sol.placed[A]=0;
+                            if (!ok) continue;
                             out.insert(out.end(), {j, oi, x, y, e});
-                            any = true;
                             if ((int)out.size() / 5 >= k) return out;
                         }
-                    } }
+                    }
                 }
-                if (any) break;      // earliest feasible day per bay only
+                if ((int)out.size()/5 > dayStart &&
+                    ++feasibleDays >= maxDaysPerBay) break;
             }
         }
         return out;
@@ -920,7 +939,8 @@ PYBIND11_MODULE(sscore, m) {
         .def("insert_capped", &Engine::insertCapped)
         .def("feasible_positions", &Engine::feasiblePositions,
              py::arg("A"), py::arg("k"), py::arg("eMin") = 0,
-             py::arg("maxSeconds") = 0.0)
+             py::arg("maxSeconds") = 0.0,
+             py::arg("maxDaysPerBay") = 1, py::arg("maxPerBay") = 0)
         .def("place_at", &Engine::placeAt)
         .def("last_chunks", &Engine::lastChunks)
         .def("last_phase", &Engine::lastPhase)
