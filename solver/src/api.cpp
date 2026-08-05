@@ -497,9 +497,9 @@ struct Engine {
                 if (!bad) {
                     // vertical descent: the later entrant's layer k has
                     // to clear the resident's layers j >= k
-                    // equal entries: the day's ENTRY order is ours to
-                    // choose, so neither direction may be assumed -- the
-                    // pair conflicts if EITHER descent is blocked.
+                    // Equal-entry directions are only a conservative pairwise
+                    // screen.  The exact event oracle below decides selectable
+                    // ordering against both freed and frozen residents.
                     const bool tie = (A[5] == B[5]);
                     const bool aLate = A[5] >= B[5];
                     const auto& gl = aLate ? ga : gb;
@@ -542,7 +542,7 @@ struct Engine {
                             bad = crane::overlapsLay(gx, k, X[3], X[4],
                                                      gs, j, Y[3], Y[4]);
                 }
-                if (bad && !restingConflict && exactEvents_ &&
+                if (bad && !restingConflict &&
                     !sol.placed[A[0]] && !sol.placed[B[0]]) {
                     const int ai=A[0], bi=B[0];
                     const auto oldA = getBlock(ai), oldB = getBlock(bi);
