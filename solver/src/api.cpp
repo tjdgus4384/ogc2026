@@ -219,6 +219,63 @@ struct Engine {
         }
         return rows;
     }
+    // Globally optimize the time axis for the incumbent geometric shell while
+    // preserving each bay's exact event sequence.  With positions, orientations,
+    // assignments, and event order fixed, the earliest feasible schedule is a
+    // longest-path pass: entry >= release, exit >= entry + processing, and every
+    // event >= its predecessor in that bay.  The present set at every event is
+    // unchanged, so exact crane/geometry feasibility is preserved.
+    int compactEventSchedule() {
+        if (!exactEvents_) return -1;
+        const core::Sol old = sol;
+        const double oldObj = core::evaluate(pb, sol).total;
+        std::vector<int> ne(pb.n, -1), nf(pb.n, -1);
+        std::vector<int> exits, entries;
+        for (int j = 0; j < pb.m; j++) {
+            std::vector<int> times;
+            for (int i : sol.byBay[j]) if (sol.placed[i]) {
+                times.push_back(sol.e[i]);
+                times.push_back(sol.f[i]);
+            }
+            std::sort(times.begin(), times.end());
+            times.erase(std::unique(times.begin(), times.end()), times.end());
+            int clock = 0;
+            for (int t : times) {
+                if (!core::eventOrderAt(pb, sol, j, t, exits, entries)) {
+                    sol = old; buildOcc(horizon_); return -2;
+                }
+                for (int i : exits) {
+                    if (ne[i] < 0) {
+                        sol = old; buildOcc(horizon_); return -2;
+                    }
+                    nf[i] = std::max(clock, ne[i] + pb.P[i]);
+                    clock = nf[i];
+                }
+                for (int i : entries) {
+                    ne[i] = std::max(clock, pb.R[i]);
+                    clock = ne[i];
+                }
+            }
+        }
+        int moved = 0;
+        for (int i = 0; i < pb.n; i++) if (sol.placed[i]) {
+            if (ne[i] < 0 || nf[i] < ne[i] + pb.P[i]) {
+                sol = old; buildOcc(horizon_); return -2;
+            }
+            moved += (ne[i] != sol.e[i] || nf[i] != sol.f[i]);
+            sol.e[i] = ne[i]; sol.f[i] = nf[i];
+        }
+        sol.rebuildIdx(pb.m);
+        buildOcc(horizon_);
+        for (int i = 0; i < pb.n; i++)
+            if (sol.placed[i] && !core::vpExactEvents(pb, sol, i)) {
+                sol = old; buildOcc(horizon_); return -3;
+            }
+        if (core::evaluate(pb, sol).total > oldObj + 1e-9) {
+            sol = old; buildOcc(horizon_); return -4;
+        }
+        return moved;
+    }
     std::vector<int> accessCohort(int seed, int limit) {
         std::vector<int> out;
         if (seed < 0 || seed >= pb.n || limit <= 0 || !sol.placed[seed])
@@ -922,6 +979,7 @@ PYBIND11_MODULE(sscore, m) {
         .def("set_exact_events", &Engine::setExactEvents)
         .def("ordered_events", &Engine::orderedEvents)
         .def("access_cohort", &Engine::accessCohort)
+        .def("compact_event_schedule", &Engine::compactEventSchedule)
         .def("run_portfolio", &Engine::runPortfolio,
              py::arg("threads"), py::arg("seconds"), py::arg("rounds"),
              py::arg("qlo"), py::arg("qhi"), py::arg("T0mul"),
