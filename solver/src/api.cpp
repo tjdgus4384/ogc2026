@@ -568,9 +568,10 @@ struct Engine {
         }
         return out;
     }
-    void setAssignmentLock(std::vector<int> v) {
+    void setAssignmentLock(std::vector<int> v, bool hard = false) {
         lockVec = std::move(v);
         ctx.forcedBay = lockVec.empty() ? nullptr : lockVec.data();
+        ctx.releaseForcedBay = !hard;
     }
     void setEntryLock(std::vector<int> v) {
         capVec = std::move(v);
@@ -660,6 +661,7 @@ struct Engine {
                 c2.densMode = tid % 2;
                 c2.forcedBay = ctx.forcedBay;   // assignment lock -> threads
                 c2.entryCap = ctx.entryCap;     // entry lock -> threads
+                c2.releaseForcedBay = ctx.releaseForcedBay;
                 c2.prefP = prefP_;
                 c2.exactEvents = exactEvents_;
                 c2.hasDeadline = true;
@@ -1036,7 +1038,8 @@ PYBIND11_MODULE(sscore, m) {
         .def("horizon", [](Engine& e){ return e.horizonValue(); })
         .def("pair_conflicts", &Engine::pairConflicts,
              py::arg("cand"), py::arg("maxSeconds") = 0.0)
-        .def("set_assignment_lock", &Engine::setAssignmentLock)
+        .def("set_assignment_lock", &Engine::setAssignmentLock,
+             py::arg("assignment"), py::arg("hard") = false)
         .def("set_entry_lock", &Engine::setEntryLock)
         .def("compact_left", &Engine::compactLeft)
         .def("set_block", &Engine::setBlock)

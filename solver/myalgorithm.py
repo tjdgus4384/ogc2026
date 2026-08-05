@@ -651,10 +651,11 @@ def _slice_refine(p, eng, seed, until, hor):
     if span <= 8.0:
         return
     SLICE = max(3.0, span * 0.18)
+    audit_reserve = max(2.0, 0.04 * n)
     rate = {"p": None if cp else -1.0, "a": None}
     rounds = 0
     exact_attempts = 0
-    while time.time() < until - 3.0:
+    while time.time() < until - audit_reserve:
         rounds += 1
         if exact_only:
             arm = "p"
@@ -677,7 +678,7 @@ def _slice_refine(p, eng, seed, until, hor):
                 best, cur = v, eng.get_solution()
             rate["a"] = (b0 - best) / max(1e-9, time.time() - t1)
             continue
-        while time.time() < end - 1.0:
+        while time.time() < end - audit_reserve:
             K = K_SET[exact_attempts % len(K_SET)]
             exact_attempts += 1
             tardy = [i for i in range(n) if cur[i*7+6] and cur[i*7+5] > D[i]]
@@ -726,7 +727,7 @@ def _slice_refine(p, eng, seed, until, hor):
             CAND = {}
             for pos, i in enumerate(free):
                 budget = max(0.02, min(
-                    0.35, (end - time.time() - 2.0)
+                    0.35, (end - time.time() - audit_reserve)
                     / max(1, len(free) - pos)))
                 per_block_cap = max(6, 600 // max(1, len(free)))
                 ncols = (min(NCAND, 20, per_block_cap)
@@ -736,7 +737,7 @@ def _slice_refine(p, eng, seed, until, hor):
                     3 if use_stratified_columns else 1,
                     math.ceil(ncols / len(bays)) if use_stratified_columns else 0,
                     use_shape_contacts)
-                       if time.time() < end - 2.0 else [])
+                       if time.time() < end - audit_reserve else [])
                 cs = [tuple(raw[q:q+5]) for q in range(0, len(raw), 5)]
                 c0 = tuple(cur[i*7:i*7+5])
                 if c0 not in cs:
@@ -744,7 +745,7 @@ def _slice_refine(p, eng, seed, until, hor):
                 CAND[i] = cs
             if use_anchored_columns:
                 for i in free:
-                    if time.time() >= end - 2.0:
+                    if time.time() >= end - audit_reserve:
                         break
                     anchored = list(cur)
                     anchored[i*7+6] = 0
@@ -764,7 +765,7 @@ def _slice_refine(p, eng, seed, until, hor):
             _diag("slice-stage", stage="columns-done",
                   columns=sum(map(len, CAND.values())),
                   seconds_left=round(end-time.time(), 3))
-            if time.time() >= end - 1.0:
+            if time.time() >= end - audit_reserve:
                 eng.set_solution(cur)
                 eng.build_occ(hor)
                 break
@@ -785,7 +786,7 @@ def _slice_refine(p, eng, seed, until, hor):
             mdl.AddDecisionStrategy(
                 incumbent_vars, cp.CHOOSE_FIRST, cp.SELECT_MAX_VALUE)
             prs = eng.pair_conflicts(
-                flatc, max(0.1, min(2.0, end - time.time() - 1.0)))
+                flatc, max(0.1, min(2.0, end - time.time() - audit_reserve)))
             if prs and prs[0] < 0:
                 eng.set_solution(cur)
                 eng.build_occ(hor)
@@ -857,7 +858,7 @@ def _slice_refine(p, eng, seed, until, hor):
             new = None
             cuts = 0
             for _ in range(4 if use_branch_check else 1):
-                left = end - time.time()
+                left = end - time.time() - audit_reserve
                 if left <= 0.3:
                     break
                 sv = cp.CpSolver()
@@ -876,6 +877,8 @@ def _slice_refine(p, eng, seed, until, hor):
                 st = sv.Solve(mdl)
                 _diag("slice-stage", stage="solve-done",
                       status=int(st), seconds_left=round(end-time.time(), 3))
+                if time.time() >= end - audit_reserve:
+                    break
                 if st not in (cp.OPTIMAL, cp.FEASIBLE):
                     break
                 candidate = list(part)
@@ -1154,14 +1157,17 @@ def _certified_trivial(p):
 
 # -------------------------------------------------------------------- entry
 def algorithm(prob_info, timelimit=60):
+    started_at = time.time()
+    fallback = _certified_trivial(prob_info)
     try:
-        return _algorithm(prob_info, timelimit)
+        return _algorithm(prob_info, timelimit, fallback, started_at)
     except Exception:
-        return _certified_trivial(prob_info)
+        return fallback
 
 
-def _algorithm(prob_info, timelimit=60):
-    t0 = time.time()
+def _algorithm(prob_info, timelimit=60, certified_fallback=None,
+               started_at=None):
+    t0 = started_at if started_at is not None else time.time()
     deadline = t0 + float(timelimit) - 2.0
     n = len(prob_info["blocks"])
     span = deadline - t0
@@ -1202,4 +1208,6 @@ def _algorithm(prob_info, timelimit=60):
                 _diag("fallback", stage="rescued")
                 return sol
     _diag("fallback", stage="trivial")
-    return _certified_trivial(prob_info)
+    if certified_fallback is None:
+        certified_fallback = _certified_trivial(prob_info)
+    return certified_fallback

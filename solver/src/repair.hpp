@@ -39,6 +39,7 @@ struct Ctx {
     std::mt19937 rng;
     int horizon;
     const int* forcedBay = nullptr;   // optional block->bay lock (or -1)
+    bool releaseForcedBay = true;     // soft guidance may release mid-search
     int densMode = -1;                // -1: knob; 0: bay-area cap
                                       // (never falsely rejects);
                                       // 1: instance fill cap (filters)

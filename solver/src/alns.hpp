@@ -427,7 +427,7 @@ inline RunStats run(repair::Ctx& c, double seconds, const RunParams& rp,
            now() < seconds &&
            (rp.maxIters <= 0 || st.iters < rp.maxIters)) {
         st.iters++;
-        if (c.forcedBay &&
+        if (c.forcedBay && c.releaseForcedBay &&
             (rp.maxIters > 0
                  ? st.iters >= (long)(0.6 * rp.maxIters)
                  : now() > 0.6 * seconds))
@@ -545,6 +545,10 @@ inline RunStats run(repair::Ctx& c, double seconds, const RunParams& rp,
                 int A = tard[c.rng() % tard.size()];
                 int B = pl[c.rng() % pl.size()];
                 if (A != B) {
+                    if (c.forcedBay &&
+                        ((c.forcedBay[A] >= 0 && c.forcedBay[A] != s.bay[B]) ||
+                         (c.forcedBay[B] >= 0 && c.forcedBay[B] != s.bay[A])))
+                        goto no_swap;
                     int aB=s.bay[A], aX=s.x[A], aY=s.y[A], aE=s.e[A];
                     int bB=s.bay[B], bX=s.x[B], bY=s.y[B], bE=s.e[B];
                     c.oc->stamp(pb, s, A, false);
@@ -637,15 +641,23 @@ no_swap:
             thread_local std::vector<int> fbv;
             fbv.assign(pb.n, -1);
             fbv[c.tsBlk] = c.tsBay;
-            const int* save = c.forcedBay;
-            c.forcedBay = fbv.data();
-            ok = repair::insertGreedy(c, c.tsBlk, c.tsECap);
-            c.forcedBay = save;
-            if (ok)
-                for (int A : rem) {
-                    if (A == c.tsBlk) continue;
-                    if (!repair::insertGreedy(c, A, -1)) { ok = false; break; }
-                }
+            if (c.forcedBay && c.forcedBay[c.tsBlk] >= 0 &&
+                c.forcedBay[c.tsBlk] != c.tsBay) {
+                ok = false;
+            } else {
+                const int* save = c.forcedBay;
+                c.forcedBay = fbv.data();
+                ok = repair::insertGreedy(c, c.tsBlk, c.tsECap);
+                c.forcedBay = save;
+                if (ok)
+                    for (int A : rem) {
+                        if (A == c.tsBlk) continue;
+                        if (!repair::insertGreedy(c, A, -1)) {
+                            ok = false;
+                            break;
+                        }
+                    }
+            }
         } else {
             for (int A : rem) {
                 if (!repair::insertGreedy(c, A, -1)) { ok = false; break; }
