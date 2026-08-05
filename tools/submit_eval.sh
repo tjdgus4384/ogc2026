@@ -28,6 +28,11 @@ INSTSPEC="${4:-1-40}"
 SOLVER="${SOLVER:-$ROOT/solver}"
 PSEED="${SEED:-7}"
 PERNODE=10
+NODELIST="${OGC_NODELIST:-}"
+if [[ -n "$NODELIST" && ! "$NODELIST" =~ ^[A-Za-z0-9_,.-]+$ ]]; then
+    echo "invalid OGC_NODELIST: $NODELIST" >&2
+    exit 1
+fi
 
 if [[ -e "$ROOT/results/$TAG.json" ]]; then
     echo "results/$TAG.json already exists -- pick a new tag." >&2
@@ -158,11 +163,15 @@ cat > "$ROOT/runs/$TAG/META.json" <<EOF
  "submitted": "$(date -Iseconds)"}
 EOF
 
+SBATCH_LOCATION=()
+if [[ -n "$NODELIST" ]]; then
+    SBATCH_LOCATION=(--nodelist="$NODELIST")
+fi
 JIDS=()
 for ((o = 0; o < ${#ALL[@]}; o += PERNODE)); do
     CHUNK="${ALL[@]:o:PERNODE}"
     JID=$(sbatch --parsable --partition="$PART" --time="$WALL" \
-          --job-name="eval" \
+          "${SBATCH_LOCATION[@]}" --job-name="eval" \
           "$HARNESS/eval.sbatch" "$TAG" "$TL" "$SNAP" "$CHUNK" "$PSEED" \
           "$HARNESS/run_instance.py")
     JIDS+=("$JID")
