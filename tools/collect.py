@@ -90,6 +90,7 @@ def main():
             if not source.is_file():
                 sys.exit(f"runs/{a.tag}/ missing frozen input {source.name}")
             expected_instance_hash[key] = hashlib.sha256(source.read_bytes()).hexdigest()
+        expected_tl = meta.get("timelimits", {})
         bad_provenance = sorted(
             k for k, r in recs.items()
             if (r.get("data") != meta["data"]
@@ -98,7 +99,7 @@ def main():
                 or r.get("harness_sha256") != meta["harness_sha256"]
                 or r.get("data_snapshot_sha256") != meta["data_snapshot_sha256"]
                 or r.get("instance_sha256") != expected_instance_hash.get(k)
-                or r.get("tl") != meta["timelimit"])
+                or r.get("tl") != expected_tl.get(k, meta["timelimit"]))
         )
         if bad_provenance:
             sys.exit(f"runs/{a.tag}/ provenance mismatch: {bad_provenance}")

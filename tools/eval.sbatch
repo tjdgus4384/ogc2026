@@ -35,11 +35,20 @@ mapfile -t CPUS < <($PY -c "import os;print('\n'.join(map(str,sorted(os.sched_ge
 
 k=0
 for i in $INSTS; do
+    if [[ "$TL" == "official" ]]; then
+        case "$i" in
+            1) ITL=60;; 2) ITL=120;; 3) ITL=240;;
+            4) ITL=480;; 5) ITL=600;; 6) ITL=900;;
+            *) echo "no official time limit for instance $i" >&2; exit 2;;
+        esac
+    else
+        ITL="$TL"
+    fi
     span="${CPUS[$((k*4))]},${CPUS[$((k*4+1))]},${CPUS[$((k*4+2))]},${CPUS[$((k*4+3))]}"
     (
         ulimit -v $((16 * 1024 * 1024))
-        timeout --signal=TERM --kill-after=10 "$(( ${TL%.*} + 30 ))s" \
-            taskset -c "$span" "$PY" "$RUNNER" "$i" "$TL" \
+        timeout --signal=TERM --kill-after=10 "$(( ${ITL%.*} + 30 ))s" \
+            taskset -c "$span" "$PY" "$RUNNER" "$i" "$ITL" \
             "$OUT/prob_$i.json"
     ) > "$OUT/prob_$i.log" 2>&1 &
     k=$((k+1))

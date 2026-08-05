@@ -2,7 +2,7 @@
 # Submit an evaluation as whole-node Slurm jobs. NEVER run the solver on the
 # gateway.
 #
-#   tools/submit_eval.sh <tag> <timelimit_sec> [partition] [instances]
+#   tools/submit_eval.sh <tag> <timelimit_sec|official> [partition] [instances]
 #
 #   tag        names the run; raw output in runs/<tag>/, frozen into
 #              results/<tag>.json by tools/collect.py
@@ -56,7 +56,15 @@ PY
 )
 read -ra ALL <<< "$INSTS"
 
-WALL=$(python3 -c "import math;print(int(math.ceil(($TL+600)/60)))")
+if [[ "$TL" == "official" ]]; then
+    WALL=25
+    TL_JSON='"official"'
+    TL_MAP=', "timelimits": {"prob_1":60,"prob_2":120,"prob_3":240,"prob_4":480,"prob_5":600,"prob_6":900}'
+else
+    WALL=$(python3 -c "import math;print(int(math.ceil(($TL+600)/60)))")
+    TL_JSON="$TL"
+    TL_MAP=""
+fi
 mkdir -p "$ROOT/runs/$TAG"
 SNAP="$ROOT/runs/$TAG/solver_snapshot"
 CHECKER_SNAPSHOT="$ROOT/runs/$TAG/checker_snapshot.py"
@@ -120,7 +128,7 @@ export OGC_HARNESS_SHA256="$HARNESS_HASH"
 export OGC_CHECKER="$CHECKER_SNAPSHOT"
 
 cat > "$ROOT/runs/$TAG/META.json" <<EOF
-{"tag": "$TAG", "timelimit": $TL, "partition": "$PART", "instances": "$INSTSPEC",
+{"tag": "$TAG", "timelimit": $TL_JSON$TL_MAP, "partition": "$PART", "instances": "$INSTSPEC",
  "data": "${OGC_DATA:-train}",
  "solver_dir": "$(basename "$SOLVER")", "pseed": $PSEED,
  "solver_snapshot_sha256": "$SNAP_HASH", "checker_sha256": "$CHECKER_HASH",
@@ -141,6 +149,6 @@ for ((o = 0; o < ${#ALL[@]}; o += PERNODE)); do
     JIDS+=("$JID")
 done
 
-echo "submitted ${#JIDS[@]} node-jobs (${JIDS[*]})  tag=$TAG  tl=${TL}s  partition=$PART"
+echo "submitted ${#JIDS[@]} node-jobs (${JIDS[*]})  tag=$TAG  tl=$TL  partition=$PART"
 echo "  watch:   squeue -u \$USER"
 echo "  collect: python3 tools/collect.py $TAG"

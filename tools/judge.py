@@ -101,6 +101,8 @@ def cmd_pair(ta, tb):
                   "checker_sha256", "harness_sha256", "instances")
     missing = [k for k in comparable if k not in meta_a or k not in meta_b]
     mismatch = [k for k in comparable if meta_a.get(k) != meta_b.get(k)]
+    if meta_a.get("timelimits") != meta_b.get("timelimits"):
+        mismatch.append("timelimits")
     if missing or mismatch:
         sys.exit(f"non-comparable evidence: missing={missing}, mismatch={mismatch}")
     if set(A) != set(B):
