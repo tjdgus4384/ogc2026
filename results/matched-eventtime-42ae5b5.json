@@ -1,0 +1,277 @@
+{
+ "evidence_sha256": "8794849993c29efddaaa4f7cc68b7f765fc7a77ac633b492db2d3ad400a06fe3",
+ "manifest": {
+  "checker_sha256": "6d1e0e4b5e349f0bdc6f441969b4bb576af20f575d29e6cd8164653e03170025",
+  "data_snapshot_sha256": "16ce5c29f30234b5779f1b3cfcfac4e5e3075fbbc6c6e6e7e230130d82574dcc",
+  "expected_instances": [
+   "prob_3",
+   "prob_4",
+   "prob_5",
+   "prob_6"
+  ],
+  "experiment_env": {
+   "OGC_BRANCH_CHECK": "1",
+   "OGC_EVENT_SCHEDULE": "1",
+   "OGC_EXACT_EVENTS": "1",
+   "OGC_FULL_SLICE_OBJ": "1",
+   "OGC_NODELIST": "hamming",
+   "OGC_STRATIFIED_COLUMNS": "1"
+  },
+  "harness_sha256": "89202c32d161938595d09d7587677e334624a34f5ee7e8ec71c9ff0805d318ee",
+  "instance_sha256": {
+   "prob_3": "c4f47c17910cf7c4a8aceaff74e6a5b884f752c389383fdd95f2ae2ce9a708d4",
+   "prob_4": "6faa53137e705d44dc469a27e0f090fff07aec6b61712bb0edcaeba983d6d17a",
+   "prob_5": "823eb0f8211071ceafa56a275e45b0f7d01c3448fb2548c5e4798dd0e723db00",
+   "prob_6": "43b6103cd1f1be2cbcccaad6fb29da30302e6302d01e1e620c2c67cedb7244b2"
+  },
+  "job_ids": [
+   "63738"
+  ],
+  "manifest_sha256": "1bb2aa45a10b0fa8a1a4e9a44009bc9bf4d97406faee1ac1f760708c6e40dddc",
+  "runner_sha256": "0ab25d519436dd6bbc6032c4c37af7db90c101cdfb56cea33f162baf13ec5d50",
+  "schema_version": 1,
+  "solver_snapshot_sha256": "65ec0eb032c280a041d97a54c08c64fd2549c628eaf2ba4860a94f77249ebf38",
+  "tag": "matched-eventtime-42ae5b5"
+ },
+ "meta": {
+  "checker_sha256": "6d1e0e4b5e349f0bdc6f441969b4bb576af20f575d29e6cd8164653e03170025",
+  "data": "preliminary_test",
+  "data_snapshot_sha256": "16ce5c29f30234b5779f1b3cfcfac4e5e3075fbbc6c6e6e7e230130d82574dcc",
+  "expected_instances": [
+   "prob_3",
+   "prob_4",
+   "prob_5",
+   "prob_6"
+  ],
+  "experiment_env": {
+   "OGC_BRANCH_CHECK": "1",
+   "OGC_EVENT_SCHEDULE": "1",
+   "OGC_EXACT_EVENTS": "1",
+   "OGC_FULL_SLICE_OBJ": "1",
+   "OGC_NODELIST": "hamming",
+   "OGC_STRATIFIED_COLUMNS": "1"
+  },
+  "harness_sha256": "89202c32d161938595d09d7587677e334624a34f5ee7e8ec71c9ff0805d318ee",
+  "instances": "3-6",
+  "job_ids": [
+   "63738"
+  ],
+  "partition": "titan",
+  "pseed": 7,
+  "runner_sha256": "0ab25d519436dd6bbc6032c4c37af7db90c101cdfb56cea33f162baf13ec5d50",
+  "solver_commit": "42ae5b5",
+  "solver_dir": "solver",
+  "solver_dirty": false,
+  "solver_snapshot_sha256": "65ec0eb032c280a041d97a54c08c64fd2549c628eaf2ba4860a94f77249ebf38",
+  "submitted": "2026-08-05T18:49:06+09:00",
+  "tag": "matched-eventtime-42ae5b5",
+  "timelimit": "official",
+  "timelimits": {
+   "prob_1": 60,
+   "prob_2": 120,
+   "prob_3": 240,
+   "prob_4": 480,
+   "prob_5": 600,
+   "prob_6": 900
+  }
+ },
+ "runs": {
+  "prob_3": {
+   "checker_sha256": "6d1e0e4b5e349f0bdc6f441969b4bb576af20f575d29e6cd8164653e03170025",
+   "cpus": 4,
+   "data": "preliminary_test",
+   "data_snapshot_sha256": "16ce5c29f30234b5779f1b3cfcfac4e5e3075fbbc6c6e6e7e230130d82574dcc",
+   "error": null,
+   "experiment_env": {
+    "OGC_BRANCH_CHECK": "1",
+    "OGC_EVENT_SCHEDULE": "1",
+    "OGC_EXACT_EVENTS": "1",
+    "OGC_FULL_SLICE_OBJ": "1",
+    "OGC_NODELIST": "hamming",
+    "OGC_STRATIFIED_COLUMNS": "1"
+   },
+   "feasible": true,
+   "harness_sha256": "89202c32d161938595d09d7587677e334624a34f5ee7e8ec71c9ff0805d318ee",
+   "inst": "prob_3",
+   "instance_sha256": "c4f47c17910cf7c4a8aceaff74e6a5b884f752c389383fdd95f2ae2ce9a708d4",
+   "m": 3,
+   "maxrss_mb": 570.4,
+   "n": 200,
+   "obj1": 0.0,
+   "obj2": 3171,
+   "obj3": 419.0,
+   "objective": 78705.0,
+   "overrun": false,
+   "runner_sha256": "0ab25d519436dd6bbc6032c4c37af7db90c101cdfb56cea33f162baf13ec5d50",
+   "runtime": {
+    "cpu_model": "Intel(R) Xeon(R) CPU E5-2650 v4 @ 2.20GHz",
+    "executable_sha256": "f601ba86bc9d2c5d578412a02cef9b34389f7dc8f85c4be4d13103ef0e1a13c4",
+    "kernel": "5.15.0-186-generic",
+    "machine": "x86_64",
+    "packages": {
+     "ortools": "9.15.6755",
+     "pybind11": "3.0.3",
+     "shapely": "2.1.2"
+    },
+    "python": "3.12.13 | packaged by conda-forge | (main, Mar  5 2026, 16:50:00) [GCC 14.3.0]"
+   },
+   "runtime_sha256": "3afcf48aa296edafcb9dcdfd5e8c6e8f1da89a9d2a8dc77edcfbcf2ae22870ec",
+   "seed": 7,
+   "slurm_job_id": "63738",
+   "slurm_partition": "titan",
+   "slurm_step_id": "0",
+   "solution_sha256": "33727131090f060f2705d8fdb59561d93958a65b8467e840d591c72cd7a43738",
+   "solver": "solver_snapshot",
+   "tl": 240.0,
+   "wall": 224.25
+  },
+  "prob_4": {
+   "checker_sha256": "6d1e0e4b5e349f0bdc6f441969b4bb576af20f575d29e6cd8164653e03170025",
+   "cpus": 4,
+   "data": "preliminary_test",
+   "data_snapshot_sha256": "16ce5c29f30234b5779f1b3cfcfac4e5e3075fbbc6c6e6e7e230130d82574dcc",
+   "error": null,
+   "experiment_env": {
+    "OGC_BRANCH_CHECK": "1",
+    "OGC_EVENT_SCHEDULE": "1",
+    "OGC_EXACT_EVENTS": "1",
+    "OGC_FULL_SLICE_OBJ": "1",
+    "OGC_NODELIST": "hamming",
+    "OGC_STRATIFIED_COLUMNS": "1"
+   },
+   "feasible": true,
+   "harness_sha256": "89202c32d161938595d09d7587677e334624a34f5ee7e8ec71c9ff0805d318ee",
+   "inst": "prob_4",
+   "instance_sha256": "6faa53137e705d44dc469a27e0f090fff07aec6b61712bb0edcaeba983d6d17a",
+   "m": 3,
+   "maxrss_mb": 707.3,
+   "n": 150,
+   "obj1": 195.0,
+   "obj2": 2033,
+   "obj3": 4168.0,
+   "objective": 3239366.0,
+   "overrun": false,
+   "runner_sha256": "0ab25d519436dd6bbc6032c4c37af7db90c101cdfb56cea33f162baf13ec5d50",
+   "runtime": {
+    "cpu_model": "Intel(R) Xeon(R) CPU E5-2650 v4 @ 2.20GHz",
+    "executable_sha256": "f601ba86bc9d2c5d578412a02cef9b34389f7dc8f85c4be4d13103ef0e1a13c4",
+    "kernel": "5.15.0-186-generic",
+    "machine": "x86_64",
+    "packages": {
+     "ortools": "9.15.6755",
+     "pybind11": "3.0.3",
+     "shapely": "2.1.2"
+    },
+    "python": "3.12.13 | packaged by conda-forge | (main, Mar  5 2026, 16:50:00) [GCC 14.3.0]"
+   },
+   "runtime_sha256": "3afcf48aa296edafcb9dcdfd5e8c6e8f1da89a9d2a8dc77edcfbcf2ae22870ec",
+   "seed": 7,
+   "slurm_job_id": "63738",
+   "slurm_partition": "titan",
+   "slurm_step_id": "1",
+   "solution_sha256": "e59ff663c9bcb88d906b7b556162bda81910a3f29723d3b10ef141c5db67177c",
+   "solver": "solver_snapshot",
+   "tl": 480.0,
+   "wall": 465.15
+  },
+  "prob_5": {
+   "checker_sha256": "6d1e0e4b5e349f0bdc6f441969b4bb576af20f575d29e6cd8164653e03170025",
+   "cpus": 4,
+   "data": "preliminary_test",
+   "data_snapshot_sha256": "16ce5c29f30234b5779f1b3cfcfac4e5e3075fbbc6c6e6e7e230130d82574dcc",
+   "error": null,
+   "experiment_env": {
+    "OGC_BRANCH_CHECK": "1",
+    "OGC_EVENT_SCHEDULE": "1",
+    "OGC_EXACT_EVENTS": "1",
+    "OGC_FULL_SLICE_OBJ": "1",
+    "OGC_NODELIST": "hamming",
+    "OGC_STRATIFIED_COLUMNS": "1"
+   },
+   "feasible": true,
+   "harness_sha256": "89202c32d161938595d09d7587677e334624a34f5ee7e8ec71c9ff0805d318ee",
+   "inst": "prob_5",
+   "instance_sha256": "823eb0f8211071ceafa56a275e45b0f7d01c3448fb2548c5e4798dd0e723db00",
+   "m": 4,
+   "maxrss_mb": 711.8,
+   "n": 200,
+   "obj1": 778.0,
+   "obj2": 3532,
+   "obj3": 4551.0,
+   "objective": 11003081.0,
+   "overrun": false,
+   "runner_sha256": "0ab25d519436dd6bbc6032c4c37af7db90c101cdfb56cea33f162baf13ec5d50",
+   "runtime": {
+    "cpu_model": "Intel(R) Xeon(R) CPU E5-2650 v4 @ 2.20GHz",
+    "executable_sha256": "f601ba86bc9d2c5d578412a02cef9b34389f7dc8f85c4be4d13103ef0e1a13c4",
+    "kernel": "5.15.0-186-generic",
+    "machine": "x86_64",
+    "packages": {
+     "ortools": "9.15.6755",
+     "pybind11": "3.0.3",
+     "shapely": "2.1.2"
+    },
+    "python": "3.12.13 | packaged by conda-forge | (main, Mar  5 2026, 16:50:00) [GCC 14.3.0]"
+   },
+   "runtime_sha256": "3afcf48aa296edafcb9dcdfd5e8c6e8f1da89a9d2a8dc77edcfbcf2ae22870ec",
+   "seed": 7,
+   "slurm_job_id": "63738",
+   "slurm_partition": "titan",
+   "slurm_step_id": "2",
+   "solution_sha256": "19306474185a43eab8a6cbe26e3579f28561bee277557d7bc2e19ac34c688034",
+   "solver": "solver_snapshot",
+   "tl": 600.0,
+   "wall": 582.77
+  },
+  "prob_6": {
+   "checker_sha256": "6d1e0e4b5e349f0bdc6f441969b4bb576af20f575d29e6cd8164653e03170025",
+   "cpus": 4,
+   "data": "preliminary_test",
+   "data_snapshot_sha256": "16ce5c29f30234b5779f1b3cfcfac4e5e3075fbbc6c6e6e7e230130d82574dcc",
+   "error": null,
+   "experiment_env": {
+    "OGC_BRANCH_CHECK": "1",
+    "OGC_EVENT_SCHEDULE": "1",
+    "OGC_EXACT_EVENTS": "1",
+    "OGC_FULL_SLICE_OBJ": "1",
+    "OGC_NODELIST": "hamming",
+    "OGC_STRATIFIED_COLUMNS": "1"
+   },
+   "feasible": true,
+   "harness_sha256": "89202c32d161938595d09d7587677e334624a34f5ee7e8ec71c9ff0805d318ee",
+   "inst": "prob_6",
+   "instance_sha256": "43b6103cd1f1be2cbcccaad6fb29da30302e6302d01e1e620c2c67cedb7244b2",
+   "m": 3,
+   "maxrss_mb": 918.4,
+   "n": 250,
+   "obj1": 4230.0,
+   "obj2": 2233,
+   "obj3": 7842.0,
+   "objective": 29395574.0,
+   "overrun": false,
+   "runner_sha256": "0ab25d519436dd6bbc6032c4c37af7db90c101cdfb56cea33f162baf13ec5d50",
+   "runtime": {
+    "cpu_model": "Intel(R) Xeon(R) CPU E5-2650 v4 @ 2.20GHz",
+    "executable_sha256": "f601ba86bc9d2c5d578412a02cef9b34389f7dc8f85c4be4d13103ef0e1a13c4",
+    "kernel": "5.15.0-186-generic",
+    "machine": "x86_64",
+    "packages": {
+     "ortools": "9.15.6755",
+     "pybind11": "3.0.3",
+     "shapely": "2.1.2"
+    },
+    "python": "3.12.13 | packaged by conda-forge | (main, Mar  5 2026, 16:50:00) [GCC 14.3.0]"
+   },
+   "runtime_sha256": "3afcf48aa296edafcb9dcdfd5e8c6e8f1da89a9d2a8dc77edcfbcf2ae22870ec",
+   "seed": 7,
+   "slurm_job_id": "63738",
+   "slurm_partition": "titan",
+   "slurm_step_id": "3",
+   "solution_sha256": "9c8596ee63c6d4de8d6566eab3a03054e79a5f8fdcc0b6ea7b35c3de7dcf06a9",
+   "solver": "solver_snapshot",
+   "tl": 900.0,
+   "wall": 880.64
+  }
+ },
+ "scheduler_receipts": "63738|eval|COMPLETED|0:0|882||160G|40|titan\n63738.batch|batch|COMPLETED|0:0|882|15900K||40|\n63738.0|python|COMPLETED|0:0|225|586484K||4|\n63738.1|python|COMPLETED|0:0|466|692364K||4|\n63738.2|python|COMPLETED|0:0|584|697944K||4|\n63738.3|python|COMPLETED|0:0|882|804704K||4|\n"
+}

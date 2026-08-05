@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "decision": "preserve_canonical_v5.3",
+  "adopted": [],
+  "reason": "Every tested mechanism remained checker-feasible, but no treatment cleared the frozen adoption gate against canonical v5.3. The strongest restricted exact bundle improved the current development solver but was a statistical wash against v5.3; event-time compaction also washed out and regressed the matched baseline mean. No public-instance-specific selector was introduced.",
+  "baseline": {
+    "path": "submissions/2026-08-04_v53-finals.zip",
+    "sha256": "24ad2e245bccdf451815757a4f450d5c6678e27225cbfdb775251ede81a84bc2",
+    "matched_evidence": "results/matched-v53-b30d1f6.json",
+    "matched_evidence_sha256": "8767dd29d51d1c652357e2afa689d72d39acca5a85f35a266caf424721d9eeec",
+    "shipcheck_p3_p6": "results/ship-v53-p36.json",
+    "shipcheck_p3_p6_sha256": "842a2730093346ab8f134c98687f15e1527c47956c1b33deb825bc699c7a2069",
+    "shipcheck_train_final": "results/ship-v53-tf.json",
+    "shipcheck_train_final_sha256": "532b92e999cd397353fdd3c0325a85a90e1f0d2615c8c691235d08d315c27393"
+  },
+  "matched_trials": {
+    "current": {
+      "evidence": "results/matched-current-42ae5b5.json",
+      "sha256": "c5a1277ecc9b2bca755680a2b0cd0f94b71545675924fec32f2eb370832001d1",
+      "versus_v5_3": {"wins": 1, "losses": 3, "ties": 0, "mean_percent": 3.67, "verdict": "WASH"}
+    },
+    "restricted_exact_assignment_geometry_time": {
+      "treatment": ["OGC_BRANCH_CHECK=1", "OGC_EXACT_EVENTS=1", "OGC_FULL_SLICE_OBJ=1", "OGC_STRATIFIED_COLUMNS=1"],
+      "evidence": "results/matched-exactevents-42ae5b5.json",
+      "sha256": "9b39f2c0f3e715ceeb60e514b2206c041b3db153de04ef4263ab558e9983c578",
+      "versus_current": {"wins": 3, "losses": 1, "ties": 0, "mean_percent": -4.93, "verdict": "WASH"},
+      "versus_v5_3": {"wins": 1, "losses": 1, "ties": 2, "mean_percent": -1.64, "verdict": "WASH"}
+    },
+    "event_time_compaction": {
+      "treatment": ["OGC_BRANCH_CHECK=1", "OGC_EXACT_EVENTS=1", "OGC_FULL_SLICE_OBJ=1", "OGC_STRATIFIED_COLUMNS=1", "OGC_EVENT_SCHEDULE=1"],
+      "evidence": "results/matched-eventtime-42ae5b5.json",
+      "sha256": "91618e00bc48a1c1bff1325afcc2e51ae4b90fa1852b4fb10f1349ba21efdcd5",
+      "versus_current": {"wins": 3, "losses": 1, "ties": 0, "mean_percent": -2.35, "verdict": "WASH"},
+      "versus_v5_3": {"wins": 1, "losses": 2, "ties": 1, "mean_percent": 1.12, "verdict": "WASH"}
+    }
+  },
+  "other_mechanisms": {
+    "large_neighborhood_and_population_diversity": {
+      "verdict": "refuted_or_unproven",
+      "evidence": "results/e2e-opt/strong-mechanisms-d004870/VERDICT.json",
+      "sha256": "5f7dc3de9327118ea6c3922cd91be71aad95203790195a16ba644c84a3eef31f"
+    },
+    "multiscale_exact_and_population_exact": {
+      "verdict": "rejected_exploratory",
+      "evidence": "results/e2e-opt/campaign4-exploratory-f575c59/VERDICT.json",
+      "sha256": "026111ae8ae21370769729f7bbfe0c4cba007d472fa2d4cea4eaa1a436fc6126"
+    }
+  },
+  "execution_constraints": {
+    "slurm_only": true,
+    "partition": "titan",
+    "concurrent_job_limit": 8,
+    "maximum_observed_concurrent_jobs": 4,
+    "matched_node": "hamming",
+    "official_p3_p6_limits": true,
+    "solution_replay": true,
+    "frozen_evidence": true
+  }
+}
