@@ -121,33 +121,39 @@ inline Pt interiorPoint(const Poly& poly) {
     return c;
 }
 
-// Positive-area overlap. The caller supplies a strictly-interior sample of
-// each polygon (cached per shape, translated) and has already applied a bbox
-// gate, so no O(V^2) interior search runs here.
-//   any proper edge crossing            => interiors intersect
-//   else: containment (interior sample of one strictly inside the other)
-//   else: vertex strictly inside        -- safety for collinear-boundary cases
-inline bool overlapsAreaIP(const Poly& A, const Pt& ipA,
-                           const Poly& B, const Pt& ipB) {
+// Positive-area overlap with B translated by (bx,by) relative to A.
+// This avoids materializing translated polygons in the exact hot path.
+inline bool overlapsAreaOffset(const Poly& A, const Pt& ipA,
+                               const Poly& B, const Pt& ipB,
+                               double bx, double by) {
     if (A.size() < 3 || B.size() < 3) return false;
-    int na = (int)A.size(), nb = (int)B.size();
+    const int na = (int)A.size(), nb = (int)B.size();
     const double orientA = signedArea2(A) >= 0.0 ? 1.0 : -1.0;
     const double orientB = signedArea2(B) >= 0.0 ? 1.0 : -1.0;
     for (int i = 0; i < na; i++) {
         const Pt& a1 = A[i]; const Pt& a2 = A[(i + 1) % na];
         for (int j = 0; j < nb; j++) {
-            const Pt& b1 = B[j]; const Pt& b2 = B[(j + 1) % nb];
+            const Pt b1{B[j].x + bx, B[j].y + by};
+            const Pt b2{B[(j + 1) % nb].x + bx,
+                        B[(j + 1) % nb].y + by};
             if (properCross(a1, a2, b1, b2) ||
                 collinearInteriorOverlap(a1, a2, orientA,
                                          b1, b2, orientB))
                 return true;
         }
     }
-    if (strictlyInside(B, ipA)) return true;
-    if (strictlyInside(A, ipB)) return true;
-    for (auto& v : A) if (strictlyInside(B, v)) return true;
-    for (auto& v : B) if (strictlyInside(A, v)) return true;
+    if (strictlyInside(B, {ipA.x - bx, ipA.y - by})) return true;
+    if (strictlyInside(A, {ipB.x + bx, ipB.y + by})) return true;
+    for (const auto& v : A)
+        if (strictlyInside(B, {v.x - bx, v.y - by})) return true;
+    for (const auto& v : B)
+        if (strictlyInside(A, {v.x + bx, v.y + by})) return true;
     return false;
+}
+
+inline bool overlapsAreaIP(const Poly& A, const Pt& ipA,
+                           const Poly& B, const Pt& ipB) {
+    return overlapsAreaOffset(A, ipA, B, ipB, 0.0, 0.0);
 }
 
 } // namespace geom

@@ -96,13 +96,8 @@ inline bool overlapsLay(const OrientGeom& ga, int la, double ax, double ay,
             s.generationB == gb.cacheGeneration) return s.val != 0;
     }
     const Poly& A = ga.layers[la]; const Poly& B = gb.layers[lb];
-    thread_local Poly ta, tb;
-    ta.resize(A.size()); tb.resize(B.size());
-    for (size_t i = 0; i < A.size(); i++) ta[i] = {A[i].x + ax, A[i].y + ay};
-    for (size_t i = 0; i < B.size(); i++) tb[i] = {B[i].x + bx, B[i].y + by};
-    geom::Pt ia{ga.ip[la].x + ax, ga.ip[la].y + ay};
-    geom::Pt ib{gb.ip[lb].x + bx, gb.ip[lb].y + by};
-    bool r = geom::overlapsAreaIP(ta, ia, tb, ib);
+    bool r = geom::overlapsAreaOffset(
+        A, ga.ip[la], B, gb.ip[lb], bx - ax, by - ay);
     if (exact) {
         OvSlot& s = memo[h & (memo.size() - 1)];
         s.key = h;
