@@ -1,0 +1,58 @@
+{
+  "schemaVersion": 1,
+  "purpose": "Pre-registered closure/treatment policy for the C++ parallel-population candidate (ralplan Revision 4, ARCH-POP-GATE-007 / SUBMISSION-POP-006).",
+  "canonical": {
+    "zipPath": "submissions/2026-08-04_v53-finals.zip",
+    "zipSha256": "24ad2e245bccdf451815757a4f450d5c6678e27225cbfdb775251ede81a84bc2"
+  },
+  "lineageRoot": "/data_fast/home/tjdgus4384/priv/ogc2026/solver",
+  "directRoots": [
+    "myalgorithm.py",
+    "src/api.cpp",
+    "src/kernel_parallel_bandit.hpp",
+    "src/kernel_bandit.hpp",
+    "src/repair_scored.hpp",
+    "src/repair_nfp_contact.hpp"
+  ],
+  "translationUnit": "src/api.cpp",
+  "knownApiFloor": [
+    {"consumer": "kernel_parallel_bandit.hpp,kernel_bandit.hpp", "symbol": "alns::audit(pb,s,bad,exactEvents)", "provider": "src/alns.hpp"},
+    {"consumer": "alns.hpp,repair kernels", "symbol": "core::vpExactEvents", "provider": "src/core.hpp"},
+    {"consumer": "population validation", "symbol": "core::stateExactEvents", "provider": "src/core.hpp"},
+    {"consumer": "bandit configuration", "symbol": "repair::Ctx.prefP/.exactEvents/.hasDeadline/.deadline", "provider": "src/repair.hpp"},
+    {"consumer": "deadline-aware paths", "symbol": "repair::deadlineExpired", "provider": "src/repair.hpp"},
+    {"consumer": "scored repair", "symbol": "repair::shapeContactSets", "provider": "src/repair.hpp"},
+    {"consumer": "scored repair", "symbol": "repair::placementFeasible", "provider": "src/repair.hpp"},
+    {"consumer": "parallel bandit dispatch", "symbol": "alns::RunParams.repairMode + alns::insertByMode", "provider": "src/alns.hpp"},
+    {"consumer": "production driver", "symbol": "sscore.Engine.run_kernel_parallel_bandit", "provider": "src/api.cpp"},
+    {"consumer": "prefP chain (canonical _spec_rule preservation)", "symbol": "sscore.Engine.set_pref_p", "provider": "src/api.cpp"}
+  ],
+  "forbiddenPatterns": {
+    "envSelectors": ["OGC_CPP_", "OGC_POP_EXACT", "OGC_EXACT_EVENTS", "OGC_EVENT_SCHEDULE", "OGC_ACCESS_COHORT", "OGC_FULL_SLICE_OBJ", "OGC_ANCHORED_COLUMNS", "OGC_BRANCH_CHECK", "OGC_STRATIFIED_COLUMNS", "OGC_BALANCE_COHORT", "OGC_SHAPE_CONTACTS", "OGC_EXACT_K", "OGC_EXACT_NCAND", "OGC_EXACT_SLICE_ONLY"],
+    "symbols": ["releaseForcedBay", "no_swap", "set_exact_events", "run_kernel_bandit\"", "runKernelBandit", "kernel_memetic", "kernel_beam_check", "kernel_decomp", "kernel_event_order", "kernel_pattern_master", "kernel_parallel_benders", "kernel_mcts_coalition", "kernel_ejection_chain", "kernel_large_ruin", "kernel_island_memetic", "kernel_assignment_flow", "kernel_assignment_cycles", "kernel_backbone_repack", "kernel_progressive_mcts", "repair_learned", "repair_lookahead", "repair_exact_coalition", "compact_event_schedule", "compactEventSchedule", "access_cohort", "accessCohort", "_certified_trivial", "_seed_free(p, asg=asg, pref_p=pref_p, deadline"],
+    "note": "kernel_bandit.hpp ships as a library dependency of kernel_parallel_bandit.hpp; its scalar runtime surface (Engine::runKernelBandit / run_kernel_bandit binding) must NOT exist in the candidate. v5.5 seed-lock repair, event compact, assignment flow/cycles, Benders/MCTS/pattern/learned/backbone/large-ruin and every OGC_CPP_* runtime switch are prohibited."
+  },
+  "allowedCanonicalEnv": ["OGC_SLICE", "OGC_DIAG", "OGC_SEED", "OGC_PREFP"],
+  "allowedCanonicalEnvNote": "OGC_PREFP remains only as canonical knobs.hpp text (unused by the candidate treatment; driver boost is engine-owned via set_pref_p). OGC_SLICE is the canonical-shipped ablation switch and keeps its v5.3 default-on semantics.",
+  "runtimeTreatment": {
+    "baseBudgetDefinition": "B = sec computed by canonical _arm_free after the gate-reserve subtraction (sec = max(2, deadline - now - reserve)) and before any carve",
+    "share": 0.15,
+    "eligibility": "not _pop_here and B > 60.0; _pop_here (sec >= 150 and sec/n <= 1.6) keeps the unchanged Python population path with zero tail",
+    "callOrder": ["seed construction", "primary run_portfolio + canonical slice handling within 0.85*B", "C++ parallel population tail from the engine-audited incumbent", "existing _assign_descent polish", "official checker _gate + runner-up audition", "canonical fallback ladder"],
+    "startingBoardAuthority": "engine internally audited incumbent; no additional official-checker round trip before the tail; final authority stays with canonical _gate",
+    "seedXor": "0xA11CE",
+    "deadlineGuard": "tail runs only if now + 1.0 < deadline - reserve and is clamped to min(_pop_tail, deadline - reserve - now)"
+  },
+  "reviewerSchema": {
+    "dispositions": ["required", "canonical-unchanged", "unrelated-reject"],
+    "rule": "every added/modified hunk must be signed required with a requiredBy trace, or excluded as unrelated-reject; any unclear separation fails candidate preparation"
+  },
+  "pairGate": {
+    "instances": {"4": 480, "5": 600, "6": 900},
+    "dataset": "data/preliminary_test",
+    "seeds": [7, 19, 31, 41, 42, 59, 83, 113],
+    "orderBalance": {"AB": [7, 31, 42, 83], "BA": [19, 41, 59, 113]},
+    "maxConcurrent": 8,
+    "quality": {"minWins": 18, "signTestP": 0.05, "medianDelta": -0.010, "perInstanceMinWins": 5, "catastrophicDelta": 0.10}
+  }
+}
