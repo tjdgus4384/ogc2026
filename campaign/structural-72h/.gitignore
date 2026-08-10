@@ -1,0 +1,13 @@
+# Generated identities and scheduler/runtime evidence stay isolated until CAS sealing.
+builds/
+registry/generated/
+worktrees/
+runtime/
+raw/
+slurm/
+*.so
+*.o
+*.sbatch.generated
+ledger.live.json
+leases/
+__pycache__/

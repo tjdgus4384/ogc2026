@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "campaign_uuid": "structural-72h-f6b9772f-f683-4823-89d9-e62ad91b4382",
+  "abi_version": 1,
+  "protected": {
+    "docs/[OGC2026_TechReport]_MSGA.pdf": "37a66b909d1326559223ad632bc29d2997fbc96b24ae98ce3e56d50af0d864fe"
+  },
+  "slurm": {
+    "maximum_rows": 110,
+    "score_rows": 88,
+    "background_rows": 22,
+    "maximum_active": 8,
+    "maximum_evaluation_active": 6,
+    "maximum_background_active": 2,
+    "nodes_per_job": 1,
+    "cpus_per_job": 4,
+    "score_memory_mib": 16384,
+    "background_memory_mib": 8192,
+    "maximum_node_wall_seconds": 113596,
+    "maximum_core_seconds_with_local": 473584,
+    "maximum_gib_seconds": 1651936
+  },
+  "closure_hours": {"fence": 70, "live_clear": 71, "seal_end": 71.5, "receipt": 72},
+  "terminal_statuses": ["COMPLETED", "FAILED", "CANCELLED", "NOT_ADMITTED", "AMBIGUOUS_FENCED"],
+  "caps": {
+    "program_tracked_files": 64,
+    "program_tracked_bytes": 2097152,
+    "campaign_tracked_files": 160,
+    "campaign_tracked_bytes": 5242880,
+    "artifact_index_rows": 1024,
+    "artifact_index_bytes": 262144,
+    "raw_files": 256,
+    "raw_bytes": 8589934592,
+    "cas_objects": 512,
+    "cas_bytes": 6442450944
+  },
+  "reducer": {
+    "discovery_mean_max": "-1/50",
+    "discovery_wins_min": 5,
+    "discovery_pairs": 8,
+    "holdout_mean_max": "-1/50",
+    "holdout_median_max": "-1/100",
+    "holdout_wins_min": 10,
+    "holdout_pairs": 12,
+    "pair_regression_max": "1/20"
+  }
+}
