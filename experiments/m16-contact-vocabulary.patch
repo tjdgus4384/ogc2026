@@ -1,0 +1,75 @@
+--- builds/m8/src/repair.hpp	2026-08-12 02:49:58.850503046 +0900
++++ builds/m16/src/repair.hpp	2026-08-12 05:30:49.192342144 +0900
+@@ -79,6 +79,56 @@
+ //   phases 1-2: screen aggressively (speed; misses are re-caught below)
+ //   phase 3:    NO screen -- the completeness net must stay unconditional.
+ // Screening phase 3 collapsed dense boards (v1 candidate: prob_16 +308%).
++// Candidate x/y offsets that put a vertex of A exactly against a vertex of a
++// time-overlapping resident. cornerSetsRB only offers the corners of residual
++// BOUNDING BOXES, so a position that tucks A into a resident's concavity can
++// never be generated -- and the yard is polygon-shaped. Measured on P6's most
++// congested window: bay occupancy sits at 58% (max 62.8%) of polygon area
++// while demand is 120% of capacity and 118 blocks queue outside for 3,364
++// tardy days, so the gap is reachability, not room. (The 07-30 "peaks are at
++// 99-107%, this is the physical frontier" reading measured BOUNDING BOX area,
++// which double-counts nested blocks and exceeds 100% by construction.)
++// Add integer translations induced by irregular polygon vertex contacts.
++inline void shapeContactSets(const Ctx& c, int A, int oi, int j, int e, int f,
++                             std::vector<int>& xs, std::vector<int>& ys,
++                             size_t axisCap = 96) {
++    const auto& ga = c.pb->geo[A].orients[oi];
++    const int x0 = (int)std::ceil(-ga.bb.x0);
++    const int x1 = (int)std::floor(c.pb->bayW[j] - ga.bb.x1);
++    const int y0 = (int)std::ceil(-ga.bb.y0);
++    const int y1 = (int)std::floor(c.pb->bayH[j] - ga.bb.y1);
++    auto add = [](std::vector<int>& out, double v, int lo, int hi, size_t cap) {
++        if (out.size() >= cap) return;
++        for (int q : {(int)std::floor(v), (int)std::ceil(v)})
++            if (q >= lo && q <= hi &&
++                std::find(out.begin(), out.end(), q) == out.end())
++                out.push_back(q);
++    };
++    for (int k : c.s->byBay[j]) {
++        if (xs.size() >= axisCap && ys.size() >= axisCap) break;
++        if (!c.s->placed[k] || !(c.s->e[k] < f && e < c.s->f[k])) continue;
++        const auto& gk = c.pb->geo[k].orients[c.s->ori[k]];
++        for (const auto& pa : ga.layers) {
++            for (const auto& va : pa) {
++                for (const auto& pk : gk.layers) {
++                    for (const auto& vk : pk) {
++                        add(xs, vk.x + c.s->x[k] - va.x, x0, x1, axisCap);
++                        add(ys, vk.y + c.s->y[k] - va.y, y0, y1, axisCap);
++                        if (xs.size() >= axisCap && ys.size() >= axisCap) break;
++                    }
++                    if (xs.size() >= axisCap && ys.size() >= axisCap) break;
++                }
++                if (xs.size() >= axisCap && ys.size() >= axisCap) break;
++            }
++            if (xs.size() >= axisCap && ys.size() >= axisCap) break;
++        }
++    }
++    std::sort(xs.begin(), xs.end());
++    xs.erase(std::unique(xs.begin(), xs.end()), xs.end());
++    std::sort(ys.begin(), ys.end());
++    ys.erase(std::unique(ys.begin(), ys.end()), ys.end());
++}
++
+ inline bool areaRoom(const Ctx& c, int j, double areaA, int e, int f) {
+     // in polygon currency the ceiling is the bay area times what
+     // polygons of THIS instance can actually reach (their mean
+@@ -171,6 +221,7 @@
+     rbCollect(c, j, e, f, rbs);
+     for (int oi : oris) {
+         cornerSetsRB(c, A, oi, j, rbs, xs, ys);
++        shapeContactSets(c, A, oi, j, e, f, xs, ys, 48);
+         for (int y : ys) {
+             for (int x : xs) {
+                 if (c.oc->hitsSnap(sn, A, oi, x, y)) continue;
+@@ -381,6 +432,7 @@
+             rbCollect(c, j, e, f, rbs);
+             for (int oi : oris) {
+                 cornerSetsRB(c, A, oi, j, rbs, xs, ys);
++                shapeContactSets(c, A, oi, j, e, f, xs, ys, 48);
+                 for (int y : ys) for (int x : xs) {
+                     if (c.oc->hits(A, oi, j, x, y, e, f)) continue;
+                     s.bay[A]=j; s.ori[A]=oi; s.x[A]=x; s.y[A]=y;
