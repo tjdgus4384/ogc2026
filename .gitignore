@@ -24,3 +24,12 @@ archive/exp/*/sscore*.so
 
 # isolated probe/ship builds (source is tracked as patches under results/)
 builds/
+
+# campaign outputs: keep source/contracts/tests in Git; keep generated evidence local
+campaign/*/evidence/
+campaign/*/toolchain/
+campaign/*/build/
+campaign/*/E0-ro/
+campaign/*/B0-canonical/
+campaign/*/lanes/E0-*/
+campaign/math-first-r1/corpus/model-cases.jsonl

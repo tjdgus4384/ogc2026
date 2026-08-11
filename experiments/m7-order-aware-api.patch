@@ -1,0 +1,65 @@
+--- builds/b53/src/api.cpp	1980-01-01 00:00:00.000000000 +0900
++++ builds/m7/src/api.cpp	2026-08-12 02:17:28.684504469 +0900
+@@ -6,6 +6,7 @@
+ #include <pybind11/pybind11.h>
+ #include <pybind11/stl.h>
+ #include "alns.hpp"
++#include <map>
+ #ifdef _OPENMP
+ #include <omp.h>
+ #endif
+@@ -160,6 +161,46 @@
+         }
+         return out;
+     }
++    // Intra-day ENTRY rank per block (-1 = unplaced). vpConservative rule 2b
++    // only proves that SOME order of a same-day, same-bay batch is legal; the
++    // emitted solution has to actually list one, and it must be the same
++    // geometry that proved it -- so the kernel hands the order to the driver
++    // rather than have _recs_to_sol re-derive it in Python.
++    std::vector<int> entryRanks() {
++        std::vector<int> rank(pb.n, -1);
++        std::map<std::pair<int, int>, std::vector<int>> groups;
++        for (int i = 0; i < pb.n; i++)
++            if (sol.placed[i]) groups[{sol.bay[i], sol.e[i]}].push_back(i);
++        for (auto& kv : groups) {
++            std::vector<int>& g = kv.second;
++            std::sort(g.begin(), g.end());
++            const int m = (int)g.size();
++            if (m == 1) { rank[g[0]] = 0; continue; }
++            if (m > core::kBatchCap) {            // rule 2b never admits these
++                for (int r = 0; r < m; r++) rank[g[r]] = r;
++                continue;
++            }
++            uint32_t before[core::kBatchCap] = {0};
++            for (int u = 0; u < m; u++)
++                for (int v = 0; v < m; v++)
++                    if (u != v && core::entryBlocked(pb, sol, g[v], g[u]))
++                        before[v] |= 1u << u;
++            uint32_t done = 0;
++            for (int r = 0; r < m; r++) {
++                int pick = -1;
++                for (int v = 0; v < m && pick < 0; v++)
++                    if (!(done & (1u << v)) && (before[v] & ~done) == 0)
++                        pick = v;
++                if (pick < 0) {                   // unreachable if 2b held
++                    for (int q = 0; q < m; q++)
++                        if (!(done & (1u << q))) { pick = q; break; }
++                }
++                rank[g[pick]] = r;
++                done |= 1u << pick;
++            }
++        }
++        return rank;
++    }
+     std::vector<double> objective() {
+         auto o = core::evaluate(pb, sol);
+         return {o.z1, o.z2, o.z3, o.total};
+@@ -784,6 +825,7 @@
+         .def("finalize_load", &Engine::finalizeLoad)
+         .def("set_solution", &Engine::setSolution)
+         .def("get_solution", &Engine::getSolution)
++        .def("entry_ranks", &Engine::entryRanks)
+         .def("vp_ok", &Engine::vpOK)
+         .def("audit_state", &Engine::auditState);
+ }

@@ -14,6 +14,98 @@
 
 목표는 **다른 팀이 같은 인스턴스·같은 TL에서 실제로 달성한 값** → 물리 한계가 아니라 구조적 결손.
 
+## 08-12 재기동 — 측정 규약 교체 + 커널 결함 발견
+
+08-07~11의 5개 캠페인(fundamental-r2, math-first-r1, score-72h, structural-72h,
+minimum-target g01~g36)은 **채택 0건**으로 끝났다. 원인은 후보의 질이 아니라
+**측정 검정력**이다. 판정·기각 근거는 `docs/CAMPAIGN_LEDGER.md`.
+
+### 기준선 재고정 (v5.3), 08-12 실측
+
+`tools/eval_p36.sbatch` 4시드. **v5.5/워킹트리는 같은 시드 짝비교에서 v5.3에 6/6 패배**
+(P4 +10~12%, P6 +5%) → 사용자 지시대로 **v5.3이 기준**이며 `builds/b53` = 제출 zip
+압축해제본. 같은 플래그 재빌드가 출하 `.so`와 **바이트 동일**(`6c600758…`).
+
+| | v5.3 최선(4시드) | 목표 | 갭 | 시드 산포 |
+|---|---|---|---|---|
+| P3 | 78,705 | 64,695 | +21.7% | 6.3% |
+| P4 | 2,956,671 | 1,908,043 | +55.0% | **12.2%** |
+| P5 | 9,400,593 | 7,718,486 | +21.8% | **12.4%** |
+| P6 | 28,012,870 | 25,452,695 | +10.1% | 6.1% |
+
+**산포 12%가 모든 것을 설명한다**: 지난 캠페인들은 2~5% 효과를 짝짓지 않은 1~3 draw로
+2% 게이트에 걸어 판정했다. 통과할 수 없는 설계다. → `tools/abgate.py`
+(짝지은 AB/BA 32쌍, 같은 노드·같은 cpuset 연속 실행, `--exclusive`, 부호검정).
+08-06 population 캠페인의 24쌍 판정(p=0.000277)을 재현해 검증했다.
+
+### 커널 결함: 같은 날 이벤트 순서 (근본 원인)
+
+공식 체커는 Stage 2에서 `present_at_entry = { b : b.entry < entry < b.exit }`로
+**같은 날 진입을 제외**하고, 순서는 Stage 5가 **해가 나열한 하나의 순서**로만 검증한다.
+반면 `core.hpp vpConservative`는 rule 2(A가 배치 전원 뒤)와 rule 4(전원이 A 뒤)를
+**둘 다** 요구해 모든 순서가 가능할 것을 강요했다. 실측: 같은 날·같은 베이 묶음(≥2)에
+속한 진입이 P3 74% / P4 65% / P5 64% / P6 65%.
+
+퇴출에도 짝이 있다: rule 3/5의 타이브레이크가 진입일뿐이라 **진입일도 퇴출일도 같은 쌍**은
+서로의 present 집합에서 빠져 **검사되지 않는다**(v5.3 build.txt가 "미인증 클래스"로 기록).
+출하 보드에도 그런 인접 퇴출쌍이 P3 44 / P4 21 / P5 29 / P6 22개 있다.
+
+**파급**: `insert_capped`·`move_block(tight)` → `insertGreedy` → `vpConservative`.
+따라서 과거의 구조적 기각 — "최종 보드는 정확히 강성", "퇴출 캐스케이드 제로섬",
+"P3 배정 하강 117후보 중 상위 14/14가 정시 배치 불가"(목적의 8.7%) — 이 전부
+**실제 규칙보다 엄격한 오라클**로 측정된 것이다. `tools/rigidity_probe.py`로 재측정한다.
+
+### 후보 판정 (`experiments/`)
+
+| 후보 | 내용 | 판정 |
+|---|---|---|
+| m1 | rule 2/4가 방출 순서(오름차순 id)만 검사 | ❌ 32쌍 7W/24L p=0.0033. **P3만 5W/2L 중앙 −1.57%**. 7쌍이 퇴출 타이 결함으로 `_trivial` 붕괴(`Stage5: EXIT ... (sweep)` 111건) |
+| m4 | 퇴출 타이브레이크 완성 (v5.3 단독 정확성 수리) | 게이트 중 |
+| m5 | m1 + m4 | 게이트 중 |
+| m7 | 체커 의미론에 정확 대응: 2a=Stage 2, 2b=묶음 차단 그래프 비순환(위상정렬), 커널이 `entry_ranks()`로 순서를 방출기에 넘김. 오늘 통과하는 경로는 빠른 경로로 동일 비용 | 빌드 대기 |
+
+## 캠페인 6 판정 (08-06) — WB-WGD 근본 메커니즘 구현 후 인과 게이트 기각
+
+이번에는 기존 후보를 재검증한 것이 아니라, 격리된 T0에서 **Whole-Bay Witness-Guided
+Decomposition**을 새로 구현했다. 한 베이의 모든 블록을 대상으로 2N ENTRY/EXIT 순서와 기하를
+동시에 재구성하고, 실패한 ENTRY의 blocker 관측을 다음 계획의 점수에 반영한다. 구현은
+`kernel_event_order`/`kernel_decomp` 기존 경계를 확장했으며, explicit `(e,f)` interval,
+후보 전용 transaction, `FEASIBLE_DECODE`/`ACCEPTED_CANDIDATE`/`COMMIT` 분리, rollback,
+typed cap, frozen/enabled 인과 ablation을 포함한다.
+
+| 판정 | 결과 |
+|---|---|
+| 결정론·빌드 | PASS — C++ fixture, API syntax, Python 3.12 extension build/import |
+| P4 인과 스크린 | FAIL — 10/64 pops(30s), enabled-only reachability 0, accepted Z1 gain 0 |
+| P5 인과 스크린 | FAIL — 5/64 pops(30s), enabled-only reachability 0, accepted Z1 gain 0 |
+| P6 인과 스크린 | 부분 신호 — reachability 3, 그러나 accepted Z1 gain **0.0249%**로 기준 2% 미달 |
+| 자동 선택 | **`B0-fallback`** — driver 통합 및 공식 24쌍 캠페인 미실행 |
+
+핵심 실패는 구현 부재가 아니라 **전체 베이 DFS의 처리량**이다. 30초에 5-18개 계획만 평가해
+등록된 64-pop 인과 cap에 도달하지 못했고, P4/P5는 feedback이 새로운 exact-feasible basin을
+열지 못했다. P6의 reachability는 생겼지만 목적 수확은 사실상 0이었다. 따라서 계획의 사전등록
+kill 기준에 따라 여기서 중단하고 canonical B0를 유지한다. 같은 유한 site-vocabulary 기반
+whole-bay DFS는 다시 열지 않는다. 증거: `runs/wbwgd/{baseline-seal,treatment-seal,causal-screen}.json`.
+
+## 캠페인 5 판정 (08-06) — 병렬 population 후미 기각, v5.3 자동 복귀
+
+사전등록한 단일 후보만 격리해 검증했다. canonical v5.3에 C++ 병렬 population closure만 얹고,
+공식 TL의 15%를 후미에 고정 배정했다. 소스 closure·금지 심볼·API·컴파일 depfile·작은 TL fallback·
+체커·deadline 검사를 모두 통과한 sealed treatment(`tree=2bac8c6f`, `.so=f419af9e`)로
+P4/P5/P6 × 8시드, 같은 노드·cpuset 순차 AB/BA **24 matched pairs**를 한 번만 실행했다.
+
+| 판정 | 결과 |
+|---|---|
+| 안전성 | PASS — 48/48 feasible, 오류 0, 오버런 0, seal/metadata 24/24 일치 |
+| 전체 품질 | FAIL — **3W/21L**, 중앙 Δ **+2.899%**(악화), 비동률 부호검정 p=0.000277 |
+| 인스턴스 | P4 2W/6L 중앙 +8.611%, P5 1W/7L +2.860%, P6 0W/8L +2.545% |
+| 자동 선택 | **`v53-fallback`** — population 후보는 제출·병합 금지 |
+
+짧은 단일런에서 보였던 population intensification 이득은 통제된 공식 TL에서 재현되지 않았고,
+특히 P6은 전 시드 패배했다. 문제는 구현 실패가 아니라(안전성 전항목 PASS) **기존 탐색의 15%를
+population에 고정 이전하는 정책 자체의 음의 기회비용**이다. 동일한 고정-share 후미 다양화는 닫는다.
+증거: `runs/release/population-candidate/evidence/{closure-review,candidate-build,candidate-unit,candidate-seal,pair-gate}.json`.
+
 ## 08-04 진단 사슬 (오늘 확정)
 
 1. **정확-델타 배정 하강** 신설(선호-전용 폴리시 대체): Z2·Z3는 배정만의 닫힌형 함수,
@@ -186,10 +278,10 @@ v5.3을 가리킨다), **실측 이득이 있는 레버와 함께일 때만 출�
 `data/finals_server.json`은 이번 캠페인에 **변경 없음** — v5.5를 보내지 않았으므로 새 서버
 회신 행이 없다(파일 안에 `_hold_note`로 명시).
 
-**다음 방향 (캠페인 3 이후 실제로 열려 있는 것)**: 배정 축은 실측으로 닫혔고(G003), 어휘
-확장도 닫혔다(G002). 남은 것은 (a) 출하 커널의 잠금 누수 2-6을 닫아 배정을 **가격 매길 수
-있는 엔진**으로 만들지 여부 결정(현재는 살아있는 소비자가 없어 보류), (b) P4-P6의 지각
-지배 구조에 대한 전역 스케줄링/완화 접근, (c) population 다양성 제어. 3D 인코딩과 ML
-배정-prior는 **다시 열지 말 것** — 둘 다 이번 캠페인에서 증거와 함께 기각됐다.
+**다음 방향 (캠페인 5 이후 실제로 열려 있는 것)**: 배정 축은 실측으로 닫혔고(G003), 어휘
+확장도 닫혔다(G002). 고정 15% 후미 병렬 population도 공식 TL 24쌍에서 명확히 기각됐다.
+남은 근본 레버는 (a) 출하 커널의 잠금 누수 2-6을 닫아 배정을 **가격 매길 수 있는 엔진**으로
+만들지 여부, (b) P4-P6 지각 지배 구조를 직접 푸는 전역 스케줄링/완화다. 3D 인코딩,
+ML 배정-prior, 동일한 고정-share population은 **다시 열지 말 것** — 모두 증거와 함께 기각됐다.
 
 

@@ -1,0 +1,47 @@
+--- builds/b53/myalgorithm.py	1980-01-01 00:00:00.000000000 +0900
++++ builds/m7/myalgorithm.py	2026-08-12 02:17:44.060329069 +0900
+@@ -117,7 +117,16 @@
+     return out
+ 
+ 
+-def _recs_to_sol(recs):
++def _recs_to_sol(recs, ranks=None):
++    """ranks = eng.entry_ranks(): the kernel's intra-day ENTRY order.
++
++    vpConservative rule 2b only proves that SOME order of a same-day, same-bay
++    batch is legal, so the emitted solution has to list the one the kernel
++    verified -- ranks carries it. ranks=None keeps ascending block id, which is
++    what a kernel without rule 2b assumes. Emitting an order the kernel never
++    checked is exactly how a board passes the engine and fails checker Stage 5.
++    """
++    order = (lambda i: i) if ranks is None else (lambda i: (ranks[i], i))
+     ent, ext = {}, {}
+     for i, v in recs.items():
+         ext.setdefault(int(v[5]), []).append(i)
+@@ -128,7 +137,7 @@
+         for i in sorted(ext.get(tt, []), key=lambda i: -recs[i][4]):
+             L.append({"type": "EXIT", "block_id": i,
+                       "bay_id": recs[i][0]})
+-        for i in ent.get(tt, []):
++        for i in sorted(ent.get(tt, []), key=order):
+             v = recs[i]
+             L.append({"type": "ENTRY", "block_id": i, "bay_id": v[0],
+                       "x": int(v[1]), "y": int(v[2]),
+@@ -267,7 +276,7 @@
+     (the server kills overruns; a rescue that misses the deadline is worth
+     negative points).
+     """
+-    sol = _recs_to_sol(_extract(eng, n))
++    sol = _recs_to_sol(_extract(eng, n), eng.entry_ranks())
+     t0 = time.time()
+     res = _check(p, sol)
+     ck = max(0.3, time.time() - t0)          # measured checker cost (max seen)
+@@ -285,7 +294,7 @@
+ 
+     def recheck(stage):
+         nonlocal sol, res, ck
+-        sol = _recs_to_sol(_extract(eng, n))
++        sol = _recs_to_sol(_extract(eng, n), eng.entry_ranks())
+         t1 = time.time()
+         res = _check(p, sol)
+         ck = max(ck, time.time() - t1)       # keep the worst-case estimate

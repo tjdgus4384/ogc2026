@@ -1,0 +1,60 @@
+--- builds/m1/myalgorithm.py	1980-01-01 00:00:00.000000000 +0900
++++ builds/m2/myalgorithm.py	2026-08-12 01:22:13.066986982 +0900
+@@ -117,7 +117,19 @@
+     return out
+ 
+ 
+-def _recs_to_sol(recs):
++def _nlay(p):
++    """Per-block layer count. Orientation-independent in these instances, so
++    the kernel reads it off orientation 0 and this matches byte for byte."""
++    return [len(b["shape"][0]["layers"]) for b in p["blocks"]]
++
++
++def _recs_to_sol(recs, nlay=None):
++    """nlay = per-block layer count. Same-day ENTRY events are emitted in the
++    order the kernel verified them (core.hpp entersBefore): flat blocks first,
++    tall ones last, ties by id. Passing nlay=None keeps plain ascending id --
++    the two must never disagree or the checker replays an order the kernel
++    never checked."""
++    order = (lambda i: i) if nlay is None else (lambda i: (nlay[i], i))
+     ent, ext = {}, {}
+     for i, v in recs.items():
+         ext.setdefault(int(v[5]), []).append(i)
+@@ -128,7 +140,7 @@
+         for i in sorted(ext.get(tt, []), key=lambda i: -recs[i][4]):
+             L.append({"type": "EXIT", "block_id": i,
+                       "bay_id": recs[i][0]})
+-        for i in ent.get(tt, []):
++        for i in sorted(ent.get(tt, []), key=order):
+             v = recs[i]
+             L.append({"type": "ENTRY", "block_id": i, "bay_id": v[0],
+                       "x": int(v[1]), "y": int(v[2]),
+@@ -267,7 +279,8 @@
+     (the server kills overruns; a rescue that misses the deadline is worth
+     negative points).
+     """
+-    sol = _recs_to_sol(_extract(eng, n))
++    nlay = _nlay(p)
++    sol = _recs_to_sol(_extract(eng, n), nlay)
+     t0 = time.time()
+     res = _check(p, sol)
+     ck = max(0.3, time.time() - t0)          # measured checker cost (max seen)
+@@ -285,7 +298,7 @@
+ 
+     def recheck(stage):
+         nonlocal sol, res, ck
+-        sol = _recs_to_sol(_extract(eng, n))
++        sol = _recs_to_sol(_extract(eng, n), nlay)
+         t1 = time.time()
+         res = _check(p, sol)
+         ck = max(ck, time.time() - t1)       # keep the worst-case estimate
+@@ -904,7 +917,7 @@
+         e = max(t, R)
+         recs[i] = [j, x, y, oi, e, e + P]
+         t = e + P
+-    return _recs_to_sol(recs)
++    return _recs_to_sol(recs, _nlay(p))
+ 
+ 
+ # -------------------------------------------------------------------- entry

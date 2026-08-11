@@ -1,0 +1,15 @@
+# Text normalization
+*.py text eol=lf
+*.cpp text eol=lf
+*.hpp text eol=lf
+*.h text eol=lf
+*.md text eol=lf
+*.json text eol=lf
+*.jsonl text eol=lf
+*.sh text eol=lf
+*.sbatch text eol=lf
+
+# Opaque release artifacts
+*.pdf binary
+*.zip binary
+*.so binary
