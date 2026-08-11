@@ -27,7 +27,6 @@
 #include "occ.hpp"
 #include <random>
 #include <algorithm>
-#include <chrono>
 
 namespace repair {
 using core::Problem; using core::Sol;
@@ -39,7 +38,6 @@ struct Ctx {
     std::mt19937 rng;
     int horizon;
     const int* forcedBay = nullptr;   // optional block->bay lock (or -1)
-    bool releaseForcedBay = true;     // soft guidance may release mid-search
     int densMode = -1;                // -1: knob; 0: bay-area cap
                                       // (never falsely rejects);
                                       // 1: instance fill cap (filters)
@@ -51,8 +49,6 @@ struct Ctx {
                                       // anneal-long constraints move the
                                       // final basin.
     bool prefStrong = false;          // z1==0 regime: chase preferred bays hard.
-    double prefP = -1.0;                 // instance-owned override; <0 uses regime default
-    bool exactEvents = false;             // checker-order replay for same-day events
                                       // Predicate lives in alns::run (sec 148):
                                       // z1<=0 AND z3<n -- a measured two-order
                                       // regime gap, not a tuned constant.
@@ -60,19 +56,17 @@ struct Ctx {
     // block and its target bay; the reinsert step must know to force that bay
     // with an on-time entry cap. Reset at every pickRemoval call.
     int tsBlk = -1, tsBay = -1, tsECap = -1;
-    // live dominance gate for op 8: is the priced preference loss the dominant
-    // objective term? Parameter-free (w3*z3 > w1*z1), set by the obj lambda.
+    // live habitat flags for the two ejection ops, set by the obj lambda.
+    // z3dom compared the two TOTALS, which is the wrong question for a
+    // marginal move: one tardy day buys 44-119 preference points on these
+    // boards, so a preference transfer that costs no tardiness pays whether or
+    // not w3*z3 leads the sum. Gating on it switched op 8 off on P4/P5/P6,
+    // where w3*z3 is still 0.61-0.97M and 38-59% of the gap to the all-team
+    // minimum. The mask now only asks whether the op has anything to work on.
     bool z3dom = false;
-    bool hasDeadline = false;          // bounded ALNS repair; seeding stays unbounded
-    std::chrono::steady_clock::time_point deadline;
+    bool z3live = false;              // some block prefers another bay
+    bool z1live = false;              // some block is tardy
 };
-inline bool deadlineExpired(const Ctx& c) {
-    return c.hasDeadline && std::chrono::steady_clock::now() >= c.deadline;
-}
-inline bool placementFeasible(const Ctx& c, int A) {
-    return c.exactEvents ? core::vpExactEvents(*c.pb, *c.s, A)
-                         : core::vpConservative(*c.pb, *c.s, A);
-}
 
 // Area screen for bay j over [e,f) -- a SPEED HEURISTIC, never a verdict.
 // It compares bbox-area sums (areaUsed) against bay area with 2% slack, and
@@ -163,63 +157,6 @@ inline void cornerSets(const Ctx& c, int A, int oi, int j, int e, int f,
     rbCollect(c, j, e, f, rbs);
     cornerSetsRB(c, A, oi, j, rbs, xs, ys);
 }
-// Add integer translations induced by irregular polygon vertex contacts.
-inline void shapeContactSets(const Ctx& c, int A, int oi, int j, int e, int f,
-                             std::vector<int>& xs, std::vector<int>& ys,
-                             size_t axisCap = 96) {
-    const auto& ga = c.pb->geo[A].orients[oi];
-    const int x0 = (int)std::ceil(-ga.bb.x0);
-    const int x1 = (int)std::floor(c.pb->bayW[j] - ga.bb.x1);
-    const int y0 = (int)std::ceil(-ga.bb.y0);
-    const int y1 = (int)std::floor(c.pb->bayH[j] - ga.bb.y1);
-    auto add = [](std::vector<int>& out, double v, int lo, int hi, size_t cap) {
-        if (out.size() >= cap) return;
-        for (int q : {(int)std::floor(v), (int)std::ceil(v)})
-            if (q >= lo && q <= hi &&
-                std::find(out.begin(), out.end(), q) == out.end())
-                out.push_back(q);
-    };
-    for (int k : c.s->byBay[j]) {
-        if (xs.size() >= axisCap && ys.size() >= axisCap) break;
-        if (!c.s->placed[k] || !(c.s->e[k] < f && e < c.s->f[k])) continue;
-        const auto& gk = c.pb->geo[k].orients[c.s->ori[k]];
-        for (const auto& pa : ga.layers) {
-            for (const auto& va : pa) {
-                for (const auto& pk : gk.layers) {
-                    for (const auto& vk : pk) {
-                        add(xs, vk.x + c.s->x[k] - va.x, x0, x1, axisCap);
-                        add(ys, vk.y + c.s->y[k] - va.y, y0, y1, axisCap);
-                        if (xs.size() >= axisCap && ys.size() >= axisCap) break;
-                    }
-                    if (xs.size() >= axisCap && ys.size() >= axisCap) break;
-                }
-                if (xs.size() >= axisCap && ys.size() >= axisCap) break;
-            }
-            if (xs.size() >= axisCap && ys.size() >= axisCap) break;
-        }
-    }
-    std::sort(xs.begin(), xs.end());
-    xs.erase(std::unique(xs.begin(), xs.end()), xs.end());
-    std::sort(ys.begin(), ys.end());
-    ys.erase(std::unique(ys.begin(), ys.end()), ys.end());
-}
-
-// Commit one candidate through the selected event semantics.
-inline bool tryPlacement(Ctx& c, int A, int j, int oi, int x, int y, int e) {
-    const Problem& pb = *c.pb;
-    Sol& s = *c.s;
-    s.bay[A]=j; s.ori[A]=oi; s.x[A]=x; s.y[A]=y;
-    s.e[A]=e; s.f[A]=e+pb.P[A]; s.placed[A]=1;
-    s.addIdx(A);
-    const bool ok = placementFeasible(c, A);
-    if (ok) {
-        c.oc->stamp(pb, s, A, true);
-        return true;
-    }
-    s.delIdx(A);
-    s.placed[A]=0;
-    return false;
-}
 
 // Try to place A at (bay j, entry e): every corner candidate of every
 // orientation, snapshot-prefiltered, vp-confirmed. First fit wins; on success
@@ -227,20 +164,24 @@ inline bool tryPlacement(Ctx& c, int A, int j, int oi, int x, int y, int e) {
 inline bool scanBayAt(Ctx& c, int A, int j, int e, const std::vector<int>& oris,
                       std::vector<int>& xs, std::vector<int>& ys) {
     const Problem& pb = *c.pb; Sol& s = *c.s;
-    if (deadlineExpired(c)) return false;
     int f = e + pb.P[A];
     thread_local occ::OccIndex::Snap sn;
     c.oc->buildSnap(j, e, f, sn);
     thread_local std::vector<RB> rbs;
     rbCollect(c, j, e, f, rbs);
     for (int oi : oris) {
-        if (deadlineExpired(c)) return false;
         cornerSetsRB(c, A, oi, j, rbs, xs, ys);
         for (int y : ys) {
             for (int x : xs) {
-                if (deadlineExpired(c)) return false;
                 if (c.oc->hitsSnap(sn, A, oi, x, y)) continue;
-                if (tryPlacement(c, A, j, oi, x, y, e)) return true;
+                s.bay[A]=j; s.ori[A]=oi; s.x[A]=x; s.y[A]=y;
+                s.e[A]=e; s.f[A]=f; s.placed[A]=1;
+                if (core::vpConservative(pb, s, A)) {
+                    s.addIdx(A);
+                    c.oc->stamp(pb, s, A, true);
+                    return true;
+                }
+                s.placed[A]=0;
             }
         }
     }
@@ -254,7 +195,6 @@ inline bool scanBayAt(Ctx& c, int A, int j, int e, const std::vector<int>& oris,
 // trig only.
 inline bool scanLocal(Ctx& c, int A, int trig, int e, double areaA) {
     const Problem& pb = *c.pb; Sol& s = *c.s;
-    if (deadlineExpired(c)) return false;
     int f = e + pb.P[A];
     int j = s.bay[trig];
     if (c.forcedBay && c.forcedBay[A] >= 0 && c.forcedBay[A] != j) return false;
@@ -271,7 +211,6 @@ inline bool scanLocal(Ctx& c, int A, int trig, int e, double areaA) {
     thread_local std::vector<RB> rbs;
     rbCollect(c, j, e, f, rbs);
     for (size_t oo = 0; oo < pb.geo[A].orients.size(); oo++) {
-        if (deadlineExpired(c)) return false;
         int oi = (int)oo;
         const auto& g = pb.geo[A].orients[oi];
         double W = pb.bayW[j], H = pb.bayH[j];
@@ -303,9 +242,15 @@ inline bool scanLocal(Ctx& c, int A, int trig, int e, double areaA) {
         std::sort(lys.begin(), lys.end());
         lys.erase(std::unique(lys.begin(), lys.end()), lys.end());
         for (int yv : lys) for (int xv : lxs) {
-            if (deadlineExpired(c)) return false;
             if (c.oc->hitsSnap(sn, A, oi, xv, yv)) continue;
-            if (tryPlacement(c, A, j, oi, xv, yv, e)) return true;
+            s.bay[A]=j; s.ori[A]=oi; s.x[A]=xv; s.y[A]=yv;
+            s.e[A]=e; s.f[A]=f; s.placed[A]=1;
+            if (core::vpConservative(pb, s, A)) {
+                s.addIdx(A);
+                c.oc->stamp(pb, s, A, true);
+                return true;
+            }
+            s.placed[A]=0;
         }
     }
     return false;
@@ -316,7 +261,6 @@ inline void removeBlock(Ctx& c, int A);
 
 inline bool insertGreedy(Ctx& c, int A, int eCap = -1) {
     const Problem& pb = *c.pb; Sol& s = *c.s;
-    if (deadlineExpired(c)) return false;
     if (c.entryCap && c.entryCap[A] >= 0 &&
         (eCap < 0 || c.entryCap[A] < eCap))
         eCap = c.entryCap[A];
@@ -350,7 +294,7 @@ inline bool insertGreedy(Ctx& c, int A, int eCap = -1) {
     else { bays.resize(pb.m); for (int j = 0; j < pb.m; j++) bays[j] = j; }
     std::vector<int> oris(pb.geo[A].orients.size());
     for (size_t o = 0; o < oris.size(); o++) oris[o] = (int)o;
-    const double PREFP = c.prefP;
+    const double PREFP = knobs::prefP();
     if (std::uniform_real_distribution<double>(0,1)(c.rng)
             < (PREFP >= 0 ? PREFP : (c.prefStrong ? 0.92 : 0.70)))
         std::sort(bays.begin(), bays.end(), [&](int a, int b){
@@ -400,7 +344,6 @@ inline bool insertGreedy(Ctx& c, int A, int eCap = -1) {
     {
         int e = eBot, f = e + pb.P[A];
         for (int j : bays) {
-            if (deadlineExpired(c)) return false;
             if (!areaRoom(c, j, areaA, e, f)) { areaRej[j] = 1; continue; }
             if (scanBayAt(c, A, j, e, oris, xs, ys)) return true;
         }
@@ -414,7 +357,6 @@ inline bool insertGreedy(Ctx& c, int A, int eCap = -1) {
                 fev.push_back({s.f[k], k});
     std::sort(fev.begin(), fev.end());
     for (auto& pr : fev) {
-        if (deadlineExpired(c)) return false;
         int e = pr.first, jt = s.bay[pr.second], f = e + pb.P[A];
         if (areaRej[jt]) {
             // bay skipped while area-saturated: once area fits again, restore
@@ -433,19 +375,22 @@ inline bool insertGreedy(Ctx& c, int A, int eCap = -1) {
     // its comment), NOT the same-layer snapshot the fast phases use.
     int stride = (eTop - eBot <= 24) ? 1 : knobs::stride();
     for (int e = eBot; e <= eTop; e += stride) {
-        if (deadlineExpired(c)) return false;
         int f = e + pb.P[A];
         for (int j : bays) {
-            if (deadlineExpired(c)) return false;
             thread_local std::vector<RB> rbs;
             rbCollect(c, j, e, f, rbs);
             for (int oi : oris) {
-                if (deadlineExpired(c)) return false;
                 cornerSetsRB(c, A, oi, j, rbs, xs, ys);
                 for (int y : ys) for (int x : xs) {
-                    if (deadlineExpired(c)) return false;
                     if (c.oc->hits(A, oi, j, x, y, e, f)) continue;
-                    if (tryPlacement(c, A, j, oi, x, y, e)) return true;
+                    s.bay[A]=j; s.ori[A]=oi; s.x[A]=x; s.y[A]=y;
+                    s.e[A]=e; s.f[A]=f; s.placed[A]=1;
+                    if (core::vpConservative(pb, s, A)) {
+                        s.addIdx(A);
+                        c.oc->stamp(pb, s, A, true);
+                        return true;
+                    }
+                    s.placed[A]=0;
                 }
             }
         }

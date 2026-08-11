@@ -5,30 +5,13 @@
 // surface states which is which.
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
-#include <atomic>
-#include <stdexcept>
-#include <tuple>
 #include "alns.hpp"
+#include <map>
 #ifdef _OPENMP
 #include <omp.h>
 #endif
 namespace py = pybind11;
 using VV = std::vector<std::vector<std::pair<double,double>>>;
-namespace {
-uint64_t nextEngineGeneration() {
-    static std::atomic<uint64_t> next{1};
-    uint64_t generation = next.load(std::memory_order_relaxed);
-    for (;;) {
-        if (generation == 0)
-            throw std::overflow_error("Engine generation exhausted");
-        if (next.compare_exchange_weak(generation, generation + 1,
-                                       std::memory_order_relaxed,
-                                       std::memory_order_relaxed))
-            return generation;
-    }
-}
-} // namespace
-
 
 struct Engine {
     core::Problem pb;
@@ -36,9 +19,6 @@ struct Engine {
     occ::OccIndex oc;
     repair::Ctx ctx;
     int horizon_ = 0;
-    uint64_t generation_ = 0;
-    double prefP_ = -1.0;
-    bool exactEvents_ = false;
 
     // ------------------------------------------------------------- loading
     void initProblem(int n, int m,
@@ -47,7 +27,6 @@ struct Engine {
                      std::vector<std::vector<double>> pref,
                      std::vector<double> bayW, std::vector<double> bayH,
                      double w1, double w2, double w3) {
-        generation_ = nextEngineGeneration();
         pb.n = n; pb.m = m;
         pb.R = std::move(R); pb.D = std::move(D); pb.P = std::move(P);
         pb.workload = std::move(workload);
@@ -65,15 +44,13 @@ struct Engine {
         avg /= m;
         pb.u.resize(m);
         for (int j = 0; j < m; j++) pb.u[j] = avg / (pb.bayW[j] * pb.bayH[j]);
-        pb.geo.clear();
-        pb.geo.resize(n);
+        pb.geo.assign(n, {});
         sol.init(n, m);
     }
 
     // add one orientation's layers for block i (local coords, ref at origin)
     void addOrient(int i, const VV& layers) {
-        crane::OrientGeom g(generation_, static_cast<uint64_t>(i),
-                            static_cast<uint64_t>(pb.geo[i].orients.size()));
+        crane::OrientGeom g;
         geom::BBox bb{1e18,1e18,-1e18,-1e18};
         for (auto& L : layers) {
             geom::Poly p;
@@ -115,9 +92,13 @@ struct Engine {
             if (bb2 < 1e17) { sp += bp; sb += bb2; }
         }
         double fill = (sb > 0.0) ? std::min(1.0, sp / sb) : 1.0;
-        // A punctual block with start in [R,D-P] occupies every discrete
-        // day in the compulsory interval [D-P,R+P).  Only that intersection
-        // is a valid hard density lower bound; the whole start window is not.
+        // The cap can never sit below what the instance REQUIRES: on
+        // any day, blocks whose [release, due) window covers that day
+        // must be somewhere, so their polygon area over total bay area
+        // is a hard lower bound on the density a punctual board needs.
+        // Saturated instances (P3-class) therefore relax the screener
+        // automatically instead of having their dense packings
+        // rejected, while roomy ones keep the tight, fast filter.
         double capArea = 0.0;
         for (int j = 0; j < pb.m; j++) capArea += pb.bayW[j]*pb.bayH[j];
         int Tmax = 0;
@@ -128,8 +109,7 @@ struct Engine {
             for (const auto& g : pb.geo[i].orients)
                 a = std::min(a, g.parea > 0 ? g.parea :
                              (g.bb.x1-g.bb.x0)*(g.bb.y1-g.bb.y0));
-            int lo = std::max(pb.R[i], pb.D[i] - pb.P[i]);
-            int hi = std::min(pb.D[i] - 1, pb.R[i] + pb.P[i] - 1);
+            int lo = pb.R[i], hi = std::max(pb.R[i], pb.D[i] - pb.P[i]);
             for (int t = lo; t <= hi && t <= Tmax; t++) need[t] += a;
         }
         double req = 0.0;
@@ -151,14 +131,6 @@ struct Engine {
         for (int i = 0; i < pb.n; i++)
             if (sol.placed[i]) oc.stamp(pb, sol, i, true);
         ctx.pb = &pb; ctx.s = &sol; ctx.oc = &oc; ctx.horizon = horizon;
-    }
-    void setPrefP(double value) {
-        prefP_ = (value >= 0.0 && value <= 1.0) ? value : -1.0;
-        ctx.prefP = prefP_;
-    }
-    void setExactEvents(bool enabled) {
-        exactEvents_ = enabled;
-        ctx.exactEvents = enabled;
     }
 
     // ----------------------------------------------------- solution access
@@ -189,142 +161,54 @@ struct Engine {
         }
         return out;
     }
+    // Intra-day ENTRY rank per block (-1 = unplaced). vpConservative rule 2b
+    // only proves that SOME order of a same-day, same-bay batch is legal; the
+    // emitted solution has to actually list one, and it must be the same
+    // geometry that proved it -- so the kernel hands the order to the driver
+    // rather than have _recs_to_sol re-derive it in Python.
+    std::vector<int> entryRanks() {
+        std::vector<int> rank(pb.n, -1);
+        std::map<std::pair<int, int>, std::vector<int>> groups;
+        for (int i = 0; i < pb.n; i++)
+            if (sol.placed[i]) groups[{sol.bay[i], sol.e[i]}].push_back(i);
+        for (auto& kv : groups) {
+            std::vector<int>& g = kv.second;
+            std::sort(g.begin(), g.end());
+            const int m = (int)g.size();
+            if (m == 1) { rank[g[0]] = 0; continue; }
+            if (m > core::kBatchCap) {            // rule 2b never admits these
+                for (int r = 0; r < m; r++) rank[g[r]] = r;
+                continue;
+            }
+            uint32_t before[core::kBatchCap] = {0};
+            for (int u = 0; u < m; u++)
+                for (int v = 0; v < m; v++)
+                    if (u != v && core::entryBlocked(pb, sol, g[v], g[u]))
+                        before[v] |= 1u << u;
+            uint32_t done = 0;
+            for (int r = 0; r < m; r++) {
+                int pick = -1;
+                for (int v = 0; v < m && pick < 0; v++)
+                    if (!(done & (1u << v)) && (before[v] & ~done) == 0)
+                        pick = v;
+                if (pick < 0) {                   // unreachable if 2b held
+                    for (int q = 0; q < m; q++)
+                        if (!(done & (1u << q))) { pick = q; break; }
+                }
+                rank[g[pick]] = r;
+                done |= 1u << pick;
+            }
+        }
+        return rank;
+    }
     std::vector<double> objective() {
         auto o = core::evaluate(pb, sol);
         return {o.z1, o.z2, o.z3, o.total};
     }
-    std::vector<std::vector<int>> orderedEvents() {
-        std::vector<int> times;
-        for (int i = 0; i < pb.n; i++) if (sol.placed[i]) {
-            times.push_back(sol.e[i]);
-            times.push_back(sol.f[i]);
-        }
-        std::sort(times.begin(), times.end());
-        times.erase(std::unique(times.begin(), times.end()), times.end());
-        std::vector<std::vector<int>> rows;
-        std::vector<int> exits, entries;
-        for (int t : times) {
-            std::vector<std::vector<int>> dayExits, dayEntries;
-            for (int j = 0; j < pb.m; j++) {
-                if (!core::eventOrderAt(pb, sol, j, t, exits, entries))
-                    return {};
-                for (int i : exits) dayExits.push_back({t, 0, i, j});
-                for (int i : entries) dayEntries.push_back({t, 1, i, j});
-            }
-            rows.insert(rows.end(), dayExits.begin(), dayExits.end());
-            rows.insert(rows.end(), dayEntries.begin(), dayEntries.end());
-        }
-        return rows;
-    }
-    // Globally optimize the time axis for the incumbent geometric shell while
-    // preserving each bay's exact event sequence.  With positions, orientations,
-    // assignments, and event order fixed, the earliest feasible schedule is a
-    // longest-path pass: entry >= release, exit >= entry + processing, and every
-    // event >= its predecessor in that bay.  The present set at every event is
-    // unchanged, so exact crane/geometry feasibility is preserved.
-    int compactEventSchedule() {
-        if (!exactEvents_) return -1;
-        const core::Sol old = sol;
-        const double oldObj = core::evaluate(pb, sol).total;
-        std::vector<int> ne(pb.n, -1), nf(pb.n, -1);
-        std::vector<int> exits, entries;
-        for (int j = 0; j < pb.m; j++) {
-            std::vector<int> times;
-            for (int i : sol.byBay[j]) if (sol.placed[i]) {
-                times.push_back(sol.e[i]);
-                times.push_back(sol.f[i]);
-            }
-            std::sort(times.begin(), times.end());
-            times.erase(std::unique(times.begin(), times.end()), times.end());
-            int clock = 0;
-            for (int t : times) {
-                if (!core::eventOrderAt(pb, sol, j, t, exits, entries)) {
-                    sol = old; buildOcc(horizon_); return -2;
-                }
-                for (int i : exits) {
-                    if (ne[i] < 0) {
-                        sol = old; buildOcc(horizon_); return -2;
-                    }
-                    nf[i] = std::max(clock, ne[i] + pb.P[i]);
-                    clock = nf[i];
-                }
-                for (int i : entries) {
-                    ne[i] = std::max(clock, pb.R[i]);
-                    clock = ne[i];
-                }
-            }
-        }
-        int moved = 0;
-        for (int i = 0; i < pb.n; i++) if (sol.placed[i]) {
-            if (ne[i] < 0 || nf[i] < ne[i] + pb.P[i]) {
-                sol = old; buildOcc(horizon_); return -2;
-            }
-            moved += (ne[i] != sol.e[i] || nf[i] != sol.f[i]);
-            sol.e[i] = ne[i]; sol.f[i] = nf[i];
-        }
-        sol.rebuildIdx(pb.m);
-        buildOcc(horizon_);
-        for (int i = 0; i < pb.n; i++)
-            if (sol.placed[i] && !core::vpExactEvents(pb, sol, i)) {
-                sol = old; buildOcc(horizon_); return -3;
-            }
-        if (core::evaluate(pb, sol).total > oldObj + 1e-9) {
-            sol = old; buildOcc(horizon_); return -4;
-        }
-        return moved;
-    }
-    std::vector<int> accessCohort(int seed, int limit) {
-        std::vector<int> out;
-        if (seed < 0 || seed >= pb.n || limit <= 0 || !sol.placed[seed])
-            return out;
-        std::vector<uint8_t> seen(pb.n, 0);
-        std::vector<int> queue{seed};
-        seen[seed] = 1;
-        for (size_t q = 0; q < queue.size() && (int)out.size() < limit; q++) {
-            const int a = queue[q];
-            out.push_back(a);
-            std::vector<int> blockers;
-            const int target = std::max(pb.R[a], pb.D[a] - pb.P[a]);
-            core::collectEntryBlockers(pb, sol, a, target, blockers);
-            std::sort(blockers.begin(), blockers.end(), [&](int x, int y) {
-                const int tx = std::max(0, sol.f[x] - pb.D[x]);
-                const int ty = std::max(0, sol.f[y] - pb.D[y]);
-                return std::make_pair(-tx, x) < std::make_pair(-ty, y);
-            });
-            for (int b : blockers)
-                if (!seen[b]) { seen[b] = 1; queue.push_back(b); }
-        }
-        std::vector<int> rest;
-        rest.reserve(pb.n);
-        for (int i = 0; i < pb.n; i++) if (sol.placed[i] && !seen[i])
-            rest.push_back(i);
-        const int seedBay = sol.bay[seed];
-        const int seedTarget = std::max(pb.R[seed], pb.D[seed] - pb.P[seed]);
-        std::sort(rest.begin(), rest.end(), [&](int a, int b) {
-            auto key = [&](int i) {
-                const int sameBay = sol.bay[i] == seedBay ? 0 : 1;
-                const int distance = std::abs(sol.e[i] - seedTarget);
-                const int tardy = -std::max(0, sol.f[i] - pb.D[i]);
-                return std::make_tuple(sameBay, distance, tardy, i);
-            };
-            return key(a) < key(b);
-        });
-        for (int i : rest) {
-            if ((int)out.size() >= limit) break;
-            out.push_back(i);
-        }
-        return out;
-    }
-    bool vpOK(int A) {
-        return exactEvents_ ? core::vpExactEvents(pb, sol, A)
-                            : core::vpConservative(pb, sol, A);
-    }
+    bool vpOK(int A) { return core::vpConservative(pb, sol, A); }
     std::vector<int> auditState() {
-        int bb = -1; int code = alns::audit(pb, sol, &bb, exactEvents_);
+        int bb = -1; int code = alns::audit(pb, sol, &bb);
         return {code, bb};
-    }
-    bool exactStateOK() {
-        return core::stateExactEvents(pb, sol);
     }
 
     // assignment lock: persistent forcedBay for the whole engine -> repairs
@@ -361,74 +245,40 @@ struct Engine {
         ctx.forcedBay = save;
         return ok;
     }
-    // Enumerate checker-feasible site/time columns. Defaults preserve the
-    // historical earliest-day scan; optional caps stratify the vocabulary
-    // across bays and several feasible days so one roomy bay cannot consume
-    // the entire exact-neighborhood domain.
-    std::vector<int> feasiblePositions(int A, int k, int eMin = 0,
-                                       double maxSeconds = 0.0,
-                                       int maxDaysPerBay = 1,
-                                       int maxPerBay = 0,
-                                       bool shapeContacts = false) {
+    // enumerate up to k vp-feasible placements of UNPLACED block A at its
+    // earliest feasible entry per bay (probe primitive for placement-depth
+    // experiments): returns flat rows [bay, ori, x, y, e] x k.
+    std::vector<int> feasiblePositions(int A, int k, int eMin = 0) {
         std::vector<int> out;
-        const auto started = std::chrono::steady_clock::now();
-        auto expired = [&] {
-            return maxSeconds > 0.0 && std::chrono::duration<double>(
-                std::chrono::steady_clock::now() - started).count() >= maxSeconds;
-        };
         if (sol.placed[A]) return out;
-        maxDaysPerBay = std::max(1, maxDaysPerBay);
-        const int bayCap = maxPerBay > 0 ? maxPerBay : k;
-        const int dayCap = std::max(1, (bayCap + maxDaysPerBay - 1)
-                                       / maxDaysPerBay);
         std::vector<int> xs, ys, oris;
         for (size_t o = 0; o < pb.geo[A].orients.size(); o++)
             oris.push_back((int)o);
         for (int j = 0; j < pb.m && (int)out.size() / 5 < k; j++) {
-            if (expired()) return out;
-            const int bayStart = (int)out.size() / 5;
-            int feasibleDays = 0;
-            for (int e = std::max(pb.R[A], eMin);
-                 e + pb.P[A] <= horizon_ &&
-                 (int)out.size()/5 - bayStart < bayCap; e++) {
-                if (expired()) return out;
-                const int f = e + pb.P[A];
+            for (int e = std::max(pb.R[A], eMin); e + pb.P[A] <= horizon_; e++) {
+                int f = e + pb.P[A];
                 occ::OccIndex::Snap sn;
                 oc.buildSnap(j, e, f, sn);
                 thread_local std::vector<repair::RB> rbs;
                 repair::rbCollect(ctx, j, e, f, rbs);
-                const int dayStart = (int)out.size() / 5;
+                bool any = false;
                 for (int oi : oris) {
-                    if ((int)out.size()/5 - bayStart >= bayCap ||
-                        (int)out.size()/5 - dayStart >= dayCap) break;
                     repair::cornerSetsRB(ctx, A, oi, j, rbs, xs, ys);
-                    if (shapeContacts)
-                        repair::shapeContactSets(ctx, A, oi, j, e, f, xs, ys);
-                    for (int y : ys) {
-                        if ((int)out.size()/5 - bayStart >= bayCap ||
-                            (int)out.size()/5 - dayStart >= dayCap) break;
-                        for (int x : xs) {
-                            if ((int)out.size()/5 - bayStart >= bayCap ||
-                                (int)out.size()/5 - dayStart >= dayCap) break;
-                            if (expired()) return out;
-                            if (oc.hitsSnap(sn, A, oi, x, y)) continue;
-                            sol.bay[A]=j; sol.ori[A]=oi; sol.x[A]=x;
-                            sol.y[A]=y; sol.e[A]=e; sol.f[A]=f;
-                            sol.placed[A]=1;
-                            if (exactEvents_) sol.addIdx(A);
-                            const bool ok = exactEvents_
-                                ? core::vpExactEvents(pb, sol, A)
-                                : core::vpConservative(pb, sol, A);
-                            if (exactEvents_) sol.delIdx(A);
-                            sol.placed[A]=0;
-                            if (!ok) continue;
+                    for (int y : ys) { for (int x : xs) {
+                        if (oc.hitsSnap(sn, A, oi, x, y)) continue;
+                        sol.bay[A]=j; sol.ori[A]=oi; sol.x[A]=x;
+                        sol.y[A]=y; sol.e[A]=e; sol.f[A]=f;
+                        sol.placed[A]=1;
+                        bool ok = core::vpConservative(pb, sol, A);
+                        sol.placed[A]=0;
+                        if (ok) {
                             out.insert(out.end(), {j, oi, x, y, e});
+                            any = true;
                             if ((int)out.size() / 5 >= k) return out;
                         }
-                    }
+                    } }
                 }
-                if ((int)out.size()/5 > dayStart &&
-                    ++feasibleDays >= maxDaysPerBay) break;
+                if (any) break;      // earliest feasible day per bay only
             }
         }
         return out;
@@ -438,14 +288,8 @@ struct Engine {
         if (sol.placed[A]) return false;
         sol.bay[A]=bay; sol.ori[A]=ori; sol.x[A]=x; sol.y[A]=y;
         sol.e[A]=e; sol.f[A]=e + pb.P[A]; sol.placed[A]=1;
+        if (!core::vpConservative(pb, sol, A)) { sol.placed[A]=0; return false; }
         sol.addIdx(A);
-        const bool ok = exactEvents_ ? core::vpExactEvents(pb, sol, A)
-                                     : core::vpConservative(pb, sol, A);
-        if (!ok) {
-            sol.delIdx(A);
-            sol.placed[A]=0;
-            return false;
-        }
         oc.stamp(pb, sol, A, true);
         return true;
     }
@@ -464,21 +308,14 @@ struct Engine {
     // cand = flat [block, bay, ori, x, y, entry] * N.
     // returns flat pairs (a, b) of conflicting candidate indices.
     int horizonValue() const { return horizon_; }
-    std::vector<int> pairConflicts(const std::vector<int>& cand,
-                                   double maxSeconds = 0.0) {
+    std::vector<int> pairConflicts(const std::vector<int>& cand) {
         const int N = (int)cand.size() / 6;
         std::vector<int> out;
-        const auto started = std::chrono::steady_clock::now();
-        auto expired = [&] {
-            return maxSeconds > 0.0 && std::chrono::duration<double>(
-                std::chrono::steady_clock::now() - started).count() >= maxSeconds;
-        };
         for (int a = 0; a < N; a++) {
             const int* A = &cand[a * 6];
             const auto& ga = pb.geo[A[0]].orients[A[2]];
             const int fa = A[5] + pb.P[A[0]];
             for (int b = a + 1; b < N; b++) {
-                if (expired()) return std::vector<int>{-1};
                 const int* B = &cand[b * 6];
                 if (A[0] == B[0]) continue;      // same block, handled by
                 if (A[1] != B[1]) continue;      // exactly-one; other bay
@@ -493,13 +330,12 @@ struct Engine {
                 for (int l = 0; l < std::min(La, Lb) && !bad; l++)
                     bad = crane::overlapsLay(ga, l, A[3], A[4],
                                              gb, l, B[3], B[4]);
-                const bool restingConflict = bad;
                 if (!bad) {
                     // vertical descent: the later entrant's layer k has
                     // to clear the resident's layers j >= k
-                    // Equal-entry directions are only a conservative pairwise
-                    // screen.  The exact event oracle below decides selectable
-                    // ordering against both freed and frozen residents.
+                    // equal entries: the day's ENTRY order is ours to
+                    // choose, so neither direction may be assumed -- the
+                    // pair conflicts if EITHER descent is blocked.
                     const bool tie = (A[5] == B[5]);
                     const bool aLate = A[5] >= B[5];
                     const auto& gl = aLate ? ga : gb;
@@ -542,36 +378,14 @@ struct Engine {
                             bad = crane::overlapsLay(gx, k, X[3], X[4],
                                                      gs, j, Y[3], Y[4]);
                 }
-                if (bad && !restingConflict &&
-                    !sol.placed[A[0]] && !sol.placed[B[0]]) {
-                    const int ai=A[0], bi=B[0];
-                    const auto oldA = getBlock(ai), oldB = getBlock(bi);
-                    sol.bay[ai]=A[1]; sol.ori[ai]=A[2]; sol.x[ai]=A[3];
-                    sol.y[ai]=A[4]; sol.e[ai]=A[5]; sol.f[ai]=fa;
-                    sol.bay[bi]=B[1]; sol.ori[bi]=B[2]; sol.x[bi]=B[3];
-                    sol.y[bi]=B[4]; sol.e[bi]=B[5]; sol.f[bi]=fb;
-                    sol.placed[ai]=sol.placed[bi]=1;
-                    sol.addIdx(ai); sol.addIdx(bi);
-                    bad = !(core::vpExactEvents(pb, sol, ai) &&
-                            core::vpExactEvents(pb, sol, bi));
-                    sol.delIdx(ai); sol.delIdx(bi);
-                    sol.bay[ai]=oldA[0]; sol.ori[ai]=oldA[1];
-                    sol.x[ai]=oldA[2]; sol.y[ai]=oldA[3];
-                    sol.e[ai]=oldA[4]; sol.f[ai]=oldA[5];
-                    sol.bay[bi]=oldB[0]; sol.ori[bi]=oldB[1];
-                    sol.x[bi]=oldB[2]; sol.y[bi]=oldB[3];
-                    sol.e[bi]=oldB[4]; sol.f[bi]=oldB[5];
-                    sol.placed[ai]=sol.placed[bi]=0;
-                }
                 if (bad) { out.push_back(a); out.push_back(b); }
             }
         }
         return out;
     }
-    void setAssignmentLock(std::vector<int> v, bool hard = false) {
+    void setAssignmentLock(std::vector<int> v) {
         lockVec = std::move(v);
         ctx.forcedBay = lockVec.empty() ? nullptr : lockVec.data();
-        ctx.releaseForcedBay = !hard;
     }
     void setEntryLock(std::vector<int> v) {
         capVec = std::move(v);
@@ -634,9 +448,6 @@ struct Engine {
         candSols.assign((size_t)threads, {});     // per-thread candidates
         rounds = std::max(1, rounds);
         auto wall0 = std::chrono::steady_clock::now();
-        const auto absoluteDeadline = wall0 + std::chrono::duration_cast<
-            std::chrono::steady_clock::duration>(
-                std::chrono::duration<double>(std::max(0.0, seconds)));
         auto elapsed = [&] { return std::chrono::duration<double>(
             std::chrono::steady_clock::now() - wall0).count(); };
         double perRound = seconds / rounds;
@@ -644,7 +455,6 @@ struct Engine {
         int chunks = 0;
 
         for (int r = 0; r < rounds; r++) {
-            if (std::chrono::steady_clock::now() >= absoluteDeadline) break;
             double roundT0 = elapsed();
             core::Sol roundStart = globalBest;
             double roundEnterBest = bestObj;
@@ -661,11 +471,6 @@ struct Engine {
                 c2.densMode = tid % 2;
                 c2.forcedBay = ctx.forcedBay;   // assignment lock -> threads
                 c2.entryCap = ctx.entryCap;     // entry lock -> threads
-                c2.releaseForcedBay = ctx.releaseForcedBay;
-                c2.prefP = prefP_;
-                c2.exactEvents = exactEvents_;
-                c2.hasDeadline = true;
-                c2.deadline = absoluteDeadline;
                 bool constructed = false;
                 if (r == 0 && !starts.empty()) {
                     const auto& st0 = starts[tid % (int)starts.size()];
@@ -715,10 +520,6 @@ struct Engine {
                         if (s2.placed[i]) oc2.stamp(pb, s2, i, true);
                     repair::Ctx c3; c3.pb=&pb; c3.s=&s2; c3.oc=&oc2;
                     c3.horizon=horizon_;
-                    c3.prefP=prefP_;
-                    c3.exactEvents=exactEvents_;
-                    c3.hasDeadline=true;
-                    c3.deadline=absoluteDeadline;
                     alns::spatialCompact(c3, 6);
                     alns::compactLeft(c3, 3);
                 }
@@ -766,7 +567,6 @@ struct Engine {
         }
         lastChunks_ = chunks;
         sol = globalBest;
-        buildOcc(horizon_);
         // [totIters, bestObj, winnerTid, perThreadBest...] -- winnerTid tells
         // which start (seed slot / construction) actually won the merge:
         // the observable that decides future portfolio composition.
@@ -782,22 +582,13 @@ struct Engine {
     // construction). Returns -1 on success, else the block that failed; the
     // previous solution is restored on failure.
     int reconstructOrdered(std::vector<int> asg, std::vector<int> order,
-                           bool tight, uint64_t seed, double maxSeconds = 0.0) {
-        const auto callStart = std::chrono::steady_clock::now();
+                           bool tight, uint64_t seed) {
         if ((int)asg.size() != pb.n || (int)order.size() != pb.n) return -2;
         core::Sol backup = sol;
         occ::OccIndex oc2; oc2.build(pb, horizon_);
         repair::Ctx c2; c2.pb=&pb; c2.s=&sol; c2.oc=&oc2; c2.horizon=horizon_;
-        c2.prefP = prefP_;
-        c2.exactEvents = exactEvents_;
         c2.forcedBay = asg.data();
         c2.rng.seed(seed);
-        if (maxSeconds > 0.0) {
-            c2.hasDeadline = true;
-            c2.deadline = callStart
-                + std::chrono::duration_cast<std::chrono::steady_clock::duration>(
-                    std::chrono::duration<double>(maxSeconds));
-        }
         for (int i = 0; i < pb.n; i++) sol.placed[i] = 0;
         sol.rebuildIdx(pb.m);
         int bad = -1;
@@ -846,12 +637,12 @@ struct Engine {
         int ox = sol.x[i], oy = sol.y[i];
         oc.stamp(pb, sol, i, false);
         sol.x[i] = ox + dx; sol.y[i] = oy + dy;
-        bool ok = vpOK(i);
+        bool ok = core::vpConservative(pb, sol, i);
         if (ok) {
             for (int k : sol.byBay[sol.bay[i]]) {
                 if (k == i || !sol.placed[k]) continue;
                 if (!(sol.e[k] < sol.f[i] && sol.e[i] < sol.f[k])) continue;
-                if (!vpOK(k)) { ok = false; break; }
+                if (!core::vpConservative(pb, sol, k)) { ok = false; break; }
             }
         }
         if (ok) { oc.stamp(pb, sol, i, true); return true; }
@@ -874,13 +665,13 @@ struct Engine {
         if (ne < pb.R[i] || nf - ne < pb.P[i] || nf > horizon_) return false;
         oc.stamp(pb, sol, i, false);
         sol.e[i] = ne; sol.f[i] = nf;
-        bool ok = vpOK(i);
+        bool ok = core::vpConservative(pb, sol, i);
         if (ok) {
             int lo = std::min(oe, ne), hi = std::max(of, nf);
             for (int k : sol.byBay[sol.bay[i]]) {
                 if (k == i || !sol.placed[k]) continue;
                 if (!(sol.e[k] < hi && lo < sol.f[k])) continue;
-                if (!vpOK(k)) { ok = false; break; }
+                if (!core::vpConservative(pb, sol, k)) { ok = false; break; }
             }
         }
         if (ok) { oc.stamp(pb, sol, i, true); return true; }
@@ -934,12 +725,13 @@ struct Engine {
         sol.rebuildIdx(pb.m);
         oc.stamp(pb, sol, i, true);
         oc.stamp(pb, sol, j, true);
-        bool ok = vpOK(i) && vpOK(j);
+        bool ok = core::vpConservative(pb, sol, i)
+               && core::vpConservative(pb, sol, j);
         if (ok)
             for (int b2 : {aB, bB}) {
                 for (int k : sol.byBay[b2]) {
                     if (k == i || k == j || !sol.placed[k]) continue;
-                    if (!vpOK(k)) { ok=false; break; }
+                    if (!core::vpConservative(pb, sol, k)) { ok=false; break; }
                 }
                 if (!ok) break;
             }
@@ -995,15 +787,7 @@ PYBIND11_MODULE(sscore, m) {
         .def("init_problem", &Engine::initProblem)
         .def("add_orient", &Engine::addOrient)
         .def("build_occ", &Engine::buildOcc)
-        .def("reconstruct_ordered", &Engine::reconstructOrdered,
-             py::arg("assignment"), py::arg("order"), py::arg("tight"),
-             py::arg("seed"), py::arg("maxSeconds") = 0.0)
-        .def("set_pref_p", &Engine::setPrefP)
-        .def("set_exact_events", &Engine::setExactEvents)
-        .def("ordered_events", &Engine::orderedEvents)
-        .def("exact_state_ok", &Engine::exactStateOK)
-        .def("access_cohort", &Engine::accessCohort)
-        .def("compact_event_schedule", &Engine::compactEventSchedule)
+        .def("reconstruct_ordered", &Engine::reconstructOrdered)
         .def("run_portfolio", &Engine::runPortfolio,
              py::arg("threads"), py::arg("seconds"), py::arg("rounds"),
              py::arg("qlo"), py::arg("qhi"), py::arg("T0mul"),
@@ -1026,26 +810,22 @@ PYBIND11_MODULE(sscore, m) {
         .def("reconstruct_assigned", &Engine::reconstructAssigned)
         .def("insert_capped", &Engine::insertCapped)
         .def("feasible_positions", &Engine::feasiblePositions,
-             py::arg("A"), py::arg("k"), py::arg("eMin") = 0,
-             py::arg("maxSeconds") = 0.0,
-             py::arg("maxDaysPerBay") = 1, py::arg("maxPerBay") = 0,
-             py::arg("shapeContacts") = false)
+             py::arg("A"), py::arg("k"), py::arg("eMin") = 0)
         .def("place_at", &Engine::placeAt)
         .def("last_chunks", &Engine::lastChunks)
         .def("last_phase", &Engine::lastPhase)
         .def("last_ops", &Engine::lastOps)
         .def("last_stats", &Engine::lastStats)
         .def("horizon", [](Engine& e){ return e.horizonValue(); })
-        .def("pair_conflicts", &Engine::pairConflicts,
-             py::arg("cand"), py::arg("maxSeconds") = 0.0)
-        .def("set_assignment_lock", &Engine::setAssignmentLock,
-             py::arg("assignment"), py::arg("hard") = false)
+        .def("pair_conflicts", &Engine::pairConflicts)
+        .def("set_assignment_lock", &Engine::setAssignmentLock)
         .def("set_entry_lock", &Engine::setEntryLock)
         .def("compact_left", &Engine::compactLeft)
         .def("set_block", &Engine::setBlock)
         .def("finalize_load", &Engine::finalizeLoad)
         .def("set_solution", &Engine::setSolution)
         .def("get_solution", &Engine::getSolution)
+        .def("entry_ranks", &Engine::entryRanks)
         .def("vp_ok", &Engine::vpOK)
         .def("audit_state", &Engine::auditState);
 }

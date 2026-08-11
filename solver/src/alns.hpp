@@ -26,8 +26,7 @@ struct RunStats { long iters=0, accepted=0, improved=0, failed=0; double best;
 // Full-state audit -- the development assertion tool. Run it (auditEvery) when
 // a new operator misbehaves and it tells you WHERE the state broke:
 // 0 ok; 1 byBay out of bounds; 2 stale member; 3 dup/missing; 4 vp violation.
-inline int audit(const core::Problem& pb, core::Sol& s, int* badBlock = nullptr,
-                 bool exactEvents = false) {
+inline int audit(const core::Problem& pb, core::Sol& s, int* badBlock = nullptr) {
     std::vector<int> cnt(pb.n, 0);
     for (int j = 0; j < pb.m; j++)
         for (int i : s.byBay[j]) {
@@ -40,8 +39,7 @@ inline int audit(const core::Problem& pb, core::Sol& s, int* badBlock = nullptr,
         if (!s.placed[i] && cnt[i] != 0) { if (badBlock) *badBlock = i; return 3; }
     }
     for (int i = 0; i < pb.n; i++)
-        if (s.placed[i] && !(exactEvents ? core::vpExactEvents(pb, s, i)
-                                         : core::vpConservative(pb, s, i))) {
+        if (s.placed[i] && !core::vpConservative(pb, s, i)) {
             if (badBlock) *badBlock = i; return 4;
         }
     return 0;
@@ -372,14 +370,6 @@ inline RunStats run(repair::Ctx& c, double seconds, const RunParams& rp,
     auto t0 = std::chrono::steady_clock::now();
     auto now = [&]{ return std::chrono::duration<double>(
         std::chrono::steady_clock::now() - t0).count(); };
-    const bool savedHasDeadline = c.hasDeadline;
-    const auto savedDeadline = c.deadline;
-    const auto localDeadline = t0
-        + std::chrono::duration_cast<std::chrono::steady_clock::duration>(
-            std::chrono::duration<double>(std::max(0.0, seconds)));
-    c.hasDeadline = true;
-    c.deadline = savedHasDeadline ? std::min(savedDeadline, localDeadline)
-                                  : localDeadline;
 
     core::slackW() = 0.0;        // slack surrogate refuted (08-02 ablation)
     auto obj = [&]{
@@ -390,6 +380,8 @@ inline RunStats run(repair::Ctx& c, double seconds, const RunParams& rp,
         // op 8's live habitat gate: parameter-free comparison of the two
         // priced terms (measured separation: p22 fires, p28/p38 silent).
         c.z3dom = (pb.w3 * ob.z3 > pb.w1 * ob.z1);
+        c.z3live = (ob.z3 > 0.0);
+        c.z1live = (ob.z1 > 0.0);
         return ob.total;
     };
     double cur = obj(), best = cur;
@@ -423,11 +415,10 @@ inline RunStats run(repair::Ctx& c, double seconds, const RunParams& rp,
     // cannot unwind under assignment constraints -- the K-frontier cliff).
     // Releasing the lock at 0.6*budget keeps the early guidance and
     // frees the tail to repair. Fires only when a lock is active.
-    while (!repair::deadlineExpired(c) &&
-           now() < seconds &&
+    while (now() < seconds &&
            (rp.maxIters <= 0 || st.iters < rp.maxIters)) {
         st.iters++;
-        if (c.forcedBay && c.releaseForcedBay &&
+        if (c.forcedBay &&
             (rp.maxIters > 0
                  ? st.iters >= (long)(0.6 * rp.maxIters)
                  : now() > 0.6 * seconds))
@@ -444,8 +435,13 @@ inline RunStats run(repair::Ctx& c, double seconds, const RunParams& rp,
         // exactly the boards that could least afford it (the real cause of
         // the sec 193-195 Set B losses).
         uint32_t em = rp.opMask;
-        if (!c.z3dom) em &= ~(1u << 8);   // op 8 lives where w3*Z3 dominates
-        if (c.z3dom)  em &= ~(1u << 9);   // op 9 lives on the complement
+        // Enable each ejection op where it has work, not where its term leads
+        // the sum: op 8 wherever any block prefers another bay, op 9 wherever
+        // anything is tardy. Both return {} when they find nothing, so the
+        // wasted-iteration worry that motivated the dominance gate is handled
+        // by the emptiness check, not by switching the op off.
+        if (!c.z3live) em &= ~(1u << 8);
+        if (!c.z1live) em &= ~(1u << 9);
         int kind = ds.pick();
         for (int tries = 0; tries < 8 && !((em >> kind) & 1); tries++)
             kind = ds.pick();
@@ -495,12 +491,12 @@ inline RunStats run(repair::Ctx& c, double seconds, const RunParams& rp,
                     if (nX != oX || nY != oY) {
                         c.oc->stamp(pb, s, A3, false);
                         s.x[A3] = nX; s.y[A3] = nY;
-                        bool ok4 = repair::placementFeasible(c, A3);
+                        bool ok4 = core::vpConservative(pb, s, A3);
                         if (ok4) {
                             c.oc->stamp(pb, s, A3, true);
                             for (int k3 : s.byBay[j3]) {
                                 if (k3 == A3 || !s.placed[k3]) continue;
-                                if (!repair::placementFeasible(c, k3)) {
+                                if (!core::vpConservative(pb, s, k3)) {
                                     ok4 = false; break; }
                             }
                             if (!ok4) c.oc->stamp(pb, s, A3, false);
@@ -545,10 +541,6 @@ inline RunStats run(repair::Ctx& c, double seconds, const RunParams& rp,
                 int A = tard[c.rng() % tard.size()];
                 int B = pl[c.rng() % pl.size()];
                 if (A != B) {
-                    if (c.forcedBay &&
-                        ((c.forcedBay[A] >= 0 && c.forcedBay[A] != s.bay[B]) ||
-                         (c.forcedBay[B] >= 0 && c.forcedBay[B] != s.bay[A])))
-                        goto no_swap;
                     int aB=s.bay[A], aX=s.x[A], aY=s.y[A], aE=s.e[A];
                     int bB=s.bay[B], bX=s.x[B], bY=s.y[B], bE=s.e[B];
                     c.oc->stamp(pb, s, A, false);
@@ -568,14 +560,14 @@ inline RunStats run(repair::Ctx& c, double seconds, const RunParams& rp,
                     s.rebuildIdx(pb.m);
                     c.oc->stamp(pb, s, A, true);
                     c.oc->stamp(pb, s, B, true);
-                    bool ok2 = repair::placementFeasible(c, A)
-                            && repair::placementFeasible(c, B);
+                    bool ok2 = core::vpConservative(pb, s, A)
+                            && core::vpConservative(pb, s, B);
                     if (ok2)
                         for (int j2 : {aB, bB}) {
                             for (int k2 : s.byBay[j2]) {
                                 if (k2 == A || k2 == B || !s.placed[k2])
                                     continue;
-                                if (!repair::placementFeasible(c, k2)) {
+                                if (!core::vpConservative(pb, s, k2)) {
                                     ok2 = false; break; }
                             }
                             if (!ok2) break;
@@ -619,7 +611,7 @@ no_swap:
         }
         long t1 = tmr ? tick() : 0;
         if (auditEvery > 0) {
-            int bb = -1; int code = audit(pb, s, &bb, c.exactEvents);
+            int bb = -1; int code = audit(pb, s, &bb);
             if (code) { st.badIter = st.iters; st.badKind = kind;
                 st.badPhase = 10000 + code * 1000 + bb; break; }
         }
@@ -641,30 +633,22 @@ no_swap:
             thread_local std::vector<int> fbv;
             fbv.assign(pb.n, -1);
             fbv[c.tsBlk] = c.tsBay;
-            if (c.forcedBay && c.forcedBay[c.tsBlk] >= 0 &&
-                c.forcedBay[c.tsBlk] != c.tsBay) {
-                ok = false;
-            } else {
-                const int* save = c.forcedBay;
-                c.forcedBay = fbv.data();
-                ok = repair::insertGreedy(c, c.tsBlk, c.tsECap);
-                c.forcedBay = save;
-                if (ok)
-                    for (int A : rem) {
-                        if (A == c.tsBlk) continue;
-                        if (!repair::insertGreedy(c, A, -1)) {
-                            ok = false;
-                            break;
-                        }
-                    }
-            }
+            const int* save = c.forcedBay;
+            c.forcedBay = fbv.data();
+            ok = repair::insertGreedy(c, c.tsBlk, c.tsECap);
+            c.forcedBay = save;
+            if (ok)
+                for (int A : rem) {
+                    if (A == c.tsBlk) continue;
+                    if (!repair::insertGreedy(c, A, -1)) { ok = false; break; }
+                }
         } else {
             for (int A : rem) {
                 if (!repair::insertGreedy(c, A, -1)) { ok = false; break; }
             }
         }
         if (auditEvery > 0 && ok) {
-            int bb = -1; int code = audit(pb, s, &bb, c.exactEvents);
+            int bb = -1; int code = audit(pb, s, &bb);
             if (code) { st.badIter = st.iters; st.badKind = kind;
                 st.badPhase = 20000 + code * 1000 + bb; break; }
         }
@@ -725,13 +709,11 @@ no_swap:
             sinceBest = 0;
         }
         if (auditEvery > 0 && (st.iters % auditEvery) == 0) {
-            int bb = -1; int code = audit(pb, s, &bb, c.exactEvents);
+            int bb = -1; int code = audit(pb, s, &bb);
             if (code) { st.badIter = st.iters; st.badKind = kind;
                 st.badPhase = code * 1000 + bb; break; }
         }
     }
-    c.hasDeadline = savedHasDeadline;
-    c.deadline = savedDeadline;
     s = bestSol;
     for (int k = 0; k < 10; k++) {          // per-operator contribution
         st.opUsed[k] = ds.used[k];
@@ -766,10 +748,8 @@ inline int spatialCompact(repair::Ctx& c, int passes) {
     const Problem& pb = *c.pb; Sol& s = *c.s;
     int moved = 0;
     for (int pass = 0; pass < passes; pass++) {
-        if (repair::deadlineExpired(c)) break;
         int mv = 0;
         for (int i = 0; i < pb.n; i++) {
-            if (repair::deadlineExpired(c)) break;
             if (!s.placed[i]) continue;
             int j = s.bay[i], oi = s.ori[i];
             const auto& bb = pb.geo[i].orients[oi].bb;
@@ -789,12 +769,12 @@ inline int spatialCompact(repair::Ctx& c, int passes) {
             int oldx = s.x[i], oldy = s.y[i];
             if (nx != INT_MIN && nx < s.x[i]) s.x[i] = nx;
             s.y[i] = ny;
-            bool ok = repair::placementFeasible(c, i);
+            bool ok = core::vpConservative(pb, s, i);
             if (ok)                       // neighbours' crane paths
                 for (int k : s.byBay[j]) {
                     if (k == i || !s.placed[k]) continue;
                     if (s.f[k] <= s.e[i] || s.e[k] >= s.f[i]) continue;
-                    if (!repair::placementFeasible(c, k)) { ok = false;
+                    if (!core::vpConservative(pb, s, k)) { ok = false;
                                                            break; }
                 }
             if (!ok) { s.x[i] = oldx; s.y[i] = oldy; }
@@ -811,14 +791,12 @@ inline int compactLeft(repair::Ctx& c, int maxPasses) {
     const Problem& pb = *c.pb; Sol& s = *c.s;
     int totalMoved = 0;
     for (int pass = 0; pass < maxPasses; pass++) {
-        if (repair::deadlineExpired(c)) break;
         int moved = 0;
         std::vector<int> ids;
         for (int i = 0; i < pb.n; i++) if (s.placed[i]) ids.push_back(i);
         std::sort(ids.begin(), ids.end(),
                   [&](int a, int b){ return s.e[a] < s.e[b]; });
         for (int i : ids) {
-            if (repair::deadlineExpired(c)) break;
             if (s.e[i] <= pb.R[i]) continue;
             int oldE = s.e[i], oldF = s.f[i];
             std::vector<int> cand;
@@ -833,7 +811,7 @@ inline int compactLeft(repair::Ctx& c, int maxPasses) {
                 if (e2 >= oldE) break;
                 c.oc->stamp(pb, s, i, false);
                 s.e[i] = e2; s.f[i] = e2 + pb.P[i];
-                if (repair::placementFeasible(c, i)) {
+                if (core::vpConservative(pb, s, i)) {
                     c.oc->stamp(pb, s, i, true);
                     moved++; break;
                 }

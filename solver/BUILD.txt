@@ -18,8 +18,41 @@ No license and no network are required: ortools' CP-SAT is used, not a
 commercial solver. Verified against ortools 9.15.6755, the version present
 on the grading image.
 
-What the last revision changed (v5.3, 2026-08-04)
+What the last revision changed (v6.0, 2026-08-12)
 -------------------------------------------------
+0. INTRA-DAY EVENT ORDER (src/core.hpp, src/api.cpp, myalgorithm.py).
+   The checker excludes same-day entrants from its Stage-2 present set
+   and validates their relative order in Stage 5, i.e. only ONE order
+   has to work. The kernel's placement test instead required every
+   intra-day order to be legal (rule 2 put the whole batch under the
+   newcomer, rule 4 put the newcomer under each of them), and 64-74% of
+   blocks enter in a same-day, same-bay batch of two or more, so the
+   test was rejecting boards the rules allow on exactly the congested
+   days where tardiness is made. Rule 2 is now split to match: 2a is
+   Stage 2 (strictly earlier residents), 2b is Stage 5 (the batch's
+   "must enter before" relation has to admit a topological order), and
+   Engine::entryRanks() hands the verified order to the emitter so the
+   solution lists an order the kernel actually checked. A fast path
+   keeps every placement the old rule accepted at the old cost: if the
+   newcomer clears the whole batch it can simply enter last.
+   The same-day EXIT tie-break was completed at the same time -- it
+   read entry day only, so a pair sharing BOTH days sat in neither
+   present set and its sweep was never checked (the class the v5.3 note
+   below records as uncertifiable). Without that completion the entry
+   change alone fails the checker.
+1. EJECTION-OP HABITAT (src/alns.hpp, src/repair.hpp). Ops 8 and 9 were
+   gated on which objective term led the SUM, which switched the only
+   preference-chasing operator off on every tardiness-dominated board
+   even though its term was still 0.61-0.97M points there. They are now
+   enabled wherever they have work (any regret / any tardiness); both
+   already return an empty removal when they find none.
+   Measured, matched AB/BA pairs at the official limits on one node per
+   pair: preliminary P3-P6, 48 pairs, 31W/16L, median -2.09% (sign test
+   p=0.040; P6 alone 11W/1L, -3.58%, p=0.006). Full 40-instance training
+   set, 40 pairs, 33W/6L, median -3.25% (p<0.0001), no fallbacks.
+
+What the previous revision changed (v5.3, 2026-08-04)
+-----------------------------------------------------
 0. PAIR-CONFLICT MODEL COMPLETED (src/api.cpp pairConflicts). The CP
    re-placement arm ranks candidate placements against a pairwise
    conflict model; that model checked only the crane ENTRY descent, so

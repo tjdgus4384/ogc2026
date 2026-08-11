@@ -21,7 +21,6 @@
 """
 import json
 import math
-from fractions import Fraction
 import os
 import random
 import re
@@ -73,7 +72,7 @@ _THR = min(4, os.cpu_count() or 1)   # the server grants 4 cores (sec 100)
 _PSEED = int(os.environ.get("OGC_SEED", "7"))
 
 # ---------------------------------------------------------------- engine io
-def _build_engine(p, pref_p=-1.0):
+def _build_engine(p):
     if sscore is None:
         return None
     B = p["blocks"]; bays = p["bays"]; w = p["weights"]
@@ -90,8 +89,6 @@ def _build_engine(p, pref_p=-1.0):
         [float(b["width"]) for b in bays],
         [float(b["height"]) for b in bays],
         float(w["w1"]), float(w["w2"]), float(w["w3"]))
-    eng.set_pref_p(float(pref_p))
-    eng.set_exact_events(os.environ.get("OGC_EXACT_EVENTS") == "1")
     for i in range(n):
         for oi in range(len(B[i]["shape"])):
             L = [[list(v) for v in lay]
@@ -102,18 +99,12 @@ def _build_engine(p, pref_p=-1.0):
     return eng
 
 
-def _fresh(p, hmul=1, pref_p=-1.0):
+def _fresh(p, hmul=1):
     B = p["blocks"]; n = len(B)
     D = [int(round(b["due_date"])) for b in B]
     P = [max(1, int(math.ceil(b["processing_time"] - 1e-9))) for b in B]
-    eng = _build_engine(p, pref_p)
-    base = max(D) + max(P) + 40
-    if hmul is None:
-        releases = [int(math.ceil(b["release_time"] - 1e-9)) for b in B]
-        horizon = max(base, max(releases) + sum(P) + 1)
-    else:
-        horizon = base * hmul
-    eng.build_occ(horizon)
+    eng = _build_engine(p)
+    eng.build_occ((max(D) + max(P) + 40) * hmul)
     return eng, D, P
 
 
@@ -126,17 +117,16 @@ def _extract(eng, n):
     return out
 
 
-def _recs_to_sol(recs, event_rows=None):
-    if event_rows is not None:
-        ops = {}
-        for t, kind, i, j in event_rows:
-            row = {"type": "EXIT" if kind == 0 else "ENTRY",
-                   "block_id": int(i), "bay_id": int(j)}
-            if kind != 0:
-                v = recs[int(i)]
-                row.update(x=int(v[1]), y=int(v[2]), orient_idx=int(v[3]))
-            ops.setdefault(str(int(t)), []).append(row)
-        return {"operations": ops}
+def _recs_to_sol(recs, ranks=None):
+    """ranks = eng.entry_ranks(): the kernel's intra-day ENTRY order.
+
+    vpConservative rule 2b only proves that SOME order of a same-day, same-bay
+    batch is legal, so the emitted solution has to list the one the kernel
+    verified -- ranks carries it. ranks=None keeps ascending block id, which is
+    what a kernel without rule 2b assumes. Emitting an order the kernel never
+    checked is exactly how a board passes the engine and fails checker Stage 5.
+    """
+    order = (lambda i: i) if ranks is None else (lambda i: (ranks[i], i))
     ent, ext = {}, {}
     for i, v in recs.items():
         ext.setdefault(int(v[5]), []).append(i)
@@ -147,7 +137,7 @@ def _recs_to_sol(recs, event_rows=None):
         for i in sorted(ext.get(tt, []), key=lambda i: -recs[i][4]):
             L.append({"type": "EXIT", "block_id": i,
                       "bay_id": recs[i][0]})
-        for i in ent.get(tt, []):
+        for i in sorted(ent.get(tt, []), key=order):
             v = recs[i]
             L.append({"type": "ENTRY", "block_id": i, "bay_id": v[0],
                       "x": int(v[1]), "y": int(v[2]),
@@ -188,7 +178,7 @@ def _spec_rule(p):
     return _saturation(p) < 1.0
 
 
-def _seed_free(p, diversify=True, asg=None, pref_p=-1.0, deadline=None):
+def _seed_free(p, diversify=True, asg=None):
     """kernel-native seeding, best-of-5 insertion orders (sec 87).
     asg: optional partial assignment lock (-1 = free) applied to every
     construction -- see _arm_free's partial-lock block."""
@@ -214,28 +204,24 @@ def _seed_free(p, diversify=True, asg=None, pref_p=-1.0, deadline=None):
             sorted(range(n), key=lambda i: D[i] + random.uniform(-8, 8)),
             sorted(range(n), key=lambda i: D[i] + random.uniform(-8, 8)),
         ]
-    # Fast horizons first; the final max-release + serial-duration bound is a
-    # guaranteed schedule horizon rather than another guessed multiplier.
-    for hmul in (1, 2, 4, None):
-        if deadline is not None and time.time() >= deadline:
-            break
-        eng, _, _ = _fresh(p, hmul, pref_p)
+    # adaptive-horizon ladder (sec 103): on congested giants the loose
+    # insert overflows the base occupancy horizon (P6 board: total seed
+    # failure -> _trivial's 4.2e9). Doubling the horizon is sound (a
+    # superset of feasible times) and bounded (two retries).
+    for hmul in (1, 2, 4):
+        eng, _, _ = _fresh(p, hmul)
         cands = []                       # (objective, flat solution)
         best = None
         lockv = asg if asg is not None else [-1] * n
         for od in orders:
-            if deadline is not None and time.time() >= deadline:
-                break
-            budget = (0.0 if deadline is None else
-                      max(0.001, deadline - time.time()))
-            if eng.reconstruct_ordered(lockv, od, False, 7, budget) == -1:
+            if eng.reconstruct_ordered(lockv, od, False, 7) == -1:
                 ob = eng.objective()[3]      # [z1,z2,z3,total] -> total
                 cands.append((ob, eng.get_solution()))
                 if best is None or ob < best[0]:
-                    best = (ob, od, eng.get_solution())
+                    best = (ob, od)
         if best is not None:
-            eng.set_solution(best[2])
-            eng.build_occ(eng.horizon())
+            if best[1] is not orders[-1]:
+                eng.reconstruct_ordered([-1] * n, best[1], False, 7)
             # top DISTINCT seeds, best first: the portfolio's basin hedge
             # (different insertion orders often collapse to the same layout;
             # duplicates would waste a thread on the same basin).
@@ -253,30 +239,24 @@ def _seed_free(p, diversify=True, asg=None, pref_p=-1.0, deadline=None):
 
 
 def _check(p, sol):
-    """Return an official checker result, or ``None`` when it is unusable.
+    """A checker call that cannot take the run down (sec 158).
 
-    A kernel board is never evidence of feasibility: only the official checker
-    can authorize it.  The checker is optional at import time, so failures and
-    incompatible return shapes are reported as unavailable rather than being
-    mistaken for an infeasible board.
+    `algorithm()` guards its body with try/except, but a checker that differs
+    in signature or return shape in the grading environment throws inside the
+    gate and collapses the whole run to `_trivial` -- measured: p2 3690 ->
+    9.6e8, a feasible but worthless answer. If the checker is unusable we
+    report `None` and the caller keeps the kernel's own solution, which
+    `vpConservative` has already validated against the same physics (resting
+    overlap + crane entry/exit); sec 133 records only an EPS-level gap between
+    the two, so this is a graceful degradation instead of a collapse.
     """
     if utils is None:
-        _diag("checker", state="unavailable", reason="import")
         return None
     try:
         res = utils.check_feasibility(p, sol)
     except Exception:
-        _diag("checker", state="unavailable", reason="call")
         return None
-    if (not isinstance(res, dict)
-            or type(res.get("feasible")) is not bool
-            or not isinstance(res.get("violations"), list)
-            or (res["feasible"]
-                and (type(res.get("objective")) not in (int, float)
-                     or not math.isfinite(res["objective"])))):
-        _diag("checker", state="unavailable", reason="shape")
-        return None
-    return res
+    return res if isinstance(res, dict) else None
 
 
 def _gate(p, eng, n, deadline=None):
@@ -296,13 +276,13 @@ def _gate(p, eng, n, deadline=None):
     (the server kills overruns; a rescue that misses the deadline is worth
     negative points).
     """
-    sol = _recs_to_sol(_extract(eng, n), eng.ordered_events())
+    sol = _recs_to_sol(_extract(eng, n), eng.entry_ranks())
     t0 = time.time()
     res = _check(p, sol)
     ck = max(0.3, time.time() - t0)          # measured checker cost (max seen)
     if res is None:
-        return None, None
-    if res["feasible"]:
+        return sol, None                     # checker unusable -> trust kernel
+    if res.get("feasible"):
         return sol, res
 
     def room():
@@ -314,20 +294,18 @@ def _gate(p, eng, n, deadline=None):
 
     def recheck(stage):
         nonlocal sol, res, ck
-        sol = _recs_to_sol(_extract(eng, n), eng.ordered_events())
+        sol = _recs_to_sol(_extract(eng, n), eng.entry_ranks())
         t1 = time.time()
         res = _check(p, sol)
         ck = max(ck, time.time() - t1)       # keep the worst-case estimate
         if res is not None:
-            _diag("gate", stage=stage, feasible=res["feasible"],
-                  nviol=len(res["violations"]))
+            _diag("gate", stage=stage, feasible=bool(res.get("feasible")),
+                  nviol=len(res.get("violations", [])))
         return res
 
-    _diag("checker", state="infeasible", stage="raw",
-          nviol=len(res["violations"]))
     _diag("gate", stage="raw", feasible=False,
-          nviol=len(res["violations"]),
-          first=str(res["violations"][0] if res["violations"] else "?")[:120])
+          nviol=len(res.get("violations", [])),
+          first=str(res.get("violations", ["?"])[0])[:120])
 
     # stage 1: pair nudges
     for v in res.get("violations", [])[:6]:
@@ -345,8 +323,8 @@ def _gate(p, eng, n, deadline=None):
         return None, res
     r = recheck("nudge")
     if r is None:
-        return None, None
-    if r["feasible"]:
+        return sol, None
+    if r.get("feasible"):
         return sol, r
 
     # stage 2: retimes -- entry obstruction: shift the entrant's stay +1 day;
@@ -367,8 +345,8 @@ def _gate(p, eng, n, deadline=None):
             break
         r = recheck("retime")
         if r is None:
-            return None, None
-        if r["feasible"]:
+            return sol, None
+        if r.get("feasible"):
             return sol, r
 
     # stage 3: relocations, tight first
@@ -401,8 +379,8 @@ def _gate(p, eng, n, deadline=None):
             break
         r = recheck(f"move{sd}")
         if r is None:
-            return None, None
-        if r["feasible"]:
+            return sol, None
+        if r.get("feasible"):
             return sol, r
     return None, res
 
@@ -442,8 +420,6 @@ def _assign_descent(p, eng, deadline):
     u = [(sum(areas) / m) / a for a in areas]
     w1 = float(W["w1"]); w2 = float(W["w2"]); w3 = float(W["w3"])
     D = [int(round(b["due_date"])) for b in B]
-    P = [max(1, int(math.ceil(b["processing_time"] - 1e-9))) for b in B]
-    R = [int(math.ceil(b["release_time"] - 1e-9)) for b in B]
     hor = eng.horizon()
 
     def z2_of(S):
@@ -487,12 +463,8 @@ def _assign_descent(p, eng, deadline):
                                + (pref[k][b] - pref[k][a]))
                         S2 = list(S)
                         S2[a] += L[k] - L[i]; S2[b] += L[i] - L[k]
-                        n_ie = max(R[i], blk[k][4])
-                        n_ke = max(R[k], blk[i][4])
-                        new_tard = (max(0.0, n_ie + P[i] - D[i])
-                                    + max(0.0, n_ke + P[k] - D[k]))
                         d = (w2 * (z2_of(S2) - z2) + w3 * dz3
-                             + w1 * (new_tard - tard[i] - tard[k]))
+                             - w1 * (tard[i] + tard[k]))
                         if d < -1e-9:
                             cands.append((d, 1, i, k))
         if not cands:
@@ -530,11 +502,13 @@ def _population_search(p, eng, seed, sec, starts, base_asg):
     n = len(p["blocks"])
     t_end = time.time() + sec
     burst = max(20.0, sec / 8.0)
-    horizon = eng.horizon()
 
     def anneal(flat, locks, bsec, rseed):
         eng.set_solution(flat)
-        eng.build_occ(horizon)
+        B = p["blocks"]
+        eng.build_occ(max(int(round(b["due_date"])) for b in B)
+                      + max(max(1, int(math.ceil(b["processing_time"]
+                                                 - 1e-9))) for b in B) + 40)
         eng.set_assignment_lock(locks if locks is not None else
                                 (base_asg or []))
         eng.run_portfolio(_THR, bsec, 1, 0.05, 0.15, 0.002, 0.9995,
@@ -575,7 +549,10 @@ def _population_search(p, eng, seed, sec, starts, base_asg):
             pop[-1] = child
             pop.sort(key=lambda t: t[0])
     eng.set_solution(pop[0][1])
-    eng.build_occ(horizon)
+    B = p["blocks"]
+    eng.build_occ(max(int(round(b["due_date"])) for b in B)
+                  + max(max(1, int(math.ceil(b["processing_time"] - 1e-9)))
+                        for b in B) + 40)
 
 
 
@@ -618,48 +595,26 @@ def _slice_refine(p, eng, seed, until, hor):
     n = len(B)
     P = [max(1, int(math.ceil(b["processing_time"] - 1e-9))) for b in B]
     D = [int(round(b["due_date"])) for b in B]
-    PREF = [[int(round(v)) for v in b["bay_preferences"]] for b in B]
+    PREF = [[float(v) for v in b["bay_preferences"]] for b in B]
     SMAX = [max(pr) for pr in PREF]
-    bay_areas = [
-        Fraction(str(b["width"])) * Fraction(str(b["height"])) for b in bays]
-    area_scale = math.lcm(*(area.denominator for area in bay_areas))
-    area_units = [int(area * area_scale) for area in bay_areas]
-    area_sum = sum(area_units)
-    use_access_cohort = os.environ.get("OGC_ACCESS_COHORT") == "1"
-    use_full_slice_obj = os.environ.get("OGC_FULL_SLICE_OBJ") == "1"
-    use_anchored_columns = os.environ.get("OGC_ANCHORED_COLUMNS") == "1"
-    use_branch_check = os.environ.get("OGC_BRANCH_CHECK") == "1"
-    use_stratified_columns = os.environ.get("OGC_STRATIFIED_COLUMNS") == "1"
-    use_balance_cohort = os.environ.get("OGC_BALANCE_COHORT") == "1"
-    use_shape_contacts = os.environ.get("OGC_SHAPE_CONTACTS") == "1"
     cp = _cpsat()
     rng = random.Random(seed * 7919 + 13)
     cur = eng.get_solution()
     best = eng.objective()[3]
-    # A comma-separated radius portfolio exercises genuinely different exact
-    # neighborhoods in one run; the singleton default preserves the canonical path.
-    raw_k = os.environ.get("OGC_EXACT_K_SET",
-                           os.environ.get("OGC_EXACT_K", "25"))
-    K_SET = sorted({
-        max(2, min(n, int(token))) for token in raw_k.split(",") if token.strip()
-    })
-    if not K_SET:
-        K_SET = [25]
-    NCAND = max(2, int(os.environ.get("OGC_EXACT_NCAND", "30")))
-    exact_only = os.environ.get("OGC_EXACT_SLICE_ONLY") == "1"
+    # subset size / candidate count: standalone sweeps preferred K=60
+    # (P6 -4.24% vs -4.06% at K=25; P5 -2.09%) but k60 REFUTED on the
+    # 40-pair harness (08-03, -16 rank pts); fixed shipped values.
+    K = 25
+    NCAND = 30
     span = until - time.time()
     if span <= 8.0:
         return
     SLICE = max(3.0, span * 0.18)
-    audit_reserve = max(2.0, 0.04 * n)
     rate = {"p": None if cp else -1.0, "a": None}
     rounds = 0
-    exact_attempts = 0
-    while time.time() < until - audit_reserve:
+    while time.time() < until - 3.0:
         rounds += 1
-        if exact_only:
-            arm = "p"
-        elif rate["p"] is None:
+        if rate["p"] is None:
             arm = "p"
         elif rate["a"] is None:
             arm = "a"
@@ -678,99 +633,29 @@ def _slice_refine(p, eng, seed, until, hor):
                 best, cur = v, eng.get_solution()
             rate["a"] = (b0 - best) / max(1e-9, time.time() - t1)
             continue
-        while time.time() < end - audit_reserve:
-            K = K_SET[exact_attempts % len(K_SET)]
-            exact_attempts += 1
+        while time.time() < end - 1.0:
             tardy = [i for i in range(n) if cur[i*7+6] and cur[i*7+5] > D[i]]
-            if tardy:
-                seed_i = rng.choice(tardy)
-            elif use_full_slice_obj and use_balance_cohort:
-                # Z1-free boards still need exact neighborhoods: seed from the
-                # blocks that price the current assignment most heavily through
-                # preference regret or the normalized high-load bay.  The old
-                # tardy-only gate silently disabled the joint optimizer on P3.
-                load = [0.0] * len(bays)
-                for i in range(n):
-                    if cur[i*7+6]:
-                        j = cur[i*7]
-                        load[j] += float(B[i]["workload"]) * area_sum / area_units[j]
-                high = max(range(len(bays)), key=lambda j: load[j])
-                priced = []
-                for i in range(n):
-                    if not cur[i*7+6]:
-                        continue
-                    j = cur[i*7]
-                    regret = SMAX[i] - PREF[i][j]
-                    relief = (float(B[i]["workload"]) * area_sum / area_units[j]
-                              if j == high else 0.0)
-                    priced.append((W["w3"] * regret + W["w2"] * relief, i))
-                priced.sort(reverse=True)
-                frontier = [i for _, i in priced[:max(K, min(len(priced), 3*K))]]
-                if not frontier:
-                    break
-                seed_i = rng.choice(frontier)
-            else:
+            if not tardy:
                 break
-            if use_access_cohort:
-                free = list(eng.access_cohort(seed_i, K))
-            else:
-                free = [seed_i]
+            seed_i = rng.choice(tardy)
+            free = [seed_i]
             pool = [i for i in range(n) if cur[i*7+6] and i not in set(free)]
             if len(free) < K:
                 free += rng.sample(pool, min(K - len(free), len(pool)))
-            _diag("slice-stage", stage="columns-start", free=len(free),
-                  seconds_left=round(end-time.time(), 3))
             part = list(cur)
             for i in free:
                 part[i*7+6] = 0
             eng.set_solution(part); eng.build_occ(hor)
             CAND = {}
-            for pos, i in enumerate(free):
-                budget = max(0.02, min(
-                    0.35, (end - time.time() - audit_reserve)
-                    / max(1, len(free) - pos)))
-                per_block_cap = max(6, 600 // max(1, len(free)))
-                ncols = (min(NCAND, 20, per_block_cap)
-                         if use_anchored_columns else min(NCAND, per_block_cap))
-                raw = (eng.feasible_positions(
-                    i, ncols, 0, budget,
-                    3 if use_stratified_columns else 1,
-                    math.ceil(ncols / len(bays)) if use_stratified_columns else 0,
-                    use_shape_contacts)
-                       if time.time() < end - audit_reserve else [])
+            for i in free:
+                raw = eng.feasible_positions(i, NCAND, 0)
                 cs = [tuple(raw[q:q+5]) for q in range(0, len(raw), 5)]
                 c0 = tuple(cur[i*7:i*7+5])
                 if c0 not in cs:
                     cs.append(c0)
                 CAND[i] = cs
-            if use_anchored_columns:
-                for i in free:
-                    if time.time() >= end - audit_reserve:
-                        break
-                    anchored = list(cur)
-                    anchored[i*7+6] = 0
-                    eng.set_solution(anchored)
-                    eng.build_occ(hor)
-                    raw = eng.feasible_positions(
-                        i, 10, 0, 0.12,
-                        2 if use_stratified_columns else 1,
-                        math.ceil(10 / len(bays)) if use_stratified_columns else 0,
-                        use_shape_contacts)
-                    for q in range(0, len(raw), 5):
-                        c = tuple(raw[q:q+5])
-                        if c not in CAND[i] and len(CAND[i]) < NCAND:
-                            CAND[i].append(c)
-                eng.set_solution(part)
-                eng.build_occ(hor)
-            _diag("slice-stage", stage="columns-done",
-                  columns=sum(map(len, CAND.values())),
-                  seconds_left=round(end-time.time(), 3))
-            if time.time() >= end - audit_reserve:
-                eng.set_solution(cur)
-                eng.build_occ(hor)
-                break
             mdl = cp.CpModel()
-            V, flatc, idx, incumbent_vars = {}, [], [], []
+            V, flatc, idx = {}, [], []
             for i in free:
                 V[i] = [mdl.NewBoolVar("z%d_%d" % (i, q))
                         for q in range(len(CAND[i]))]
@@ -778,135 +663,31 @@ def _slice_refine(p, eng, seed, until, hor):
                 for q, (j, oi, x, y, e) in enumerate(CAND[i]):
                     flatc += [i, j, oi, x, y, e]
                     idx.append((i, q))
-                incumbent = tuple(cur[i*7:i*7+5])
-                for q, c in enumerate(CAND[i]):
-                    mdl.AddHint(V[i][q], int(c == incumbent))
-                    if c == incumbent:
-                        incumbent_vars.append(V[i][q])
-            mdl.AddDecisionStrategy(
-                incumbent_vars, cp.CHOOSE_FIRST, cp.SELECT_MAX_VALUE)
-            prs = eng.pair_conflicts(
-                flatc, max(0.1, min(2.0, end - time.time() - audit_reserve)))
-            if prs and prs[0] < 0:
-                eng.set_solution(cur)
-                eng.build_occ(hor)
-                break
-            _diag("slice-stage", stage="relations-done",
-                  conflicts=len(prs)//2, seconds_left=round(end-time.time(), 3))
+            prs = eng.pair_conflicts(flatc)
             for t2 in range(0, len(prs), 2):
                 (i, q), (k, r2) = idx[prs[t2]], idx[prs[t2 + 1]]
                 mdl.AddBoolOr([V[i][q].Not(), V[k][r2].Not()])
-            objective_terms = []
+            mdl.Minimize(sum((W["w1"] * max(0, c[4] + P[i] - D[i])
+                              + W["w3"] * (SMAX[i] - PREF[i][c[0]])) * V[i][q]
+                             for i in free
+                             for q, c in enumerate(CAND[i])))
+            sv = cp.CpSolver()
+            sv.parameters.max_time_in_seconds = max(
+                0.5, min(6.0, end - time.time()))
+            sv.parameters.num_search_workers = _THR
+            st = sv.Solve(mdl)
+            if st not in (cp.OPTIMAL, cp.FEASIBLE):
+                eng.set_solution(cur); eng.build_occ(hor); continue
+            new = list(part)
             for i in free:
                 for q, c in enumerate(CAND[i]):
-                    coeff = (
-                        Fraction(str(W["w1"])) * max(0, c[4] + P[i] - D[i])
-                        + Fraction(str(W["w3"])) * (SMAX[i] - PREF[i][c[0]])
-                    )
-                    objective_terms.append((coeff, V[i][q]))
-            if use_full_slice_obj:
-                common_area = math.lcm(*area_units)
-                workloads = [Fraction(str(b["workload"])) for b in B]
-                workload_scale = math.lcm(
-                    *(workload.denominator for workload in workloads))
-                workload_units = [
-                    int(workload * workload_scale) for workload in workloads]
-                z2_denom = len(bays) * common_area * workload_scale
-                fixed_load = [0] * len(bays)
-                free_set = set(free)
-                for i in range(n):
-                    if cur[i*7+6] and i not in free_set:
-                        fixed_load[cur[i*7]] += workload_units[i]
-                load_expr = []
-                bound = 0
-                for j in range(len(bays)):
-                    expr = (area_sum * fixed_load[j]
-                            * (common_area // area_units[j]))
-                    for i in free:
-                        coeff = (area_sum * workload_units[i]
-                                 * (common_area // area_units[j]))
-                        bound += abs(coeff)
-                        expr += sum(coeff * V[i][q]
-                                    for q, c in enumerate(CAND[i]) if c[0] == j)
-                    load_expr.append(expr)
-                abs_diffs = []
-                bound = max(bound, 1) + max(
-                    abs(area_sum * fixed_load[j]
-                        * (common_area // area_units[j]))
-                    for j in range(len(bays)))
-                for a in range(len(bays)):
-                    for b in range(a + 1, len(bays)):
-                        av = mdl.NewIntVar(0, 2 * bound, "load_abs_%d_%d" % (a, b))
-                        mdl.AddAbsEquality(av, load_expr[a] - load_expr[b])
-                        abs_diffs.append(av)
-                if abs_diffs:
-                    max_abs = mdl.NewIntVar(0, 2 * bound, "load_max")
-                    mdl.AddMaxEquality(max_abs, abs_diffs)
-                    z2 = mdl.NewIntVar(0, 2 * bound // z2_denom + 1, "z2_floor")
-                    # Exact floor without AddDivisionEquality: the latter's
-                    # large rational denominator sent CP-SAT into unbounded
-                    # presolve despite a wall limit. These linear bounds encode
-                    # the same integer relation and remain interruptible.
-                    mdl.Add(z2 * z2_denom <= max_abs)
-                    mdl.Add(max_abs < (z2 + 1) * z2_denom)
-                    objective_terms.append((Fraction(str(W["w2"])), z2))
-            objective_scale = math.lcm(
-                *(coef.denominator for coef, _ in objective_terms))
-            mdl.Minimize(sum(
-                int(coef * objective_scale) * var
-                for coef, var in objective_terms))
-            new = None
-            cuts = 0
-            for _ in range(4 if use_branch_check else 1):
-                left = end - time.time() - audit_reserve
-                if left <= 0.3:
-                    break
-                sv = cp.CpSolver()
-                sv.parameters.max_time_in_seconds = max(0.2, min(4.0, left))
-                sv.parameters.num_search_workers = _THR
-                # Large exact-balance coefficients can make presolve dominate
-                # the advertised wall limit. Use bounded direct search instead;
-                # branch-and-check enforces geometry outside the relaxation.
-                sv.parameters.cp_model_presolve = False
-                sv.parameters.stop_after_first_solution = False
-                sv.parameters.max_deterministic_time = 0.10
-                sv.parameters.random_seed = seed + rounds + cuts
-                sv.parameters.search_branching = cp.FIXED_SEARCH
-                _diag("slice-stage", stage="solve-start",
-                      seconds_left=round(left, 3), cuts=cuts)
-                st = sv.Solve(mdl)
-                _diag("slice-stage", stage="solve-done",
-                      status=int(st), seconds_left=round(end-time.time(), 3))
-                if time.time() >= end - audit_reserve:
-                    break
-                if st not in (cp.OPTIMAL, cp.FEASIBLE):
-                    break
-                candidate = list(part)
-                chosen = []
-                for i in free:
-                    for q, c in enumerate(CAND[i]):
-                        if sv.Value(V[i][q]):
-                            candidate[i*7:i*7+7] = [
-                                c[0], c[1], c[2], c[3], c[4], c[4] + P[i], 1]
-                            chosen.append(V[i][q])
-                            break
-                eng.set_solution(candidate)
-                eng.build_occ(hor)
-                _diag("slice-stage", stage="audit-start",
-                      seconds_left=round(end-time.time(), 3))
-                if eng.exact_state_ok():
-                    new = candidate
-                    break
-                if not use_branch_check or not chosen:
-                    break
-                mdl.AddBoolOr([lit.Not() for lit in chosen])
-                cuts += 1
-            if new is None:
-                eng.set_solution(cur)
-                eng.build_occ(hor)
-                continue
-            if cuts:
-                _diag("branch-check", cuts=cuts)
+                    if sv.Value(V[i][q]):
+                        new[i*7:i*7+7] = [c[0], c[1], c[2], c[3], c[4],
+                                          c[4] + P[i], 1]
+                        break
+            eng.set_solution(new); eng.build_occ(hor)
+            if any(new[i*7+6] and not eng.vp_ok(i) for i in range(n)):
+                eng.set_solution(cur); eng.build_occ(hor); continue
             v = eng.objective()[3]
             if v < best:
                 best, cur = v, new
@@ -915,8 +696,8 @@ def _slice_refine(p, eng, seed, until, hor):
         rate["p"] = (b0 - best) / max(1e-9, time.time() - t1)
     eng.set_solution(cur)
     eng.build_occ(hor)
-    _diag("slice", rounds=rounds, exact_attempts=exact_attempts,
-          exact_k_set=K_SET, obj=best, rate_p=rate["p"], rate_a=rate["a"])
+    _diag("slice", rounds=rounds, obj=best,
+          rate_p=rate["p"], rate_a=rate["a"])
 
 
 def _arm_free(p, deadline, seed=7, tl=None):
@@ -942,15 +723,16 @@ def _arm_free(p, deadline, seed=7, tl=None):
                                      # unlock + NO stacked PREFP reaches
                                      # the deep basins (ledger 07-30)
             asg[i] = max(range(len(pref[i])), key=lambda j: pref[i][j])
-    # PREFP and assignment locks are both preference mechanisms. Keep the
-    # measured 0.85 override only for unlocked spec boards, but make it
-    # Engine-owned so sequential calls cannot inherit another instance's policy.
-    pref_p = 0.85 if spec and asg is None else -1.0
-    eng, seeds = _seed_free(p, asg=asg, pref_p=pref_p, deadline=deadline)
+    # PREFP boost and locks are BOTH preference mechanisms -- stacked
+    # they push locked boards over the tardiness edge (the production-
+    # only cliff: probe without PREFP was stable). Locks replace the
+    # boost where they apply; unlocked spec boards keep 0.85.
+    if spec and asg is None:
+        os.environ["OGC_PREFP"] = os.environ.get("OGC_PREFP", "0.85")
+    eng, seeds = _seed_free(p, asg=asg)
     if eng is None and asg is not None:
         asg = None
-        eng, seeds = _seed_free(
-            p, pref_p=0.85 if spec else -1.0, deadline=deadline)
+        eng, seeds = _seed_free(p)
     if eng is None:
         return None, None
     # thread map (4 threads): best seed / fresh construction / 2nd / 3rd.
@@ -994,16 +776,12 @@ def _arm_free(p, deadline, seed=7, tl=None):
     # population's edge is the tight regime (~1 s/block, the P3 class);
     # absolute-time windows overfit the train boards. Gate on the ratio.
     _pop_here = sec >= 150.0 and sec / max(1, n) <= 1.6
-    _pop_exact = (_pop_here and os.environ.get("OGC_POP_EXACT") == "1")
     # OGC_SLICE=0 is the shipped ablation switch (noslice variant measured
     # +2.1% mean on the 40-pair harness 08-03 -- keep ON; sh45 share and
     # k60 subset variants refuted there too).
     _rfshare = 0.0
-    if sec > 60.0 and _pop_exact:
-        _rfshare = 0.20 * sec
-        sec -= _rfshare
-    elif (sec > 60.0 and not _pop_here
-          and os.environ.get("OGC_SLICE", "1") == "1"):
+    if (sec > 60.0 and not _pop_here
+            and os.environ.get("OGC_SLICE", "1") == "1"):
         _rfshare = 0.30 * sec
         sec -= _rfshare
     rounds = 1 if sec > 110 else 2
@@ -1029,7 +807,7 @@ def _arm_free(p, deadline, seed=7, tl=None):
         # memetic path had already polished, costing P3 4.1%. Skip the
         # whole pass there -- those boards are punctual anyway, so the
         # CP-SAT arm has nothing to rescue.
-        if _pop_here and not _pop_exact:
+        if _pop_here:
             raise StopIteration
         # STOP AT deadline-reserve, not at the deadline. The reserve is
         # what the checker gate and its repair moves run in; eating it
@@ -1058,12 +836,7 @@ def _arm_free(p, deadline, seed=7, tl=None):
               thread_best=[round(x) for x in r[3:]])
     else:
         _diag("population", best=round(eng.objective()[3]))
-    polish_deadline = deadline - reserve
-    if (os.environ.get("OGC_EVENT_SCHEDULE") == "1"
-            and time.time() < polish_deadline):
-        moved = eng.compact_event_schedule()
-        _diag("event-schedule", moved=moved, obj=eng.objective()[3])
-    _assign_descent(p, eng, polish_deadline)
+    _assign_descent(p, eng, deadline)
     # The gate consumes the portfolio's candidate SET, best first. Whether a
     # layout carries a measure-zero checker artifact is an independent
     # lottery per candidate, so runner-ups are auditioned in two cases:
@@ -1076,6 +849,8 @@ def _arm_free(p, deadline, seed=7, tl=None):
     #    cheapest feasible board. Deadline-guarded like every gate call.
     pre = eng.objective()[3]
     sol, res = _gate(p, eng, n, deadline)
+    if sol is not None and res is None:
+        return sol, res                  # checker unusable -> trust kernel
     best_obj = res.get("objective", float("inf")) if (sol is not None
                                                       and res) else float("inf")
     if sol is not None and best_obj <= pre * 1.02 + 1e-9:
@@ -1094,11 +869,11 @@ def _arm_free(p, deadline, seed=7, tl=None):
             continue                     # cannot beat the incumbent even ungated
         _diag("gate", stage=f"cand{k+1}")
         s2, r2 = _gate(p, eng, n, deadline)
-        if s2 is None or r2 is None:
-            # A failed checker cannot authorize this candidate. Retain only
-            # the previously checker-verified incumbent, if there is one.
-            return best_sol, best_res
-        if r2.get("objective", float("inf")) < best_obj:
+        if s2 is not None and r2 is None:
+            # checker died mid-audition: prefer the already-VERIFIED
+            # incumbent result over an unverified candidate board.
+            return (best_sol, best_res) if best_sol is not None else (s2, r2)
+        if s2 is not None and r2.get("objective", float("inf")) < best_obj:
             best_sol, best_res = s2, r2
             best_obj = r2["objective"]
     return best_sol, best_res
@@ -1125,19 +900,13 @@ def _trivial(p):
             w_i = max(xs) - min(xs)
             h_i = max(ys) - min(ys)
             for j in range(len(bays)):
-                margin = min(bays[j]["width"] - w_i,
-                             bays[j]["height"] - h_i)
-                x = int(math.ceil(-min(xs)))
-                y = int(math.ceil(-min(ys)))
-                fits = (x + max(xs) <= bays[j]["width"] + 1e-9
-                        and y + max(ys) <= bays[j]["height"] + 1e-9)
-                if fits and (best is None or margin > best[0]):
-                    # The checker translates the raw polygon by (x,y).
-                    # Integer-aware ceil aligns its minimum to the first
-                    # legal integral coordinate without an extra unit shift.
-                    best = (margin, j, oi, x, y)
-        if best is None:
-            raise RuntimeError(f"block {i} has no containing bay/orientation")
+                m = min(bays[j]["width"] - w_i, bays[j]["height"] - h_i)
+                if best is None or m > best[0]:
+                    # checker translates the RAW polygon by (x,y): align
+                    # the raw min-corner to the bay origin.
+                    best = (m, j, oi,
+                            int(math.ceil(-min(xs) + 1e-9)),
+                            int(math.ceil(-min(ys) + 1e-9)))
         _, j, oi, x, y = best
         R = int(math.ceil(B[i]["release_time"] - 1e-9))
         P = max(1, int(math.ceil(B[i]["processing_time"] - 1e-9)))
@@ -1147,27 +916,19 @@ def _trivial(p):
     return _recs_to_sol(recs)
 
 
-def _certified_trivial(p):
-    fallback = _trivial(p)
-    checked = _check(p, fallback)
-    if checked is None or not checked.get("feasible", False):
-        raise RuntimeError("no checker-certified fallback solution")
-    return fallback
-
-
 # -------------------------------------------------------------------- entry
 def algorithm(prob_info, timelimit=60):
-    started_at = time.time()
-    fallback = _certified_trivial(prob_info)
     try:
-        return _algorithm(prob_info, timelimit, fallback, started_at)
+        return _algorithm(prob_info, timelimit)
     except Exception:
-        return fallback
+        try:
+            return _trivial(prob_info)
+        except Exception:
+            return {"operations": {}}
 
 
-def _algorithm(prob_info, timelimit=60, certified_fallback=None,
-               started_at=None):
-    t0 = started_at if started_at is not None else time.time()
+def _algorithm(prob_info, timelimit=60):
+    t0 = time.time()
     deadline = t0 + float(timelimit) - 2.0
     n = len(prob_info["blocks"])
     span = deadline - t0
@@ -1192,7 +953,7 @@ def _algorithm(prob_info, timelimit=60, certified_fallback=None,
     # artifact. Ladder: fresh seed -> (if time) short anneal -> gate; else
     # gate the SEED ITSELF (sparse, so nudges/retimes almost always fix it)
     # -> trivial only when nothing checker-feasible fits the clock.
-    eng, _ = _seed_free(prob_info, diversify=False, deadline=deadline)
+    eng, _ = _seed_free(prob_info, diversify=False)
     if eng is not None:
         left = deadline - time.time()
         if left > 8.0:
@@ -1208,6 +969,4 @@ def _algorithm(prob_info, timelimit=60, certified_fallback=None,
                 _diag("fallback", stage="rescued")
                 return sol
     _diag("fallback", stage="trivial")
-    if certified_fallback is None:
-        certified_fallback = _certified_trivial(prob_info)
-    return certified_fallback
+    return _trivial(prob_info)

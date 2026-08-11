@@ -1,0 +1,28 @@
+--- builds/b53/src/geometry.hpp	1980-01-01 00:00:00.000000000 +0900
++++ builds/m11/src/geometry.hpp	2026-08-12 03:33:25.122870810 +0900
+@@ -110,6 +110,25 @@
+     if (strictlyInside(A, ipB)) return true;
+     for (auto& v : A) if (strictlyInside(B, v)) return true;
+     for (auto& v : B) if (strictlyInside(A, v)) return true;
++    // Degenerate crossings. With integer vertices and integer placements an
++    // edge routinely passes exactly through the other polygon's vertex, or two
++    // edges overlap collinearly. properCross() rejects both (it wants strict
++    // sign changes) and no vertex is then strictly inside, so a real sliver of
++    // shared area can slip through all four tests above -- which is what the
++    // official checker reports as "kind=collision, area=0.000" and what the
++    // gate then has to rescue. An edge midpoint strictly inside the other
++    // polygon means that boundary enters its interior, so the intersection has
++    // positive area: this only ever ADDS detections, never removes one.
++    for (int i = 0; i < na; i++) {
++        const Pt& a1 = A[i]; const Pt& a2 = A[(i + 1) % na];
++        if (strictlyInside(B, {(a1.x + a2.x) * 0.5, (a1.y + a2.y) * 0.5}))
++            return true;
++    }
++    for (int j = 0; j < nb; j++) {
++        const Pt& b1 = B[j]; const Pt& b2 = B[(j + 1) % nb];
++        if (strictlyInside(A, {(b1.x + b2.x) * 0.5, (b1.y + b2.y) * 0.5}))
++            return true;
++    }
+     return false;
+ }
+ 

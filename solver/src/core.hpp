@@ -6,9 +6,6 @@
 #include <cmath>
 #include <cstdint>
 #include <chrono>
-#include <algorithm>
-#include <functional>
-#include <unordered_set>
 
 namespace core {
 using crane::OrientGeom; using crane::BlockGeom; using crane::Placement;
@@ -60,122 +57,6 @@ struct Sol {
             if (placed[i]) byBay[bay[i]].push_back(i);
     }
 };
-inline bool restOverlap(const Problem& pb, const Sol& s, int a, int b);
-// Exact checker-order replay for one bay/day. Exits are monotone (removing a
-// block cannot obstruct a later exit), while same-day entries require a small
-// subset search because adding one block may obstruct another. The returned
-// orders are directly usable by the solution emitter.
-inline bool eventOrderAt(const Problem& pb, const Sol& s, int bay, int t,
-                         std::vector<int>& exitOrder,
-                         std::vector<int>& entryOrder) {
-    exitOrder.clear();
-    entryOrder.clear();
-    std::vector<int> present, exits, entries;
-    for (int i : s.byBay[bay]) {
-        if (!s.placed[i]) continue;
-        if (s.e[i] < t && t <= s.f[i]) present.push_back(i);
-        if (s.f[i] == t) exits.push_back(i);
-        if (s.e[i] == t) entries.push_back(i);
-    }
-    auto placements = [&](const std::vector<int>& ids) {
-        std::vector<Placement> out;
-        out.reserve(ids.size());
-        for (int i : ids)
-            out.push_back({&pb.geo[i].orients[s.ori[i]],
-                           (double)s.x[i], (double)s.y[i]});
-        return out;
-    };
-
-    std::sort(exits.begin(), exits.end());
-    while (!exits.empty()) {
-        bool progressed = false;
-        for (size_t q = 0; q < exits.size(); q++) {
-            const int id = exits[q];
-            auto it = std::find(present.begin(), present.end(), id);
-            if (it == present.end()) return false;
-            std::vector<Placement> ps = placements(present);
-            const size_t target = (size_t)(it - present.begin());
-            if (!crane::exitOK(ps, (int)target)) continue;
-            exitOrder.push_back(id);
-            present.erase(it);
-            exits.erase(exits.begin() + q);
-            progressed = true;
-            break;
-        }
-        if (!progressed) return false;
-    }
-
-    std::sort(entries.begin(), entries.end());
-    if (entries.size() > 63) {
-        // Pathological same-day batches avoid exponential state. Greedy is
-        // fail-closed: it may reject an order but never admits an invalid one.
-        while (!entries.empty()) {
-            bool progressed = false;
-            for (size_t q = 0; q < entries.size(); q++) {
-                const int id = entries[q];
-                std::vector<Placement> ps = placements(present);
-                const auto& g = pb.geo[id].orients[s.ori[id]];
-                if (!crane::entryOK(pb.bayW[bay], pb.bayH[bay], ps, g,
-                                    s.x[id], s.y[id])) continue;
-                entryOrder.push_back(id);
-                present.push_back(id);
-                entries.erase(entries.begin() + q);
-                progressed = true;
-                break;
-            }
-            if (!progressed) return false;
-        }
-        return true;
-    }
-
-    const std::vector<int> basePresent = present;
-    std::unordered_set<uint64_t> failed;
-    size_t searchNodes = 0;
-    std::function<bool(uint64_t)> dfs = [&](uint64_t used) {
-        if (++searchNodes > 512) return false;
-        if (used == ((entries.size() == 64) ? ~0ull
-                                             : ((1ull << entries.size()) - 1)))
-            return true;
-        if (failed.count(used)) return false;
-        std::vector<int> ids = basePresent;
-        for (size_t q = 0; q < entries.size(); q++)
-            if (used & (1ull << q)) ids.push_back(entries[q]);
-        std::vector<Placement> ps = placements(ids);
-        for (size_t q = 0; q < entries.size(); q++) {
-            if (used & (1ull << q)) continue;
-            const int id = entries[q];
-            const auto& g = pb.geo[id].orients[s.ori[id]];
-            if (!crane::entryOK(pb.bayW[bay], pb.bayH[bay], ps, g,
-                                s.x[id], s.y[id])) continue;
-            entryOrder.push_back(id);
-            if (dfs(used | (1ull << q))) return true;
-            entryOrder.pop_back();
-        }
-        failed.insert(used);
-        return false;
-    };
-    return dfs(0);
-}
-
-inline bool vpExactEvents(const Problem& pb, const Sol& s, int A) {
-    const int bay = s.bay[A], e = s.e[A], f = s.f[A];
-    for (int k : s.byBay[bay]) {
-        if (k == A || !s.placed[k]) continue;
-        if (s.e[k] < f && e < s.f[k] && restOverlap(pb, s, A, k))
-            return false;
-    }
-    std::vector<int> times{e, f}, xo, en;
-    for (int k : s.byBay[bay]) {
-        if (k == A || !s.placed[k]) continue;
-        if (e <= s.e[k] && s.e[k] < f) times.push_back(s.e[k]);
-        if (e < s.f[k] && s.f[k] <= f) times.push_back(s.f[k]);
-    }
-    std::sort(times.begin(), times.end());
-    times.erase(std::unique(times.begin(), times.end()), times.end());
-    for (int t : times)
-        if (!eventOrderAt(pb, s, bay, t, xo, en)) return false;
-    return true;
-}
 
 // same-layer positive-area overlap between two placed blocks (rule 1 helper)
 inline bool restOverlap(const Problem& pb, const Sol& s, int a, int b) {
@@ -191,34 +72,6 @@ inline bool restOverlap(const Problem& pb, const Sol& s, int a, int b) {
         if (crane::overlapsLay(ga, l, s.x[a], s.y[a],
                                gb, l, s.x[b], s.y[b])) return true;
     return false;
-}
-// Whole-state exact audit without repeating every event once per resident.
-inline bool stateExactEvents(const Problem& pb, const Sol& s) {
-    std::vector<int> exits, entries;
-    for (int bay = 0; bay < pb.m; bay++) {
-        const auto& ids = s.byBay[bay];
-        for (size_t a = 0; a < ids.size(); a++) {
-            const int i = ids[a];
-            if (!s.placed[i]) continue;
-            for (size_t b = a + 1; b < ids.size(); b++) {
-                const int k = ids[b];
-                if (!s.placed[k]) continue;
-                if (s.e[i] < s.f[k] && s.e[k] < s.f[i] &&
-                    restOverlap(pb, s, i, k))
-                    return false;
-            }
-        }
-        std::vector<int> times;
-        for (int i : ids) if (s.placed[i]) {
-            times.push_back(s.e[i]);
-            times.push_back(s.f[i]);
-        }
-        std::sort(times.begin(), times.end());
-        times.erase(std::unique(times.begin(), times.end()), times.end());
-        for (int t : times)
-            if (!eventOrderAt(pb, s, bay, t, exits, entries)) return false;
-    }
-    return true;
 }
 
 // Feasibility of block A at its current (bay, ori, x, y, e, f) against every
@@ -236,6 +89,27 @@ inline bool stateExactEvents(const Problem& pb, const Sol& s) {
 // is only valid while every placement passes through this function; an
 // operator writing placements directly must re-verify them (sec 176).
 
+// Largest same-day, same-bay ENTRY batch this kernel will reason about. The
+// biggest batch measured on shipped boards is 7; beyond the cap the old
+// all-orders-must-work test still applies, so behaviour degrades to strict,
+// never to unsound.
+constexpr int kBatchCap = 16;
+
+// Does `r`, resting in the bay, obstruct newcomer `nu`'s descent? (crane rule:
+// nu's layer k is blocked by r's layer j >= k). Bay-boundary failures of `nu`
+// are caught by rule 2a, so a single-resident call here only reports the
+// pairwise relation.
+inline bool entryBlocked(const Problem& pb, const Sol& s, int r, int nu) {
+    thread_local std::vector<Placement> one;
+    one.clear();
+    one.push_back({&pb.geo[r].orients[s.ori[r]],
+                   (double)s.x[r], (double)s.y[r]});
+    const int bay = s.bay[nu];
+    return !crane::entryOK(pb.bayW[bay], pb.bayH[bay], one,
+                           pb.geo[nu].orients[s.ori[nu]],
+                           (double)s.x[nu], (double)s.y[nu]);
+}
+
 inline bool vpConservative(const Problem& pb, const Sol& s, int A) {
     int jT = s.bay[A], eN = s.e[A], fN = s.f[A];
     const OrientGeom& gA = pb.geo[A].orients[s.ori[A]];
@@ -251,16 +125,68 @@ inline bool vpConservative(const Problem& pb, const Sol& s, int A) {
     // pres is reused across calls: vpConservative runs millions of times per
     // anneal and entryOK/exitOK only read the buffer within the call.
     thread_local std::vector<Placement> pres;
-    // rule 2: A's entry at eN
+    // rule 2: A's entry at eN, split exactly as the official checker splits it.
+    //
+    //   Stage 2  present_at_entry = { b : b.entry < entry < b.exit } -- blocks
+    //            entering on the SAME day are excluded outright.
+    //   Stage 5  the day's ENTRY events replay in the order the solution lists
+    //            them, so only ONE order has to work.
+    //
+    // The old rule merged the two and demanded that EVERY intra-day order be
+    // legal (rule 2 put the whole batch under A, rule 4 put A under each of
+    // them). 57-76% of blocks enter in a batch of two or more, so that surplus
+    // strictness was rejecting reachable boards on exactly the congested days
+    // where tardiness is made. Here 2a is Stage 2 and 2b is Stage 5: the
+    // "must enter before" relation on the batch has to stay acyclic, which is
+    // precisely the condition for an emittable order to exist. _recs_to_sol
+    // reproduces that order by the same rule.
+    thread_local std::vector<int> batch;
     {
+        // 2a -- clear everything resting from strictly earlier days.
         pres.clear();
+        batch.clear();
         for (int k : nb) {
             if (k == A || !s.placed[k]) continue;
-            if (s.e[k] <= eN && eN < s.f[k])
+            if (s.e[k] == eN) { batch.push_back(k); continue; }
+            if (s.e[k] < eN && eN < s.f[k])
                 pres.push_back({&pb.geo[k].orients[s.ori[k]],
                                 (double)s.x[k], (double)s.y[k]});
         }
         if (!crane::entryOK(W, H, pres, gA, s.x[A], s.y[A])) return false;
+        // 2b -- an entry order for {batch, A} must exist. Fast path first: if A
+        // clears the whole batch, then entering LAST is a legal position for
+        // it, whatever the peers do among themselves (they were ordered when
+        // they were placed). That test is exactly the old order-blind rule 2,
+        // so every placement today's kernel accepts costs the same as today --
+        // and note it also makes the old rule 4 redundant at this day, since a
+        // block entering last obstructs nobody. Only where the old rule
+        // REJECTED do we pay for the relation, which is where the prize is.
+        if (!batch.empty()) {
+            for (int k : batch)
+                pres.push_back({&pb.geo[k].orients[s.ori[k]],
+                                (double)s.x[k], (double)s.y[k]});
+            if (crane::entryOK(W, H, pres, gA, s.x[A], s.y[A]))
+                batch.clear();
+        }
+        if (!batch.empty()) {
+            batch.push_back(A);
+            const int nb2 = (int)batch.size();
+            if (nb2 > kBatchCap) return false;       // out of scope: stay strict
+            uint32_t before[kBatchCap] = {0};        // before[v] = must precede v
+            for (int u = 0; u < nb2; u++)
+                for (int v = 0; v < nb2; v++)
+                    if (u != v && entryBlocked(pb, s, batch[v], batch[u]))
+                        before[v] |= 1u << u;        // v blocks u => u goes first
+            uint32_t done = 0;
+            for (int step = 0; step < nb2; step++) {
+                int pick = -1;
+                for (int v = 0; v < nb2 && pick < 0; v++)
+                    if (!(done & (1u << v)) && (before[v] & ~done) == 0)
+                        pick = v;
+                if (pick < 0) return false;          // cycle: no legal order
+                done |= 1u << pick;
+            }
+        }
     }
     // rule 3: A's exit at fN
     {
@@ -268,17 +194,30 @@ inline bool vpConservative(const Problem& pb, const Sol& s, int A) {
         pres.push_back({&gA, (double)s.x[A], (double)s.y[A]});  // target at [0]
         for (int k : nb) {
             if (k == A || !s.placed[k]) continue;
-            if (s.e[k] < fN && (s.f[k] > fN || (s.f[k] == fN && s.e[k] < eN)))
+            // Still resting when A lifts: leaves later, or leaves the same
+            // day but AFTER A in the emitted EXIT order. _recs_to_sol sorts a
+            // day's EXITs by descending entry day and -- Python's sort being
+            // stable over a list built in id order -- by ascending id within
+            // an equal entry day. Without that second tie a pair sharing BOTH
+            // days was absent from each other's present set, so the sweep
+            // between them was never checked and the checker rejected it
+            // (Stage5 "EXIT block X obstructed by block Y (sweep)").
+            if (s.e[k] < fN && (s.f[k] > fN ||
+                                (s.f[k] == fN && (s.e[k] < eN ||
+                                                  (s.e[k] == eN && k > A)))))
                 pres.push_back({&pb.geo[k].orients[s.ori[k]],
                                 (double)s.x[k], (double)s.y[k]});
         }
         if (!crane::exitOK(pres, 0)) return false;
     }
-    // rule 4: A must not block entry of any k entering during [eN, fN)
+    // rule 4: A rests through (eN, fN), so it joins the Stage-2 set of every
+    // block entering in that window -- re-verify those entries with A present.
+    // Blocks entering ON eN are A's own batch and are rule 2b's job, and k's
+    // Stage-2 set excludes k's own same-day peers exactly as the checker does.
     for (int k : nb) {
         if (k == A || !s.placed[k]) continue;
         int t = s.e[k];
-        if (!(eN <= t && t < fN)) continue;
+        if (!(eN < t && t < fN)) continue;
         if (!crane::bboxOverlapOff(gA.bb, s.x[A], s.y[A],
                                    pb.geo[k].orients[s.ori[k]].bb,
                                    s.x[k], s.y[k])) continue;
@@ -286,7 +225,7 @@ inline bool vpConservative(const Problem& pb, const Sol& s, int A) {
         pres.push_back({&gA, (double)s.x[A], (double)s.y[A]});
         for (int k2 : nb) {
             if (k2 == A || k2 == k || !s.placed[k2]) continue;
-            if (s.e[k2] <= t && t < s.f[k2])
+            if (s.e[k2] < t && t < s.f[k2])
                 pres.push_back({&pb.geo[k2].orients[s.ori[k2]],
                                 (double)s.x[k2], (double)s.y[k2]});
         }
@@ -304,11 +243,13 @@ inline bool vpConservative(const Problem& pb, const Sol& s, int A) {
         pres.clear();
         pres.push_back({&pb.geo[k].orients[s.ori[k]],
                         (double)s.x[k], (double)s.y[k]});   // target k at [0]
-        if (fN > t || (fN == t && eN < ek))
+        if (fN > t || (fN == t && (eN < ek || (eN == ek && A > k))))
             pres.push_back({&gA, (double)s.x[A], (double)s.y[A]});
         for (int k2 : nb) {
             if (k2 == A || k2 == k || !s.placed[k2]) continue;
-            if (s.e[k2] < t && (s.f[k2] > t || (s.f[k2] == t && s.e[k2] < ek)))
+            if (s.e[k2] < t && (s.f[k2] > t ||
+                                (s.f[k2] == t && (s.e[k2] < ek ||
+                                                  (s.e[k2] == ek && k2 > k)))))
                 pres.push_back({&pb.geo[k2].orients[s.ori[k2]],
                                 (double)s.x[k2], (double)s.y[k2]});
         }
