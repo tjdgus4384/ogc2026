@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "kind": "algorithm-boundary-test-report",
+  "sourceHash": "sha256:3c0e64487c323a9ca05aef6b2fc027d2e4d81602bd4b6affe91c933a6ad16335",
+  "priorGenerationSourceHash": "sha256:97f7e9ab19a5c2b9edf14f822b68c2ca3141b5204b9c1d054e76aace6677646a",
+  "status": "passed",
+  "scope": "generation-2 full rerun after certificate-sound structural cuts, malformed-polygon rejection, and Slurm provenance/concurrency fixes",
+  "commands": [
+    "PYTHONPATH=.:tools .miniforge/envs/ogc2026/bin/python -m unittest tools.test_branch_price_check tools.test_nfp_pricer tools.test_nfp_oracle -v",
+    "PYTHONPATH=.:tools .miniforge/envs/ogc2026/bin/python -m py_compile tools/branch_price_check.py tools/nfp_oracle.py tools/nfp_pricer.py tools/run_branch_price_probe.py",
+    "bash -n tools/submit_branch_price_probe.sh tools/branch_price_probe.sbatch",
+    "git diff --check"
+  ],
+  "observations": {
+    "unit_property_tests": 34,
+    "unit_property_result": "OK",
+    "unit_property_elapsed_seconds": 19.878,
+    "syntax_result": "passed",
+    "shell_syntax_result": "passed",
+    "diff_check_result": "passed",
+    "test_output_ref": "artifact://2772"
+  },
+  "blockerResolutions": [
+    "Full proposal must be checker-INFEASIBLE before any structural cut is emitted.",
+    "Placement-pair cuts retain and match their exact event-order trace.",
+    "Invalid/self-intersecting polygons are rejected rather than repaired.",
+    "Submit wrapper is included in the immutable snapshot manifest.",
+    "Expanded Slurm array tasks are counted under a shared-filesystem lock and rechecked immediately before each submission."
+  ],
+  "liveAlgorithmEvidence": [
+    "results/root-bpc-p45-final-bea2cbc39e0b3887742105be95fa6d3d7702039e0d060a7ba3048733f20407a1.json",
+    "runs/root-bpc-p45-v4-ccce0dc/prob_4.json",
+    "runs/root-bpc-p45-v4-ccce0dc/prob_5.json"
+  ],
+  "verdict": "Generation-2 source passes the complete focused suite. Performance evidence remains the frozen zero-gain nonadoption result because the repairs change proof/provenance boundaries, not the measured pricing mechanism."
+}

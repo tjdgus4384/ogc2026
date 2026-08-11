@@ -20,7 +20,9 @@ BEFORE=$(du -sb campaign | cut -f1)
 AFTER=$(stat -c%s "$OUT")
 echo "campaign/ $BEFORE B -> $OUT $AFTER B ($((BEFORE / (AFTER ? AFTER : 1)))x)"
 # Verify the archive lists every file before deleting the originals.
-N_SRC=$(find campaign -type f | wc -l)
+# Count symlinks too: tar stores them as entries, so comparing against
+# `find -type f` alone reports a spurious mismatch and refuses the cleanup.
+N_SRC=$(find campaign \( -type f -o -type l \) | wc -l)
 N_TAR=$(tar -I zstd -tf "$OUT" | grep -vc '/$')
 echo "files: source=$N_SRC archived=$N_TAR"
 [ "$N_SRC" -eq "$N_TAR" ] || { echo "file count mismatch -- keeping campaign/"; exit 1; }

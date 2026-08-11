@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "kind": "algorithm-boundary-test-report",
+  "sourceHash": "sha256:97f7e9ab19a5c2b9edf14f822b68c2ca3141b5204b9c1d054e76aace6677646a",
+  "status": "passed",
+  "scope": "branch-price-and-check research tooling and reject-for-adoption decision",
+  "commands": [
+    "PYTHONPATH=.:tools .miniforge/envs/ogc2026/bin/python -m unittest tools.test_branch_price_check tools.test_nfp_pricer tools.test_nfp_oracle -v",
+    "PYTHONPATH=.:tools .miniforge/envs/ogc2026/bin/python -m py_compile tools/branch_price_check.py tools/nfp_oracle.py tools/nfp_pricer.py tools/run_branch_price_probe.py",
+    "bash -n tools/submit_branch_price_probe.sh tools/branch_price_probe.sbatch",
+    "git diff --check"
+  ],
+  "observations": {
+    "unit_property_tests": 33,
+    "unit_property_result": "OK",
+    "unit_property_elapsed_seconds": 18.599,
+    "syntax_result": "passed",
+    "shell_syntax_result": "passed",
+    "diff_check_result": "passed",
+    "test_output_ref": "artifact://2745"
+  },
+  "liveAlgorithmEvidence": [
+    "results/root-bpc-p45-final-bea2cbc39e0b3887742105be95fa6d3d7702039e0d060a7ba3048733f20407a1.json",
+    "runs/root-bpc-p45-v4-ccce0dc/prob_4.json",
+    "runs/root-bpc-p45-v4-ccce0dc/prob_5.json"
+  ],
+  "verdict": "The algorithm/math implementation is verified as fail-closed research tooling, and the frozen Slurm evidence verifies the non-adoption decision. This receipt does not claim a performance gain."
+}

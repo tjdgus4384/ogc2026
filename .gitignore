@@ -33,3 +33,7 @@ campaign/*/E0-ro/
 campaign/*/B0-canonical/
 campaign/*/lanes/E0-*/
 campaign/math-first-r1/corpus/model-cases.jsonl
+
+# campaign archive: 189MB tarball of the 08-07..11 trees, verdicts live in
+# docs/CAMPAIGN_LEDGER.md. Kept on disk, not in Git.
+archive/campaigns-*.tar.zst

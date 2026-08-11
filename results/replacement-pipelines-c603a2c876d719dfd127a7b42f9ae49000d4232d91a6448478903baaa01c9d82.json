@@ -1,0 +1,145 @@
+{
+  "campaign": "replacement-pipelines-p45-v1",
+  "canonicalV53Sha256": "24ad2e245bccdf451815757a4f450d5c6678e27225cbfdb775251ede81a84bc2",
+  "decision": {
+    "adopt": [],
+    "promisingButNotAdopted": "island_coevolution was strongest fresh replacement but remained 2.61x P4 and 1.79x P5 worse than canonical archive baseline",
+    "reject": [
+      "beam_construct",
+      "temporal_first",
+      "logic_decomp",
+      "island_coevolution"
+    ]
+  },
+  "evidencePath": "runs/replacement-pipelines-p45-v1",
+  "pipelines": {
+    "beam_construct": "fresh regret/top-K beam construction",
+    "island_coevolution": "fresh multi-island full-board coevolution",
+    "logic_decomp": "master/subproblem/no-good-cut construction",
+    "temporal_first": "CP-SAT temporal skeleton then constrained geometry"
+  },
+  "rows": [
+    {
+      "baselineObjective": 2643869.0,
+      "delta": 847836327.0,
+      "fallbackUsed": false,
+      "feasible": true,
+      "instance": 4,
+      "objective": 850480196.0,
+      "pipeline": "beam_construct",
+      "ratioToBaseline": 321.68015737542214,
+      "receiptSha256": "80cc2d104f82c35c4e226cc5842e5652455aed2eb1bd8a9d0d80e0d72a2f5548",
+      "solutionSha256": "5fcf3d4d348f53cb078b256a61ff22598f53cd34d1fa24441953b4705827c463"
+    },
+    {
+      "baselineObjective": 2643869.0,
+      "delta": 41740929.0,
+      "fallbackUsed": false,
+      "feasible": true,
+      "instance": 4,
+      "objective": 44384798.0,
+      "pipeline": "temporal_first",
+      "ratioToBaseline": 16.787820425293386,
+      "receiptSha256": "57e290ef142fc0c38a977f9190b153f350eae8b7cc080e332bd0e2d4812cc5e4",
+      "solutionSha256": "81ee5025da7acb7d9cce5531ee718938dc5f36b62b867a4ad685525d61fa7fd7"
+    },
+    {
+      "baselineObjective": 2643869.0,
+      "delta": 24810205.0,
+      "fallbackUsed": false,
+      "feasible": true,
+      "instance": 4,
+      "objective": 27454074.0,
+      "pipeline": "logic_decomp",
+      "ratioToBaseline": 10.384052311215116,
+      "receiptSha256": "66b1e15e9dcf8d5c1913f58e9160cb6a1ff7f70a105b311b28e0ee0c28b612cc",
+      "solutionSha256": "07579083d4ba46be5ad132dfddaf392bbfab39ac8a17ccfad8df6012e63e1f8b"
+    },
+    {
+      "baselineObjective": 2643869.0,
+      "delta": 4263829.0,
+      "fallbackUsed": false,
+      "feasible": true,
+      "instance": 4,
+      "objective": 6907698.0,
+      "pipeline": "island_coevolution",
+      "ratioToBaseline": 2.612723247634433,
+      "receiptSha256": "b2fcb4ecd252e074bd2f5996b296f423b282e4378f8c1fc289d3a12c74071306",
+      "solutionSha256": "ef96a4d1da1d269e3fb747ca218a388e453b7f47c3e032dd88c9c6eb15ab685b"
+    },
+    {
+      "baselineObjective": 9739415.0,
+      "delta": 1541210312.0,
+      "fallbackUsed": false,
+      "feasible": true,
+      "instance": 5,
+      "objective": 1550949727.0,
+      "pipeline": "beam_construct",
+      "ratioToBaseline": 159.2446493962933,
+      "receiptSha256": "f5fbad9c1ea59109f1b688b45fb1940695d910be040becca00294b49d0f00625",
+      "solutionSha256": "accd8a3e6a9d21dce590a505ecd2e79b8abdf54e681d8e6e108f07931dc65b94"
+    },
+    {
+      "baselineObjective": 9739415.0,
+      "delta": 14359436.0,
+      "fallbackUsed": false,
+      "feasible": true,
+      "instance": 5,
+      "objective": 24098851.0,
+      "pipeline": "temporal_first",
+      "ratioToBaseline": 2.4743632959474464,
+      "receiptSha256": "95fbd5e77e8c13820dc4958c6037e0d384ddd087205acbbf929316f3bb00cc41",
+      "solutionSha256": "9ddca3e92eeef4c389e6df98e370dc8128f521ca474ed2477a7f3119c2ebe277"
+    },
+    {
+      "baselineObjective": 9739415.0,
+      "delta": 12928222.0,
+      "fallbackUsed": false,
+      "feasible": true,
+      "instance": 5,
+      "objective": 22667637.0,
+      "pipeline": "logic_decomp",
+      "ratioToBaseline": 2.327412580735085,
+      "receiptSha256": "85426b73ecfc0c144ec49ba9ace92cbfcc41fadd76834ecf5e5f83d2f31b84e6",
+      "solutionSha256": "eab8030f633a6bdb8563875af0e690c0aeb92d925e4d4b06a3b99e244a31d48a"
+    },
+    {
+      "baselineObjective": 9739415.0,
+      "delta": 7648354.0,
+      "fallbackUsed": false,
+      "feasible": true,
+      "instance": 5,
+      "objective": 17387769.0,
+      "pipeline": "island_coevolution",
+      "ratioToBaseline": 1.7852991170414239,
+      "receiptSha256": "659a36cb596aa0fe6128ad7e33c75b819c06250bcd1d3f26e949534a6cb905a9",
+      "solutionSha256": "9e42b326cb1caf73991096981f50e4fd99e289aaef208ec91716e05066df8fd6"
+    }
+  ],
+  "schemaVersion": 1,
+  "slurm": {
+    "arrayTasks": 8,
+    "instances": [
+      4,
+      5
+    ],
+    "jobId": "64304",
+    "partition": "titan",
+    "pipelines": [
+      "beam_construct",
+      "temporal_first",
+      "logic_decomp",
+      "island_coevolution"
+    ],
+    "schemaVersion": 1,
+    "secondsPerPipeline": 90,
+    "tag": "replacement-pipelines-p45-v1"
+  },
+  "verification": [
+    "8/8 persisted boards replayed checker-feasible with objective bound to Slurm wrapper proofs",
+    "all experiments Slurm titan array 0-7%8",
+    "pipeline py_compile and CLI help passed",
+    "Slurm wrapper bash syntax passed",
+    "canonical v5.3 hash preserved"
+  ]
+}
