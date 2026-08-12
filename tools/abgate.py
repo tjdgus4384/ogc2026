@@ -19,6 +19,7 @@ A candidate is either a different solver directory (--cand) or the same
 directory under different OGC_* knobs (--cand-env), or both.
 """
 import argparse
+import collections
 import json
 import math
 import os
@@ -136,8 +137,16 @@ def cmd_collect(args):
                      "a": a["objective"], "b": b["objective"],
                      "delta": (b["objective"] - a["objective"]) / a["objective"] * 100})
     total = len(manifest["pairs"])
+    missing = collections.Counter(
+        p["instance"] for p in manifest["pairs"]
+        if not (gate / f"pair-{p['idx']:03d}.json").exists())
     print(f"== {args.tag}  {len(rows)}/{total} valid pairs"
           + (f", {len(bad)} unusable" if bad else ""))
+    # A cell that dies takes a whole instance with it, and a verdict read
+    # without noticing that is a verdict on a different experiment.
+    if missing:
+        print("   !! MISSING cells: "
+              + ", ".join(f"P{i}x{c}" for i, c in sorted(missing.items())))
     for inst, seed, why in bad:
         print(f"   !! P{inst} s{seed}: {str(why)[:80]}")
     if not rows:

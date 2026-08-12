@@ -84,12 +84,19 @@ def main():
     # 4 pinned cores per pair = the grading envelope; disjoint slots per pair.
     slots = [",".join(str(c) for c in cpus[i * 4:i * 4 + 4])
              for i in range(len(cpus) // 4)]
-    if len(pairs) > len(slots):
-        sys.exit(f"cell {idx}: {len(pairs)} pairs > {len(slots)} cpu slots")
-    with ThreadPoolExecutor(max_workers=len(pairs)) as pool:
-        futures = [pool.submit(run_pair, py, manifest, p, slots[i])
-                   for i, p in enumerate(pairs)]
-        results = [f.result() for f in futures]
+    # titan mixes 48-core and 40-core nodes, so a cell sized for twelve pairs
+    # gets only ten slots on ohm or quant. Exiting there silently dropped a
+    # whole instance from a verdict (r1 lost its P6 cell that way). Run the
+    # pairs in waves of whatever the node actually granted instead.
+    if not slots:
+        sys.exit(f"cell {idx}: no 4-core slot on this node")
+    results = []
+    for base in range(0, len(pairs), len(slots)):
+        wave = pairs[base:base + len(slots)]
+        with ThreadPoolExecutor(max_workers=len(wave)) as pool:
+            futures = [pool.submit(run_pair, py, manifest, p, slots[i])
+                       for i, p in enumerate(wave)]
+            results += [f.result() for f in futures]
     for pair, res in zip(pairs, results):
         receipt = dict(pair, node=os.environ.get("SLURMD_NODENAME"),
                        jobId=os.environ.get("SLURM_JOB_ID"),
