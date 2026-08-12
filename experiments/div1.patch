@@ -1,0 +1,30 @@
+--- solver/myalgorithm.py	2026-08-12 11:28:06.871609681 +0900
++++ builds/div1/myalgorithm.py	2026-08-12 16:49:08.687147774 +0900
+@@ -626,8 +626,26 @@
+         t1, b0 = time.time(), best
+         if arm == "a":
+             eng.set_solution(cur); eng.build_occ(hor)
++            # RESTART FROM DIVERSE POINTS, not four copies of one board.
++            # runPortfolio indexes starts[tid % starts.size()], so passing
++            # [cur] puts all four threads on the same board and the only
++            # diversity left is the seed and the persona. This arm is the one
++            # mechanism measured to earn -- turning the whole slice off costs
++            # +1.99% (p=0.0090, P5 +3.23% at p=0.0386) -- while a single
++            # destroy-repair from the incumbent finds nothing at all, at any
++            # destroy size from 5% to 60% and with exact CP repair (0 of 400,
++            # 0 of 20). So the value is in leaving the point, and every
++            # restart currently leaves from the same point.
++            #
++            # The engine already holds one distinct board per thread from the
++            # last portfolio round, ordered by objective; the driver uses them
++            # only for the gate audition. Hand them to the restart instead, so
++            # the four threads explore four basins.
++            _st = [c for c in eng.get_candidates() if len(c) == n * 7][:_THR]
++            if cur not in _st:
++                _st = [cur] + _st[:max(1, _THR - 1)]
+             eng.run_portfolio(_THR, max(1.0, end - t1), 1, 0.05, 0.15,
+-                              0.002, 0.9995, seed + rounds, 1, [cur])
++                              0.002, 0.9995, seed + rounds, 1, _st)
+             v = eng.objective()[3]
+             if v < best:
+                 best, cur = v, eng.get_solution()

@@ -1,0 +1,31 @@
+--- solver/myalgorithm.py	2026-08-12 11:28:06.871609681 +0900
++++ builds/pop1/myalgorithm.py	2026-08-12 16:54:32.094879459 +0900
+@@ -775,12 +775,26 @@
+     # SCALE-INVARIANT population gate (08-01, 40-instance sweep): the
+     # population's edge is the tight regime (~1 s/block, the P3 class);
+     # absolute-time windows overfit the train boards. Gate on the ratio.
+-    _pop_here = sec >= 150.0 and sec / max(1, n) <= 1.6
++    # POPULATION EVERYWHERE, AND KEEP THE SLICE. These two were never
++    # separated: the shipped gate turns the population on only for the tight
++    # regime (sec/n <= 1.6, the P3 class), and the slice carve below is skipped
++    # whenever the population runs, so "population loses on P5/P6 3/3" was
++    # measured against a configuration that ALSO lost the slice. The slice is
++    # now known to earn significantly -- removing it costs +1.99% overall at
++    # p=0.0090 and +3.23% on P5 (runs/abgate/noslice) -- so that comparison
++    # cannot separate the two.
++    #
++    # Diversity is the mechanism this tests. A single destroy-repair from the
++    # incumbent is exhausted (0 of 400 at every destroy size to 60%, 0 of 20
++    # with exact CP repair), and what still earns is leaving the point. The
++    # population is the only structure in this driver that keeps more than one
++    # board alive.
++    _pop_here = sec >= 150.0
+     # OGC_SLICE=0 is the shipped ablation switch (noslice variant measured
+     # +2.1% mean on the 40-pair harness 08-03 -- keep ON; sh45 share and
+     # k60 subset variants refuted there too).
+     _rfshare = 0.0
+-    if (sec > 60.0 and not _pop_here
++    if (sec > 60.0
+             and os.environ.get("OGC_SLICE", "1") == "1"):
+         _rfshare = 0.30 * sec
+         sec -= _rfshare

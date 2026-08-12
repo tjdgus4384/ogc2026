@@ -1,0 +1,20 @@
+--- solver/myalgorithm.py	2026-08-12 11:28:06.871609681 +0900
++++ builds/slc2/myalgorithm.py	2026-08-12 17:11:31.794573972 +0900
+@@ -609,7 +609,16 @@
+     span = until - time.time()
+     if span <= 8.0:
+         return
+-    SLICE = max(3.0, span * 0.18)
++    # FEWER, LONGER RESTARTS -- the mirror of slc1, same budget share.
++    # Removing the slice costs +3.15% (p=0.0000), so restarting from the
++    # incumbent earns; the open question is what shape of restart. Two attempts
++    # to buy more DIVERSITY both failed -- div1 (per-thread runners-up as
++    # starts) and pop1 (population on every board, p=0.0169 worse) -- and they
++    # share a mechanism: both spend budget on boards that are by definition
++    # worse than the incumbent, and a 25-32s round is not long enough to make
++    # that back. If round LENGTH is what limits a restart, then lengthening it
++    # should help and slc1 (halving it) should hurt.
++    SLICE = max(3.0, span * 0.30)
+     rate = {"p": None if cp else -1.0, "a": None}
+     rounds = 0
+     while time.time() < until - 3.0:
