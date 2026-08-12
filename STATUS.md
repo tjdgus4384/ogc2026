@@ -6,12 +6,18 @@
 +0.04% p=0.87 + 예선 32쌍 +0.00% p=0.70 + 스모크 동일. zip 13멤버 solver/와 바이트 동일.
 실물 확인: train_final 11 @ seed 7에서 v6.1 876,467,166 → v6.2 8,131,553 (108배).
 
-**진행 중 게이트**: `pc2-train`(40쌍), `pc2-prelim`(48쌍). P4 3.2h / P5 4h / P6 6h 소요.
-`python3 tools/abgate.py collect pc2-prelim` 로 수확. **P3 셀은 구조적 A/A**
-(sec/n=1.13 ≤ 1.6 → memetic → 슬라이스 off → `pairConflicts` 미호출) — 무시할 것.
+**pc2 게이트 완료 — 품질 중립, 채택 보류**: 예선 48쌍 24W/16L 중앙값 −0.00%
+(P4 −0.38 / P5 −0.54 / P6 −0.36, 네 셀 모두 음의 방향이나 p=0.27), train 40쌍
+16W/21L +0.14% — 방향이 엇갈려 "확실히 개선" 기준 미달. solver/는 v6.2로 되돌렸고
+zip과 바이트 동일. pc2는 `experiments/pc2.patch` + 결정적 증거(4보드 0쌍)로 보존.
 
-**pc2가 통과하면**: `solver/src/api.cpp ← builds/pc2/src/api.cpp` → `build.sh`(Slurm) →
-zip 재생성(`experiments/pc2.patch`에 패치 보관). 통과 못 하면 원장에 기각 기록.
+**08-13 스케줄링 축 (진행 중)**: 목적함수는 (bay, entry)만의 함수인데 탐색은 기하에
+86%를 쓴다는 진단 → master2가 **우리 실측 밀도에서** 여유분이 갭을 초과함을 측정
+(P4 1.7× / P5 1.9× / P6 2.9×). 실현 계측기 사슬: greedy 재구축은 **부러진 계측기**
+(control: 자기 보드도 못 지음, Z1 169→605) → exact 베이별 실현기는 **검증 통과**
+(우리 베이를 OPTIMAL 초 단위 정확 재현) → 최대 욕심 스케줄은 INFEASIBLE/시간초과 →
+현재 `tools/headroom.py`: k-스윕 + 증인 근접 유도로 **실현 가능한** 여유분을 재고
+베이별 승자를 합성해 실제 보드를 만든다. 수확: `runs/headroom/prob_[456].txt`.
 
 **목표(P3-P6 전 팀 최솟값) 미달**: P3 +21.7% / P4 +57.5% / P5 +36.6% / P6 +12.8%.
 
