@@ -1135,3 +1135,27 @@ P5   v6.2  3쌍 금지   →   pc2  0쌍
 스모크 통과(P1 11,280 / P2 31,368). 게이트 진행: `pc2-train`(40쌍), `pc2-prelim`(48쌍).
 
 **pc1은 폐기한다** — pc2가 그 상위집합이고, pc1은 부분적이었다.
+
+### 정정 — pc2의 "결함 A"는 결함이 아니었다
+
+`crane::entryOK`의 본문은
+
+```cpp
+for (int k = 0; k < nNew; k++)
+    for (int j = k; j < nEx; j++)
+        if (overlapsLay(nu, k, x, y, *ex.g, j, ex.x, ex.y)) return false;
+```
+
+즉 `pairConflicts`가 쓰던 층쌍 루프와 **동일한 규칙**이고, 공식 체커의 문서가 그 규칙을
+그대로 적어 두었다(`utils.check_entry`: *"all (k, j) pairs with j >= k are checked
+for horizontal polygon overlap. Pairs with j < k are never obstructing"*).
+
+**따라서 하강 술어는 근사가 아니었다.** `entryOK` 호출로 바꾼 것은 의미 변경이 아니라
+오라클 구현 공유(리팩터)이며, 베이 경계 검사와 메모 캐시가 덤으로 붙을 뿐이다.
+
+**pc2의 실질 내용은 결함 B 하나 — 상승(퇴출) 쪽 타이다.** 진입일과 퇴출일이 **둘 다**
+같으면 쓸기 순서도 우리가 고를 수 있는데 `aFirst`가 한쪽으로 고정했다. 결정적 증거
+(P4 6쌍→0, P5 3쌍→0)는 그대로 유효하고, pc1의 하강 타이 수정도 pc2에 포함돼 있다.
+
+**부수적 음성 결과**: "오라클이 공식 체커보다 엄격한가"를 진입 규칙에서 확인했고
+**같은 규칙이다.** 그 축은 진입 쪽에서 닫힌다.
