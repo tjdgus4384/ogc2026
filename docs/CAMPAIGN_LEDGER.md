@@ -1159,3 +1159,22 @@ for horizontal polygon overlap. Pairs with j < k are never obstructing"*).
 
 **부수적 음성 결과**: "오라클이 공식 체커보다 엄격한가"를 진입 규칙에서 확인했고
 **같은 규칙이다.** 그 축은 진입 쪽에서 닫힌다.
+
+### kBatchCap 틈은 이론적이다 — 실재하지 않는다 (`tools/batchcap.py`)
+
+`entryRanks`는 (베이, 진입일) 그룹이 `kBatchCap = 16`을 넘으면 **검증 없이 오름차순 id**를
+방출한다. 주석은 "rule 2b never admits these"라 하지만 두 집합은 같지 않다 —
+`vpConservative`는 먼저 배치 전체를 `entryOK`로 시도해 통과하면 `batch`를 **비우므로**
+`nb2`는 **실제로 서로 막는 부분집합**만 센다. 그룹 20개 중 막는 것이 3개면 오라클은
+통과시키고 `entryRanks`는 미검증 순서를 방출한다 — 그게 체커 Stage 5 실패,
+즉 `_trivial` 파국 경로다.
+
+**측정: 실제 보드에는 그런 그룹이 없다.**
+
+```
+P3  108그룹  최대 5   16 초과 0        P5  125그룹  최대 4   16 초과 0
+P4   90그룹  최대 5   16 초과 0        P6  149그룹  최대 4   16 초과 0
+```
+
+`entryRanks`는 항상 위상 정렬을 실행한다. 이 축은 닫힌다 — 코드상 틈은 맞지만
+도달 불가능하고, 파국의 원인이 아니다.
