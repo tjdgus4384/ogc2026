@@ -53,7 +53,13 @@ def main():
     print(f"   _trivial scores {triv:,.0f}")
 
     ok = True
-    for label, mode in (("ladder path", "none"), ("exception path", "raise")):
+    # The third path is not a collapse at all: `_arm_free` comes back with a
+    # board the checker ACCEPTS that is nonetheless worse than the floor. The
+    # gate's own rescue ladder can produce exactly that -- its loose-relocation
+    # stage may park a block arbitrarily late -- and no enumerated fallback
+    # covers it. Only floor2's `_better` does.
+    for label, mode in (("ladder path", "none"), ("exception path", "raise"),
+                        ("worse-than-floor", "worse")):
         real_gate, real_arm = ma._gate, ma._arm_free
         state = {"n": 0}
 
@@ -66,6 +72,9 @@ def main():
         def arm(*a, **k):
             if mode == "raise":
                 raise RuntimeError("staged failure")
+            if mode == "worse":
+                bad = ma._trivial(prob)          # feasible by construction
+                return bad, ma._check(prob, bad)
             return None, None
 
         ma._gate, ma._arm_free = gate, arm
