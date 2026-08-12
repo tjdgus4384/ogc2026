@@ -942,13 +942,97 @@ def _trivial(p):
     return _recs_to_sol(recs)
 
 
+# ---------------------------------------------------------------- the floor
+_FLOOR = None            # a board the OFFICIAL checker has already accepted
+_FLOOR_OBJ = None        # and the objective the checker scored it at
+
+
+def _make_floor(p, n, budget):
+    """Buy a checker-clean board before the search can spend the budget.
+
+    Pooling every gate ever run, 2.3% of shipped P5 draws (5 of 216) return
+    `_trivial`: 1,321,314,754 against a 10.6M median, 124x, and enough on their
+    own to pull the P5 MEAN to 43.3M. Our gates read a median and a sign test,
+    so this never once showed up as a candidate's win or loss -- but the server
+    runs each hidden instance once, and 2.3% per run is a 17% chance of at
+    least one catastrophe across eight finals boards.
+
+    The mechanism has no subtlety in it. `_arm_free` spends the whole budget;
+    only when it returns None -- its board failed the checker on a measure-zero
+    exact-touch artifact -- does the ladder build a FRESH seed and try to
+    legalise it, with ~6s left and a ladder that needs more. At no point in the
+    run does anything hold a board known to pass.
+
+    So hold one. Measured on the four prelim boards: a seed costs 0.1-0.6s and
+    the checker 0.05-0.43s, under 0.15% of a 600s budget, and the board it
+    keeps is 30x (P6) to 1265x (P3) better than the last resort it replaces:
+
+        P3     581,759 vs   736,202,157      P5  20,111,373 vs 1,321,314,754
+        P4   8,131,205 vs   718,319,193      P6  45,448,526 vs 1,359,640,703
+
+    Costs nothing on a healthy run: this only ever changes what comes back on
+    the path that today returns `_trivial`.
+    """
+    global _FLOOR, _FLOOR_OBJ
+    t0 = time.time()
+    try:
+        eng, _ = _seed_free(p, diversify=False)
+        if eng is None:
+            return
+        sol, res = _gate(p, eng, n, t0 + budget)
+        if sol is not None:
+            _FLOOR = sol
+            if isinstance(res, dict) and res.get("feasible"):
+                _FLOOR_OBJ = res.get("objective")
+        _diag("floor", ok=sol is not None, obj=_FLOOR_OBJ,
+              sec=round(time.time() - t0, 2))
+    except Exception:
+        pass
+
+
+def _last_resort(p):
+    return _FLOOR if _FLOOR is not None else _trivial(p)
+
+
+def _better(sol, res):
+    """Never ship a board the floor already beats.
+
+    floor1 covers the enumerated collapse -- the paths that today return
+    `_trivial`. This makes the guarantee a PROPERTY instead of a list: whatever
+    happened upstream, the answer is at least as good as a board we already
+    hold and the official checker already accepted. It costs nothing, because
+    `_gate` hands back the checker's own objective for both sides.
+
+    It matters because the gate's own rescue ladder can damage what it saves --
+    its loose-relocation stage may park a block arbitrarily late (suspected +92
+    tardy days on prob_35 @T900). A rescued board can therefore come back worse
+    than the bare seed it started from, and that is not a case anyone enumerated.
+
+    `res` is None when the checker is unusable; then there is nothing to compare
+    and the kernel's own board stands, exactly as before.
+    """
+    try:
+        if (_FLOOR is not None and _FLOOR_OBJ is not None
+                and isinstance(res, dict) and res.get("feasible")
+                and res.get("objective") is not None
+                and res["objective"] > _FLOOR_OBJ):
+            _diag("floor", used="better",
+                  saved=round(res["objective"] - _FLOOR_OBJ))
+            return _FLOOR
+    except Exception:
+        pass
+    return sol
+
+
 # -------------------------------------------------------------------- entry
 def algorithm(prob_info, timelimit=60):
+    global _FLOOR, _FLOOR_OBJ
+    _FLOOR = _FLOOR_OBJ = None        # per-call: the harness reuses the process
     try:
         return _algorithm(prob_info, timelimit)
     except Exception:
         try:
-            return _trivial(prob_info)
+            return _last_resort(prob_info)
         except Exception:
             return {"operations": {}}
 
@@ -960,6 +1044,11 @@ def _algorithm(prob_info, timelimit=60):
     span = deadline - t0
     best = (None, None)
 
+    # Buy the floor BEFORE the search can spend the budget -- the whole defect
+    # is that we learn the board is checker-infeasible with six seconds left.
+    # Capped at 5% of the span so a pathological ladder cannot eat the run.
+    _make_floor(prob_info, n, min(20.0, max(2.0, 0.05 * span)))
+
     # FREE arm first: its result IS (a) the fallback, (b) the exact
     # habitat signal (Z1==0 is the mathematical precondition for the
     # arm's objective identity obj = w2*Z2 + w3*Z3 -- no threshold),
@@ -969,7 +1058,7 @@ def _algorithm(prob_info, timelimit=60):
         best = (s_b, r_b)
 
     if best[0] is not None:
-        return best[0]
+        return _better(best[0], best[1])
     _diag("fallback", stage="ladder", left=round(deadline - time.time(), 1))
     # Last resort, STRICTLY budget-aware: everything here runs after the main
     # arm already failed, typically near the deadline -- and the server kills
@@ -990,9 +1079,9 @@ def _algorithm(prob_info, timelimit=60):
         # unconditional raw check costs ~n/100 seconds -- skip it entirely
         # when that no longer fits (trivial needs no checker at all).
         if deadline - time.time() > 1.0 + 0.01 * n:
-            sol, _ = _gate(prob_info, eng, n, deadline)
+            sol, _res2 = _gate(prob_info, eng, n, deadline)
             if sol is not None:
                 _diag("fallback", stage="rescued")
-                return sol
-    _diag("fallback", stage="trivial")
-    return _trivial(prob_info)
+                return _better(sol, _res2)
+    _diag("fallback", stage="floor" if _FLOOR is not None else "trivial")
+    return _last_resort(prob_info)

@@ -1,3 +1,36 @@
+v6.2 (2026-08-12) = v6.1 + the checker-clean floor.
+
+Defect: nothing in a run ever held a board the OFFICIAL checker had accepted.
+`_arm_free` spends the whole budget; only when its board fails the checker on a
+measure-zero exact-touch artifact does the ladder build a FRESH seed and try to
+legalise it, with ~6s left and a checker ladder that needs more. Measured over
+every gate ever run: 5 of 228 P5 baseline draws returned `_trivial` at
+1,321,314,754 -- 124x the 10.6M median -- and 4 more returned the bare seed at
+20,111,373. The P5 MEAN is 45.67M against a 10.64M median, so our true position
+there was +491.7%, not +36.6%. It is not P5-specific: train_final 13 drew
+4,026,647,139 and 76,951,044 on the SAME seed 7 the grading server uses.
+
+Fix: buy a checker-clean seed board at the start (measured 0.1-0.6s to seed,
+0.12-0.38s to gate, under 0.15% of a 600s budget, available 32/32 across 4
+boards x 8 seeds) and return it instead of `_trivial`; and never ship a board
+the floor already beats, which makes the guarantee a property rather than a
+list of enumerated paths. Worth 30x (P6) to 1265x (P3) where it fires.
+
+Verified deterministically, not by a gate -- a 2.3% event is invisible to 48
+pairs. tools/floorcheck.py stages the catastrophe by letting `_gate` succeed
+exactly once (for the floor) and fail after, which is the state the five
+recorded catastrophes were in: 12/12 PASS across 4 boards x 3 entry paths with
+every returned board checker-feasible, against 12/12 FAIL for v6.1.
+
+Quality-neutral where it does not fire: train_final 40 pairs 18W/20L median
++0.04% p=0.87; prelim P3-P6 32 pairs median +0.00% p=0.70; P1/P2 smoke
+unchanged at the known optima 11,280 / 31,368.
+
+And it fired in its own validation gate: train_final 11 at seed 7 drew
+876,467,176 (Z1=65,473, wall 592.6s) on v6.1 and 8,131,553 (Z1=452, wall
+587.2s) on v6.2 -- 108x, on one instance, while that gate's sign test read
+18W/20L median +0.04%. The median cannot see this; the score can.
+
 v5.5 (2026-08-05; zip = submissions/2026-08-05_v55-finals.zip)
 
 Lineage: v0 smax78-v82 (prelim best) -> v1 full rewrite (inspectable kernel,
