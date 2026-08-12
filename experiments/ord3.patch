@@ -1,0 +1,57 @@
+--- solver/myalgorithm.py	2026-08-12 11:28:06.871609681 +0900
++++ builds/ord3/myalgorithm.py	2026-08-12 16:18:47.934874757 +0900
+@@ -203,7 +203,54 @@
+             sorted(range(n), key=lambda i: (D[i], -P[i])),
+             sorted(range(n), key=lambda i: D[i] + random.uniform(-8, 8)),
+             sorted(range(n), key=lambda i: D[i] + random.uniform(-8, 8)),
++            # ENTRY DEADLINE and RELEASE. Measured 2026-08-12
++            # (tools/transfer.py): construction quality propagates through the
++            # anneal -- rank correlation construction -> final is +0.73 on the
++            # objective and +0.75 on Z1 for P4 -- and these two orders build
++            # far better boards than anything the shipped set contains. On P4
++            # seed 7 they construct 5.72M and 6.27M against the best shipped
++            # order's 8.04M, and entry-deadline finishes at 2,912,398 against
++            # that order's 3,655,422 (-20.3%).
++            #
++            # Why they were missing: every shipped order sorts on the due date
++            # or the workload, so none of them asks WHEN A BLOCK MUST BE IN.
++            # D - P is exactly the last day an entry can still be punctual,
++            # which is the quantity tardiness is defined against; release order
++            # instead fills the yard in the order the work actually arrives.
++            #
++            # Cost is nil: one construction is 0.07-0.17s against limits of
++            # 240-900s, and the constructor keeps the best distinct layouts, so
++            # an order that loses is simply never selected.
++            sorted(range(n), key=lambda i: (D[i] - P[i], -P[i])),
++            sorted(range(n), key=lambda i: (R[i], D[i])),
+         ]
++    # SELF-CORRECTING ORDER. Every order above is static: it ranks blocks by
++    # quantities known before anything is placed, so none of them can know
++    # WHICH blocks will actually fail to enter on time. That is measurable --
++    # one construction costs 0.07-0.17s against limits of 240-900s, and
++    # tools/missed.py counted 63 punctual-insert failures on P4, 100 on P5 and
++    # 172 on P6 -- so build once, see who failed, and rebuild giving them the
++    # yard first. The failures are exactly the blocks that end up tardy, and
++    # tardiness is 78-96% of the objective on P4/P5/P6.
++    def _failed_first(base_order):
++        probe, _, _ = _fresh(p)
++        late = []
++        for i in base_order:
++            cap = max(R[i], D[i] - P[i])
++            if D[i] - P[i] < R[i] or not probe.insert_capped(i, cap, -1):
++                late.append(i)
++                probe.insert_capped(i, -1, -1)
++        if not late:
++            return None
++        rank = {b: k for k, b in enumerate(base_order)}
++        lateset = set(late)
++        return sorted(range(n),
++                      key=lambda i: (i not in lateset, rank[i]))
++    for _base in (orders[0], orders[3]):
++        _fo = _failed_first(_base)
++        if _fo is not None:
++            orders.append(_fo)
++
+     # adaptive-horizon ladder (sec 103): on congested giants the loose
+     # insert overflows the base occupancy horizon (P6 board: total seed
+     # failure -> _trivial's 4.2e9). Doubling the horizon is sound (a

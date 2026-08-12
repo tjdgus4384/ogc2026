@@ -1,0 +1,24 @@
+--- solver/src/repair.hpp	2026-08-12 04:41:07.514976923 +0900
++++ builds/pos1/src/repair.hpp	2026-08-12 15:57:55.680279227 +0900
+@@ -171,7 +171,20 @@
+     rbCollect(c, j, e, f, rbs);
+     for (int oi : oris) {
+         cornerSetsRB(c, A, oi, j, rbs, xs, ys);
+-        for (int y : ys) {
++        // SENSITIVITY PROBE, not a proposed policy. Every placement this
++        // kernel makes takes the FIRST legal candidate with cornerSetsRB's
++        // sets walked in ascending order -- lowest y, then lowest x -- so the
++        // search only ever visits boards where each block sits at the
++        // bottom-left-most spot that was free when it was placed. The
++        // candidate vocabulary is now known not to be the constraint (at the
++        // moment a punctual insert fails, brute force over every integer
++        // position finds nothing in 59 of 60 cases), so what remains untested
++        // is which of the legal candidates gets taken. Walking y downward
++        // costs exactly the same and induces a different packing: if the
++        // gate moves at all, the selection rule is a live lever worth
++        // optimising; if it does not, the rule is irrelevant and closes.
++        for (auto yi = ys.rbegin(); yi != ys.rend(); ++yi) {
++            int y = *yi;
+             for (int x : xs) {
+                 if (c.oc->hitsSnap(sn, A, oi, x, y)) continue;
+                 s.bay[A]=j; s.ori[A]=oi; s.x[A]=x; s.y[A]=y;
