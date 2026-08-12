@@ -1,0 +1,59 @@
+--- solver/src/api.cpp	2026-08-12 04:41:07.486977227 +0900
++++ builds/pc1/src/api.cpp	2026-08-12 18:34:17.326996134 +0900
+@@ -333,9 +333,22 @@
+                 if (!bad) {
+                     // vertical descent: the later entrant's layer k has
+                     // to clear the resident's layers j >= k
+-                    // equal entries: the day's ENTRY order is ours to
+-                    // choose, so neither direction may be assumed -- the
+-                    // pair conflicts if EITHER descent is blocked.
++                    // Equal entries: the day's ENTRY order is OURS to choose
++                    // and the solution emits it (Engine::entryRanks), so the
++                    // pair is feasible when EITHER descent order works -- not
++                    // only when both do. The old rule required both, which
++                    // rejects boards the kernel's own vp accepts: feeding
++                    // pair_conflicts nothing but P5's 200 incumbent placements
++                    // (vp violations: 0) returned five forbidden pairs, every
++                    // one of them sharing an entry day and differing on exit
++                    // (tools/incumbent_conflict.py).
++                    //
++                    // This is the v6.0 correction, which fixed exactly this
++                    // over-rejection in vpConservative rule 2b, finally
++                    // propagated to the CP model. The oracle was fixed; this
++                    // model kept the strict rule, so the slice arm's CP round
++                    // could start by ruling out the very board it is meant to
++                    // improve on.
+                     const bool tie = (A[5] == B[5]);
+                     const bool aLate = A[5] >= B[5];
+                     const auto& gl = aLate ? ga : gb;
+@@ -344,15 +357,21 @@
+                     const int* E = aLate ? B : A;
+                     const int nl = (int)gl.layers.size();
+                     const int ne = (int)ge.layers.size();
+-                    for (int k = 0; k < nl && !bad; k++)
+-                        for (int j = k; j < ne && !bad; j++)
+-                            bad = crane::overlapsLay(gl, k, L[3], L[4],
+-                                                     ge, j, E[3], E[4]);
+-                    if (!bad && tie)
+-                        for (int k = 0; k < ne && !bad; k++)
+-                            for (int j = k; j < nl && !bad; j++)
+-                                bad = crane::overlapsLay(ge, k, E[3], E[4],
+-                                                         gl, j, L[3], L[4]);
++                    bool d1 = false;
++                    for (int k = 0; k < nl && !d1; k++)
++                        for (int j = k; j < ne && !d1; j++)
++                            d1 = crane::overlapsLay(gl, k, L[3], L[4],
++                                                    ge, j, E[3], E[4]);
++                    if (!tie) {
++                        bad = d1;                       // order is fixed by the days
++                    } else {
++                        bool d2 = false;
++                        for (int k = 0; k < ne && !d2; k++)
++                            for (int j = k; j < nl && !d2; j++)
++                                d2 = crane::overlapsLay(ge, k, E[3], E[4],
++                                                        gl, j, L[3], L[4]);
++                        bad = d1 && d2;                 // we pick the order
++                    }
+                 }
+                 if (!bad) {
+                     // vertical ASCENT -- the half this model was missing.
