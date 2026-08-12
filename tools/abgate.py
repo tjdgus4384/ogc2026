@@ -50,9 +50,12 @@ def cmd_submit(args):
     base = pathlib.Path(args.base).resolve()
     cand = pathlib.Path(args.cand).resolve() if args.cand else base
     data = REPO / "data" / args.data
+    # Instance-major so a cell's pairs share a time limit. A cell ends only
+    # when its slowest pair does, so mixing P3 (2x240s) with P6 (2x900s) parks
+    # the P3 cores for twenty minutes.
     pairs = []
-    for si, seed in enumerate(seeds):
-        for ii, inst in enumerate(insts):
+    for ii, inst in enumerate(insts):
+        for si, seed in enumerate(seeds):
             if args.tl:
                 tl = args.tl
             elif f"P{inst}" in REFS["hidden_specs"]:
@@ -158,15 +161,21 @@ def cmd_collect(args):
     block("ALL", rows)
     for inst in manifest["instances"]:
         block(f"P{inst}", [r for r in rows if r["instance"] == inst])
-    print("   -- best draw vs all-time minimum --")
+    # MEDIAN, not best-of-N. The grading server runs each instance once, so the
+    # median draw is our position; the minimum over a dozen seeds is a lottery
+    # ticket and quoting it makes the gap to the target look far smaller than it
+    # is (P4: best draw +25% against a median of +59%).
+    print("   -- median draw vs all-time minimum (best-of-N in parens) --")
     for inst in manifest["instances"]:
-        sel = [r for r in rows if r["instance"] == inst]
+        sel = sorted((r["b"] for r in rows if r["instance"] == inst))
         if not sel:
             continue
         tgt = amin[f"P{inst}"]["objective"]
-        ba, bb = min(r["a"] for r in sel), min(r["b"] for r in sel)
-        print(f"   P{inst}  A {ba:12,.0f} ({(ba - tgt) / tgt * 100:+6.1f}%)   "
-              f"B {bb:12,.0f} ({(bb - tgt) / tgt * 100:+6.1f}%)   target {tgt:,}")
+        med = sel[len(sel) // 2] if len(sel) % 2 else \
+            (sel[len(sel) // 2 - 1] + sel[len(sel) // 2]) / 2
+        print(f"   P{inst}  median {med:13,.0f} ({(med - tgt) / tgt * 100:+6.1f}%)"
+              f"   best {sel[0]:13,.0f} ({(sel[0] - tgt) / tgt * 100:+6.1f}%)"
+              f"   target {tgt:,}")
 
 
 def main():
@@ -184,7 +193,9 @@ def main():
     s.add_argument("--checker", default=str(REPO / "solver"))
     s.add_argument("--partition", default="titan")
     s.add_argument("--concurrent", type=int, default=8)
-    s.add_argument("--per-cell", type=int, default=4)
+    # A titan node has 48 cores and a pair is pinned to 4, so twelve pairs
+    # fill one exclusive node exactly.
+    s.add_argument("--per-cell", type=int, default=12)
     s.add_argument("--tl", type=int, help="TL override for non-prelim datasets")
     s.add_argument("--dry", action="store_true")
     s.set_defaults(func=cmd_submit)

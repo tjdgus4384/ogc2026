@@ -150,3 +150,40 @@ P4-P6 are pure-tardiness games (geometry-bound Z1 at congested windows;
 CP-SAT area relaxation proves Z1=0 is area-feasible — the binding
 constraint is GEOMETRY). P3 is a preference-capacity game. Campaign
 targets and per-problem gaps: STATUS.md.
+
+## Which stages actually fire, per board (measured 2026-08-12)
+
+The gates above are structure-keyed, so the four preliminary boards run four
+DIFFERENT pipelines. Read every A/B result through this table: a change that
+touches the portfolio's operator mask means something else on P3 (memetic) than
+on P6, and a change to the slice arm cannot touch P3 at all.
+
+| | n | bays | saturation | spec | assign lock | PREFP | population | slice (30%) |
+|---|---|---|---|---|---|---|---|---|
+| P3 | 200 | 3 | 0.464 | yes | yes | — | **yes** | no |
+| P4 | 150 | 3 | 0.796 | yes | no | 0.85 | no | yes |
+| P5 | 200 | 4 | 0.840 | no | no | — | no | yes |
+| P6 | 250 | 3 | 1.514 | no | no | — | no | yes |
+
+So P3 alone takes the memetic path, skips the CP slice and locks assignments;
+P5 and P6 get no construction-time preference mechanism at all. This is why
+candidates keep splitting P3 against the rest -- it is not noise.
+
+## Cost and dormancy audit (2026-08-12)
+
+Where the time goes at official TLs: **insertion 86%**, removal 4%, objective
+evaluation **0.05%**, failed insertions 2.2%. Optimising evaluation is worthless;
+`insertGreedy` is the only hot path.
+
+Mechanisms that exist but do not run, found by reading rather than by accident:
+
+| symbol | state |
+|---|---|
+| `core::glsPen` | defined, never set -- the penalised objective always equalled the true one. Activating it correctly LOST 9W/36L, +8.53%, p=0.0001 |
+| `alns::spatialCompact` | runs once after the anneal (rounds=1 at official TLs), never during. Moving it into the search was neutral, 21W/23L |
+| `knobs::reserve` | enabled, but its guard compares `dayLoad[t] > fillRatio` where `fillRatio = max(fill, max_t dayLoad)` by construction -- **it can never fire**, measured 0 of 73-86 days on every board. `dayLoad` also counts only the entry window `[R, D-P]`, ignoring the P days of residency, so it under-models congestion by half |
+| `Engine::set_entry_lock` / `Ctx::entryCap` | exposed and honoured, never set by the driver (probe-only capability) |
+
+Live and correctly wired, checked: `densMode` splits per thread (`tid % 2`),
+`oriPref`/`areaSlk`/`stride`/`qFrac` all have consumers, and no function in
+`myalgorithm.py` is unreachable.
