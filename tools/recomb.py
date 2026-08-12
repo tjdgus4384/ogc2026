@@ -52,23 +52,22 @@ def main():
     SC = 1000
     uw = [int(round(SC * x)) for x in u]
 
-    sol = ma.algorithm(prob, timelimit=tl)
-    eng, D, P = ma._fresh(prob, 4)
-    st = [0] * (n * 7)
-    for day, ops in sol["operations"].items():
-        for op in ops:
-            if op["type"] == "ENTRY":
-                i = op["block_id"]
-                st[i * 7:i * 7 + 7] = [op["bay_id"], op["orient_idx"], op["x"],
-                                       op["y"], int(day), int(day) + P[i], 1]
-    eng.set_solution(st)
-    eng.build_occ(eng.horizon())
+    # The driver's final get_candidates() is useless for this: the slice's
+    # last round overwrites the diverse portfolio candidates with four copies
+    # of `cur`. Reproduce the moment of diversity instead -- seeds, then the
+    # main portfolio for the driver's own anneal share of the budget -- and
+    # recombine the four persona-diverse thread boards it finishes with.
+    eng, seeds = ma._seed_free(prob)
+    _, D, P = (None,
+               [int(round(b["due_date"])) for b in B],
+               [max(1, int(-(-b["processing_time"] // 1))) for b in B])
+    starts = [seeds[0], []] + seeds[1:3] if seeds else []
+    eng.run_portfolio(4, tl * 0.55, 1, 0.05, 0.15, 0.002, 0.9995,
+                      seed, 1, starts)
+    st = list(eng.get_solution())
     base = eng.objective()
-    print(f"{prob_id}: driver board {base[3]:,.0f}  Z1={base[0]:.0f}"
-          f"   (TL {tl:.0f}s, seed {seed})")
-
-    # parents: the driver's final board + the portfolio's runner-up thread
-    # boards, which the run computed and then discarded.
+    print(f"{prob_id}: portfolio board {base[3]:,.0f}  Z1={base[0]:.0f}"
+          f"   ({tl * 0.55:.0f}s anneal, seed {seed})")
     parents = [list(st)]
     for flat in eng.get_candidates():
         if list(flat) != parents[0]:
