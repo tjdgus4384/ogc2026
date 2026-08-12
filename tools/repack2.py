@@ -106,14 +106,24 @@ def main():
                 cs.append(wit)
             CAND[i] = cs
         for i in own_tardy:
-            cs = grid(i, j, D[i] - P[i], 40)
+            cs = []
+            for d in sorted({R[i], (R[i] + D[i] - P[i]) // 2, D[i] - P[i]}):
+                cs += grid(i, j, d, 14)
             punct[i] = set(range(len(cs)))
             cs = cs + [(j, new[i * 7 + 1], new[i * 7 + 2], new[i * 7 + 3],
                         new[i * 7 + 4])]          # original = fallback
             CAND[i] = cs
             save[i] = new[i * 7 + 5] - D[i]
         for i in pool:
-            cs = grid(i, j, D[i] - P[i], 40)
+            # every punctual day, not just the last one: R, the midpoint and
+            # D-P. A strict superset of the single-day model that returned
+            # OPTIMAL 0 -- if this is also 0, the tardy set provably cannot
+            # enter punctually under ANY day choice with full per-bay
+            # geometric freedom.
+            days = sorted({R[i], (R[i] + D[i] - P[i]) // 2, D[i] - P[i]})
+            cs = []
+            for d in days:
+                cs += grid(i, j, d, 16)
             if cs:
                 CAND[i] = cs
                 save[i] = new[i * 7 + 5] - D[i]
