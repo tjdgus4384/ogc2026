@@ -26,6 +26,7 @@ and the shadow is.
     python3 tools/blocked.py SOLVERDIR prob_5 TL [seed]
 """
 import json
+import math
 import os
 import pathlib
 import sys
@@ -81,31 +82,48 @@ def main():
         late = st[i * 7 + 5] - D[i]
         if t < 0 or t > hz:
             continue
+        # Rasterise each bay once and take 2D prefix sums, so a candidate
+        # position costs O(1) instead of a scan over residents. Occupancy is
+        # rounded OUTWARD and the arriving block's bbox is rounded outward too,
+        # so both sides are over-stated and a slot found here is one a real
+        # polygon would certainly fit -- which is the direction the conclusion
+        # needs.
         found = False
         for j in range(m):
-            W, H = bays[j]["width"], bays[j]["height"]
-            occ = []
+            W, H = int(bays[j]["width"]), int(bays[j]["height"])
+            g = [[0] * (W + 1) for _ in range(H + 1)]
             for k in range(n):
                 if not st[k * 7 + 6] or k == i or st[k * 7] != j:
                     continue
                 if not (st[k * 7 + 4] <= t < st[k * 7 + 5]):
                     continue
                 x0, y0, x1, y1 = L0[k][st[k * 7 + 1]]
-                occ.append((st[k * 7 + 2] + x0, st[k * 7 + 3] + y0,
-                            st[k * 7 + 2] + x1, st[k * 7 + 3] + y1))
+                cx0 = max(0, int(math.floor(st[k * 7 + 2] + x0)))
+                cy0 = max(0, int(math.floor(st[k * 7 + 3] + y0)))
+                cx1 = min(W, int(math.ceil(st[k * 7 + 2] + x1)))
+                cy1 = min(H, int(math.ceil(st[k * 7 + 3] + y1)))
+                for yy in range(cy0, cy1):
+                    row = g[yy]
+                    for xx in range(cx0, cx1):
+                        row[xx] = 1
+            ps = [[0] * (W + 1) for _ in range(H + 1)]
+            for yy in range(H):
+                acc = 0
+                for xx in range(W):
+                    acc += g[yy][xx]
+                    ps[yy + 1][xx + 1] = ps[yy][xx + 1] + acc
             for oi in range(len(B[i]["shape"])):
                 ax0, ay0, ax1, ay1 = L0[i][oi]
-                w, h = ax1 - ax0, ay1 - ay0
-                for px in range(0, int(W - w) + 1):
-                    for py in range(0, int(H - h) + 1):
-                        qx0, qy0 = px, py
-                        qx1, qy1 = px + w, py + h
-                        if any(not (qx1 <= r[0] + 1e-9 or r[2] <= qx0 + 1e-9
-                                    or qy1 <= r[1] + 1e-9 or r[3] <= qy0 + 1e-9)
-                               for r in occ):
-                            continue
-                        found = True
-                        break
+                w = int(math.ceil(ax1 - ax0))
+                h = int(math.ceil(ay1 - ay0))
+                if w > W or h > H:
+                    continue
+                for py in range(0, H - h + 1):
+                    a, b_ = ps[py + h], ps[py]
+                    for px in range(0, W - w + 1):
+                        if a[px + w] - a[px] - b_[px + w] + b_[px] == 0:
+                            found = True
+                            break
                     if found:
                         break
                 if found:
