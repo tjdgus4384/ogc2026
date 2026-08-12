@@ -1,5 +1,5 @@
 --- solver/myalgorithm.py	2026-08-13 06:17:45.653335618 +0900
-+++ builds/swo1/myalgorithm.py	2026-08-13 07:02:09.117090013 +0900
++++ builds/swo1/myalgorithm.py	2026-08-13 07:11:06.762138735 +0900
 @@ -739,6 +739,58 @@
      # With fewer distinct seeds the pattern cycles, which keeps at least one
      # construction slot and never duplicates a basin needlessly.
@@ -13,7 +13,7 @@
 +    # 2-8s. On P5 the SWO start plus a bare 400s anneal reaches the full
 +    # driver's 900s median. Unlike the refuted jointcon hedge (45s), the
 +    # cost term of the net is negligible here.
-+    if seeds and sec > 60.0:
++    if seeds and (deadline - time.time()) > 90.0:
 +        try:
 +            _t0 = time.time()
 +            _e2, _D2, _P2 = _fresh(p, 4)
