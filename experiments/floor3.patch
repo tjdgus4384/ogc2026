@@ -1,0 +1,35 @@
+--- solver/myalgorithm.py	2026-08-12 20:04:07.663007137 +0900
++++ builds/floor3/myalgorithm.py	2026-08-13 05:40:22.521375368 +0900
+@@ -800,6 +800,32 @@
+                               0.9995, seed, 1, starts)
+     if asg is not None:
+         eng.set_assignment_lock([])
++    # MID-RUN FLOOR PROMOTION (floor v2). v6.2's floor covers the paths that
++    # returned `_trivial`; the residual tail is the run that returns its bare
++    # seed rescue (~20.1M on P5, 4+ recorded) because the FINAL gate fails on
++    # the annealed board with seconds left. The annealed incumbent exists
++    # right here, before the slice spends the tail budget -- gate a snapshot
++    # of it once (~1-2s against a 480-900s budget) and promote the floor from
++    # seed level (~20M) to annealed level (~10.6M). `_gate` legalizes IN
++    # PLACE, so the engine state is saved and restored around it; the run's
++    # trajectory afterward is byte-identical to v6.2's.
++    global _FLOOR, _FLOOR_OBJ
++    if sec > 150.0 and deadline - time.time() > 30.0:
++        try:
++            _snap = eng.get_solution()
++            _msol, _mres = _gate(p, eng, n, time.time() + 15.0)
++            eng.set_solution(_snap)
++            eng.build_occ(eng.horizon())
++            if _msol is not None:
++                _mo = (_mres.get("objective")
++                       if isinstance(_mres, dict) and _mres.get("feasible")
++                       else None)
++                if _FLOOR_OBJ is None or (_mo is not None
++                                          and _mo < _FLOOR_OBJ):
++                    _FLOOR, _FLOOR_OBJ = _msol, _mo
++                    _diag("floor", promoted="midrun", obj=_mo)
++        except Exception:
++            pass
+     try:
+         # Not on the memetic path at all. Gating only the BUDGET was not
+         # enough: the population search returns before its budget is up,
