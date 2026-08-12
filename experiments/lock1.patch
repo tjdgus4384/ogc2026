@@ -1,0 +1,24 @@
+--- solver/myalgorithm.py	2026-08-12 11:28:06.871609681 +0900
++++ builds/lock1/myalgorithm.py	2026-08-12 19:52:07.453400744 +0900
+@@ -221,7 +221,20 @@
+                     best = (ob, od)
+         if best is not None:
+             if best[1] is not orders[-1]:
+-                eng.reconstruct_ordered([-1] * n, best[1], False, 7)
++                # REPLAY THE WINNING ORDER -- under the SAME lock it was built
++                # with. Replaying with [-1]*n rebuilds a different, UNLOCKED
++                # board and leaves it as the engine's state, which runPortfolio
++                # then uses as `roundStart` AND as the incumbent a thread must
++                # beat ("winnerTid = -1: no thread beat the seed"). An unlocked
++                # board has more freedom on Z1, so it is easy to beat the locked
++                # starts with, and _arm_free's partial preference lock is thrown
++                # away exactly when it would have paid. solver/VERSION records
++                # this as repaired in v5.5 ("63 of 200 P3 blocks off their
++                # locked bay at the seed") while the line was still here;
++                # measured again today, production partial lock: P3 22/80,
++                # P4 30/60, P6 63/100 off-lock in the engine state while every
++                # `starts` entry was clean.
++                eng.reconstruct_ordered(lockv, best[1], False, 7)
+             # top DISTINCT seeds, best first: the portfolio's basin hedge
+             # (different insertion orders often collapse to the same layout;
+             # duplicates would waste a thread on the same basin).
