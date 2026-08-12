@@ -35,6 +35,11 @@ SOLVER = "builds/pc2"
 
 
 def main():
+    # repack2 mode: BAY = -1 composes all bays sequentially -- each bay's CP
+    # sees only the tardy blocks not yet seated by an earlier bay (no double
+    # counting), commits its placements, and the final board is scored on the
+    # engine and judged by the official checker. Bays are ordered by their
+    # measured savings (2, 0, 1 on P4) so the richest bay picks first.
     prob_id = sys.argv[1]
     bay = int(sys.argv[2])
     tl = float(sys.argv[3])
