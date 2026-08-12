@@ -1,0 +1,93 @@
+--- solver/src/api.cpp	2026-08-12 04:41:07.486977227 +0900
++++ builds/pc2/src/api.cpp	2026-08-12 21:29:11.784908685 +0900
+@@ -342,17 +342,34 @@
+                     const auto& ge = aLate ? gb : ga;
+                     const int* L = aLate ? A : B;
+                     const int* E = aLate ? B : A;
+-                    const int nl = (int)gl.layers.size();
+-                    const int ne = (int)ge.layers.size();
+-                    for (int k = 0; k < nl && !bad; k++)
+-                        for (int j = k; j < ne && !bad; j++)
+-                            bad = crane::overlapsLay(gl, k, L[3], L[4],
+-                                                     ge, j, E[3], E[4]);
+-                    if (!bad && tie)
+-                        for (int k = 0; k < ne && !bad; k++)
+-                            for (int j = k; j < nl && !bad; j++)
+-                                bad = crane::overlapsLay(ge, k, E[3], E[4],
+-                                                         gl, j, L[3], L[4]);
++                    // USE THE ORACLE'S OWN PREDICATE. This loop was a
++                    // conservative APPROXIMATION of the descent test: layer k
++                    // of the entrant against layers j >= k of the resident.
++                    // The feasibility oracle does not ask that -- rule 2b's
++                    // `entryBlocked` calls `crane::entryOK` with the resident
++                    // as the only present block. The approximation is strictly
++                    // stricter, so the model forbade boards vpConservative
++                    // accepts: measured on incumbents alone (vp violations 0),
++                    // P4 5 pairs and P5 5 pairs before the tie fix, and P4 1 /
++                    // P6 5 after it -- every survivor a pair sharing BOTH its
++                    // entry and its exit day.
++                    //
++                    // Asking the oracle's question directly makes the CP model
++                    // incapable of rejecting a board the oracle admits, which
++                    // is a property rather than a patched-up list of cases.
++                    const double bw = pb.bayW[A[1]], bh = pb.bayH[A[1]];
++                    thread_local std::vector<crane::Placement> one;
++                    one.assign(1, {&ge, (double)E[3], (double)E[4]});
++                    const bool d1 = !crane::entryOK(bw, bh, one, gl,
++                                                    (double)L[3], (double)L[4]);
++                    if (!tie) {
++                        bad = d1;              // the days fix the order
++                    } else {
++                        one.assign(1, {&gl, (double)L[3], (double)L[4]});
++                        const bool d2 = !crane::entryOK(bw, bh, one, ge,
++                                                        (double)E[3], (double)E[4]);
++                        bad = d1 && d2;        // we choose the intra-day order
++                    }
+                 }
+                 if (!bad) {
+                     // vertical ASCENT -- the half this model was missing.
+@@ -366,17 +383,34 @@
+                     // vp-infeasible, always on an exit sweep between two
+                     // FREED blocks (e.g. "block 56 exit obstructed by
+                     // block 88, kind=sweep"), never on a frozen one.
++                    // The SAME tie the descent had, on the exit side. When
++                    // the two share their entry AND their exit day, `aFirst`
++                    // falls through to an arbitrary pick and the other sweep
++                    // order is never tried -- so the model forbids the pair
++                    // even though we get to choose that order too. Every pair
++                    // that survived the descent repair was exactly of this
++                    // shape: same e AND same f (P4 blk 3 vs 116 at e=57 f=79;
++                    // P6 five of them).
++                    const bool ftie = (fa == fb) && (A[5] == B[5]);
+                     const bool aFirst = (fa < fb) || (fa == fb && A[5] > B[5]);
+-                    const auto& gx = aFirst ? ga : gb;      // exiter
+-                    const auto& gs = aFirst ? gb : ga;      // stayer
+-                    const int* X = aFirst ? A : B;
+-                    const int* Y = aFirst ? B : A;
+-                    const int nx = (int)gx.layers.size();
+-                    const int ns = (int)gs.layers.size();
+-                    for (int k = 0; k < nx && !bad; k++)
+-                        for (int j = k; j < ns && !bad; j++)
+-                            bad = crane::overlapsLay(gx, k, X[3], X[4],
+-                                                     gs, j, Y[3], Y[4]);
++                    auto sweepBlocked = [&](const auto& gx, const int* X,
++                                            const auto& gs, const int* Y) {
++                        const int nx = (int)gx.layers.size();
++                        const int ns = (int)gs.layers.size();
++                        for (int k = 0; k < nx; k++)
++                            for (int j = k; j < ns; j++)
++                                if (crane::overlapsLay(gx, k, X[3], X[4],
++                                                       gs, j, Y[3], Y[4]))
++                                    return true;
++                        return false;
++                    };
++                    if (!ftie) {
++                        bad = aFirst ? sweepBlocked(ga, A, gb, B)
++                                     : sweepBlocked(gb, B, ga, A);
++                    } else {
++                        bad = sweepBlocked(ga, A, gb, B)
++                           && sweepBlocked(gb, B, ga, A);
++                    }
+                 }
+                 if (bad) { out.push_back(a); out.push_back(b); }
+             }
