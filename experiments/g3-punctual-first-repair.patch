@@ -1,0 +1,26 @@
+--- builds/m8/src/alns.hpp	2026-08-12 02:49:58.854503002 +0900
++++ builds/g3/src/alns.hpp	2026-08-12 09:28:28.582065376 +0900
+@@ -643,9 +643,22 @@
+                     if (!repair::insertGreedy(c, A, -1)) { ok = false; break; }
+                 }
+         } else {
++            // PUNCTUALITY-FIRST REPAIR. insertGreedy takes the earliest
++            // feasible entry, so a block that is going to be late regardless
++            // still grabs the earliest slot it can reach -- which may be the
++            // only punctual slot another removed block had. Z1 counts days,
++            // not blocks, so that trade is usually a loss. Give every block a
++            // chance at a PUNCTUAL entry first (eCap = D - P), then let the
++            // ones that could not take one fill in around them. Same greedy,
++            // same order, one extra pass over the few that fail.
++            std::vector<int> late;
+             for (int A : rem) {
+-                if (!repair::insertGreedy(c, A, -1)) { ok = false; break; }
++                int cap = pb.D[A] - pb.P[A];
++                if (cap >= pb.R[A] && repair::insertGreedy(c, A, cap)) continue;
++                late.push_back(A);
+             }
++            for (int A : late)
++                if (!repair::insertGreedy(c, A, -1)) { ok = false; break; }
+         }
+         if (auditEvery > 0 && ok) {
+             int bb = -1; int code = audit(pb, s, &bb);

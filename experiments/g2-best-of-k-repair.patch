@@ -1,0 +1,65 @@
+--- builds/m8/src/alns.hpp	2026-08-12 02:49:58.854503002 +0900
++++ builds/g2/src/alns.hpp	2026-08-12 09:22:44.305650569 +0900
+@@ -45,6 +45,10 @@
+     return 0;
+ }
+ 
++// How many independent greedy repairs of the same removal set to sample before
++// keeping the best. 1 reproduces the historical single pass exactly.
++constexpr int kRepairTries = 3;
++
+ struct Destroyers {
+     std::vector<double> w, score;
+     std::vector<int> used;
+@@ -643,9 +647,49 @@
+                     if (!repair::insertGreedy(c, A, -1)) { ok = false; break; }
+                 }
+         } else {
+-            for (int A : rem) {
+-                if (!repair::insertGreedy(c, A, -1)) { ok = false; break; }
++            // BEST-OF-K REPAIR. One greedy pass fixes every removed block at
++            // its own earliest feasible entry, so a destroy set of six to eight
++            // blocks -- a huge space of joint re-placements -- is sampled at
++            // exactly one point per iteration, and that point is a local
++            // optimum by construction: measured 2026-08-12, the boards it
++            // produces admit no earlier entry, no preference relocation and no
++            // legal position at all for their worst offenders. insertGreedy
++            // already randomises bay order and orientation per call, so re-
++            // running the same removal set costs nothing to write and samples
++            // the joint dimension the single pass never sees. Only the removed
++            // blocks move, so a try is recorded as q placements, not a board.
++            std::vector<Backup> bestTry;
++            double bestTryVal = 1e300;
++            for (int t = 0; t < kRepairTries; t++) {
++                ok = true;
++                for (int A : rem)
++                    if (!repair::insertGreedy(c, A, -1)) { ok = false; break; }
++                if (ok) {
++                    double v = obj();
++                    if (v < bestTryVal) {
++                        bestTryVal = v;
++                        bestTry.clear();
++                        for (int A : rem)
++                            bestTry.push_back({A, s.bay[A], s.ori[A], s.x[A],
++                                               s.y[A], s.e[A], s.f[A]});
++                    }
++                }
++                if (t + 1 < kRepairTries) {
++                    for (int A : rem)
++                        if (s.placed[A]) repair::removeBlock(c, A);
++                }
+             }
++            if (!bestTry.empty()) {
++                for (int A : rem)
++                    if (s.placed[A]) repair::removeBlock(c, A);
++                for (auto& b : bestTry) {
++                    s.bay[b.A]=b.bay; s.ori[b.A]=b.ori; s.x[b.A]=b.x;
++                    s.y[b.A]=b.y; s.e[b.A]=b.e; s.f[b.A]=b.f; s.placed[b.A]=1;
++                    s.addIdx(b.A);
++                    c.oc->stamp(pb, s, b.A, true);
++                }
++                ok = true;
++            } else ok = false;
+         }
+         if (auditEvery > 0 && ok) {
+             int bb = -1; int code = audit(pb, s, &bb);
