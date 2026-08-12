@@ -137,6 +137,41 @@ def main():
     print(f"      w1 = {W['w1']:,}: one tardy day costs "
           f"{W['w1']/max(1.0, o[3]-obj)*100:.0f}% of this gain")
 
+    # ---- and can our own board actually take it?
+    # The blocks that differ have to move TOGETHER: z2move showed single
+    # preference relocations land punctually 1 time in 19, because the bay a
+    # block wants is full of blocks that also want it. Freeing all of them at
+    # once and re-inserting each into its CP bay is a different move, and it is
+    # the only one that can realise this assignment.
+    diff = [i for i in range(n) if not sv.Value(x[i][st[i * 7]])]
+    tgt = [next(j for j in range(m) if sv.Value(x[i][j])) for i in diff]
+    part = list(st)
+    for i in diff:
+        part[i * 7 + 6] = 0
+    eng.set_solution(part)
+    eng.build_occ(eng.horizon())
+    lock = [-1] * n
+    for i, j in zip(diff, tgt):
+        lock[i] = j
+    eng.set_assignment_lock(lock)
+    ok, late = 0, 0
+    for i in sorted(diff, key=lambda k: -P[k]):
+        cap = max(int(B[i]["release_time"]), D[i] - P[i])
+        if eng.insert_capped(i, cap, lock[i]):
+            ok += 1
+            if eng.get_block(i)[5] > D[i]:
+                late += 1
+    eng.set_assignment_lock([])
+    o2 = eng.objective()
+    print(f"      realising it on our own board: {ok}/{len(diff)} re-inserted"
+          f" into their CP bay, {late} of those tardy")
+    if ok == len(diff):
+        print(f"      -> board {o2[3]:,.0f}  Z1={o2[0]:.0f} Z2={o2[1]:.0f}"
+              f" Z3={o2[2]:.0f}   ({(o2[3]-o[3])/o[3]*100:+.2f}%)")
+    else:
+        print(f"      -> NOT realisable: {len(diff)-ok} could not be placed in "
+              f"their CP bay at all")
+
 
 if __name__ == "__main__":
     main()
