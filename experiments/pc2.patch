@@ -1,5 +1,5 @@
 --- solver/src/api.cpp	2026-08-12 04:41:07.486977227 +0900
-+++ builds/pc2/src/api.cpp	2026-08-12 21:29:11.784908685 +0900
++++ builds/pc2/src/api.cpp	2026-08-12 21:53:26.468014707 +0900
 @@ -342,17 +342,34 @@
                      const auto& ge = aLate ? gb : ga;
                      const int* L = aLate ? A : B;
@@ -46,20 +46,11 @@
                  }
                  if (!bad) {
                      // vertical ASCENT -- the half this model was missing.
-@@ -366,17 +383,34 @@
+@@ -366,17 +383,42 @@
                      // vp-infeasible, always on an exit sweep between two
                      // FREED blocks (e.g. "block 56 exit obstructed by
                      // block 88, kind=sweep"), never on a frozen one.
-+                    // The SAME tie the descent had, on the exit side. When
-+                    // the two share their entry AND their exit day, `aFirst`
-+                    // falls through to an arbitrary pick and the other sweep
-+                    // order is never tried -- so the model forbids the pair
-+                    // even though we get to choose that order too. Every pair
-+                    // that survived the descent repair was exactly of this
-+                    // shape: same e AND same f (P4 blk 3 vs 116 at e=57 f=79;
-+                    // P6 five of them).
-+                    const bool ftie = (fa == fb) && (A[5] == B[5]);
-                     const bool aFirst = (fa < fb) || (fa == fb && A[5] > B[5]);
+-                    const bool aFirst = (fa < fb) || (fa == fb && A[5] > B[5]);
 -                    const auto& gx = aFirst ? ga : gb;      // exiter
 -                    const auto& gs = aFirst ? gb : ga;      // stayer
 -                    const int* X = aFirst ? A : B;
@@ -70,6 +61,29 @@
 -                        for (int j = k; j < ns && !bad; j++)
 -                            bad = crane::overlapsLay(gx, k, X[3], X[4],
 -                                                     gs, j, Y[3], Y[4]);
++                    // The SAME tie the descent had, on the exit side. When
++                    // the two share their entry AND their exit day, `aFirst`
++                    // falls through to an arbitrary pick and the other sweep
++                    // order is never tried -- so the model forbids the pair
++                    // even though we get to choose that order too. Every pair
++                    // that survived the descent repair was exactly of this
++                    // shape: same e AND same f (P4 blk 3 vs 116 at e=57 f=79;
++                    // P6 five of them).
++                    // MATCH THE EMITTER. Same-day exits are written out by
++                    // _recs_to_sol as `sorted(ext[t], key=-entry)` -- later
++                    // entry leaves first, invariant 7 -- and Python's sort is
++                    // STABLE, so when entry ties too the order falls back to
++                    // the list's own order, which is ascending block id. The
++                    // sweep order is therefore FIXED, not ours to choose, and
++                    // the old expression assumed the opposite one: with
++                    // fa == fb and equal entries `A[5] > B[5]` is false, so it
++                    // tested B leaving first while the emitter sends A. Every
++                    // pair that survived the descent repair was exactly of that
++                    // shape -- same e AND same f (P4 blk 3 vs 116 @ e=57 f=79;
++                    // P6 five of them).
++                    const bool aFirst = (fa < fb)
++                        || (fa == fb && (A[5] > B[5]
++                                         || (A[5] == B[5] && A[0] < B[0])));
 +                    auto sweepBlocked = [&](const auto& gx, const int* X,
 +                                            const auto& gs, const int* Y) {
 +                        const int nx = (int)gx.layers.size();
@@ -81,13 +95,8 @@
 +                                    return true;
 +                        return false;
 +                    };
-+                    if (!ftie) {
-+                        bad = aFirst ? sweepBlocked(ga, A, gb, B)
-+                                     : sweepBlocked(gb, B, ga, A);
-+                    } else {
-+                        bad = sweepBlocked(ga, A, gb, B)
-+                           && sweepBlocked(gb, B, ga, A);
-+                    }
++                    bad = aFirst ? sweepBlocked(ga, A, gb, B)
++                                 : sweepBlocked(gb, B, ga, A);
                  }
                  if (bad) { out.push_back(a); out.push_back(b); }
              }
