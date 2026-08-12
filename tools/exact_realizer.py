@@ -133,6 +133,16 @@ def main():
             for x in range(xlo, xhi + 1, stride):
                 for y in range(ylo, yhi + 1, stride):
                     cs.append((bay, oi, x, y, sched[i]))
+        # pair_conflicts is O(ncand^2) and CP chokes past a few million
+        # clauses (bayscratch's working scale: 2.4k candidates for a bay).
+        # Subsample the grid evenly per block; SAT stays a true positive,
+        # and an UNSAT at a subsampled grid is only "inconclusive, refine",
+        # which the caller knows. The witness anchor is appended after this,
+        # so board-mode validation never loses its guarantee.
+        LIM = 90
+        if len(cs) > LIM:
+            step = len(cs) / LIM
+            cs = [cs[int(k * step)] for k in range(LIM)]
         if mode == "board":
             w = (bay, st[i * 7 + 1], st[i * 7 + 2], st[i * 7 + 3], sched[i])
             if w not in cs:
