@@ -1,3 +1,22 @@
+v6.3 (2026-08-13) = v6.2 + mid-run floor promotion.
+
+v6.2's floor covers the paths that returned `_trivial`; the residual tail was
+the run that returns its bare seed rescue (P5: 20,111,373, 4+ recorded of 228
+draws) because the FINAL checker gate fails on the annealed board with seconds
+left, discarding a ~10.6M incumbent. The annealed board exists right after the
+portfolio, before the slice spends the tail budget: v6.3 gates a snapshot of
+it once (~2-15s of a 480-900s budget, engine state saved and restored so the
+trajectory is unchanged) and promotes the floor from seed level to annealed
+level.
+
+Verified deterministically by staging the same recorded catastrophe (final
+gate fails): v6.2 returns 20,111,373 (P5) / 45,448,526 (P6); v6.3 returns
+10,966,038 / 29,448,742 -- 1.83x / 1.54x. Quality-neutral where it does not
+fire: prelim 32 pairs median +0.00% p=0.85, train_final 40 pairs 18W/20L
+median +0.03% with no catastrophe on either arm and the sum 0.45% lower.
+Expected P5 mean: 11.43M -> ~10.8M (the quantified residual against the
+no-failure mean of 10.58M, now mostly covered).
+
 v6.2 (2026-08-12) = v6.1 + the checker-clean floor.
 
 Defect: nothing in a run ever held a board the OFFICIAL checker had accepted.
