@@ -1,0 +1,101 @@
+--- builds/m8/myalgorithm.py	2026-08-12 02:17:44.060329069 +0900
++++ builds/s1/myalgorithm.py	2026-08-12 13:00:44.942603276 +0900
+@@ -638,10 +638,27 @@
+             if not tardy:
+                 break
+             seed_i = rng.choice(tardy)
+-            free = [seed_i]
+-            pool = [i for i in range(n) if cur[i*7+6] and i not in set(free)]
+-            if len(free) < K:
+-                free += rng.sample(pool, min(K - len(free), len(pool)))
++            # RELATED cohort, not a random sample. The subset used to be the
++            # tardy seed plus K-1 blocks drawn uniformly from the whole board;
++            # on a 250-block, 3-bay, 86-day instance those barely interact, so
++            # re-placing them optimally against the frozen rest can only return
++            # the incumbent -- which is exactly what the slice diagnostic
++            # reported, rate_p = 0.0, for an arm holding 30% of the budget.
++            # Take the blocks that actually compete with the seed: same bay
++            # first, ordered by how much their stay overlaps its stay, then by
++            # distance; top up from the same bay and only then from elsewhere.
++            sj, se, sf = cur[seed_i*7], cur[seed_i*7+4], cur[seed_i*7+5]
++            sx, sy = cur[seed_i*7+2], cur[seed_i*7+3]
++
++            def _relatedness(i):
++                ov = min(sf, cur[i*7+5]) - max(se, cur[i*7+4])
++                same = 1 if cur[i*7] == sj else 0
++                d = abs(cur[i*7+2] - sx) + abs(cur[i*7+3] - sy)
++                return (-same, -max(0, ov), d)
++
++            pool = [i for i in range(n) if cur[i*7+6] and i != seed_i]
++            pool.sort(key=_relatedness)
++            free = [seed_i] + pool[:K - 1]
+             part = list(cur)
+             for i in free:
+                 part[i*7+6] = 0
+@@ -890,29 +907,55 @@
+     B = p["blocks"]; n = len(B)
+     bays = p["bays"]
+     recs = {}
+-    t = 0
++    # One cursor PER BAY, not one for the whole yard. Blocks in different bays
++    # never interact, so running them concurrently is just as feasible and
++    # divides the makespan -- and therefore the tardiness -- by roughly the bay
++    # count. Choosing the emptiest bay that still fits makes this list
++    # scheduling on m machines instead of one. This path only runs when the
++    # gate could not legalise anything, but when it does run it decides the
++    # whole instance: measured 5.5e9 on P5 against a normal 1.0e7.
++    cur = [0] * len(bays)
+     for i in sorted(range(n),
+                     key=lambda i: int(round(B[i]["due_date"]))):
+-        best = None                      # (margin, j, oi, x, y)
++        best = None                      # (start, -margin, j, oi, x, y)
+         for oi, sh in enumerate(B[i]["shape"]):
+             xs = [v[0] for lay in sh["layers"] for v in lay]
+             ys = [v[1] for lay in sh["layers"] for v in lay]
+             w_i = max(xs) - min(xs)
+             h_i = max(ys) - min(ys)
++            R_i = int(math.ceil(B[i]["release_time"] - 1e-9))
++            # The placement rounds UP to an integer corner, so a block whose
++            # bbox merely fits can still overhang by nearly a unit. The old
++            # code hid that by always taking the largest margin; choosing the
++            # emptiest bay does not, so test the ACTUAL placed extent.
++            px = int(math.ceil(-min(xs) + 1e-9))
++            py = int(math.ceil(-min(ys) + 1e-9))
+             for j in range(len(bays)):
++                if (px + max(xs) > bays[j]["width"] + 1e-9
++                        or py + max(ys) > bays[j]["height"] + 1e-9):
++                    continue                    # would overhang this bay
+                 m = min(bays[j]["width"] - w_i, bays[j]["height"] - h_i)
+-                if best is None or m > best[0]:
+-                    # checker translates the RAW polygon by (x,y): align
+-                    # the raw min-corner to the bay origin.
+-                    best = (m, j, oi,
+-                            int(math.ceil(-min(xs) + 1e-9)),
+-                            int(math.ceil(-min(ys) + 1e-9)))
+-        _, j, oi, x, y = best
++                key = (max(cur[j], R_i), -m, j, oi, px, py)
++                if best is None or key < best:
++                    best = key
++        if best is None:                        # fits nowhere: keep the old
++            for oi, sh in enumerate(B[i]["shape"]):   # largest-margin choice
++                xs = [v[0] for lay in sh["layers"] for v in lay]
++                ys = [v[1] for lay in sh["layers"] for v in lay]
++                w_i = max(xs) - min(xs); h_i = max(ys) - min(ys)
++                for j in range(len(bays)):
++                    m = min(bays[j]["width"] - w_i, bays[j]["height"] - h_i)
++                    k = (0, -m, j, oi,
++                         int(math.ceil(-min(xs) + 1e-9)),
++                         int(math.ceil(-min(ys) + 1e-9)))
++                    if best is None or k < best:
++                        best = k
++        _, _, j, oi, x, y = best
+         R = int(math.ceil(B[i]["release_time"] - 1e-9))
+         P = max(1, int(math.ceil(B[i]["processing_time"] - 1e-9)))
+-        e = max(t, R)
++        e = max(cur[j], R)
+         recs[i] = [j, x, y, oi, e, e + P]
+-        t = e + P
++        cur[j] = e + P
+     return _recs_to_sol(recs)
+ 
+ 

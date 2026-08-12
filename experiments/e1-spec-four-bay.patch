@@ -1,0 +1,87 @@
+--- builds/m8/myalgorithm.py	2026-08-12 02:17:44.060329069 +0900
++++ builds/e1/myalgorithm.py	2026-08-12 13:21:15.095015655 +0900
+@@ -173,8 +173,15 @@
+     (-7.0%) but pays on 4-bay (P5 +4.5%) and oversaturated (P6 +2.6%)
+     boards. Keys on runtime structure -- bay count and the bbox-area
+     saturation of the on-time demand -- not on problem identity."""
+-    if len(p["bays"]) >= 4:
+-        return False
++    # The bay-count exclusion came from a 5-seed sweep, the unpaired kind this
++    # harness replaces, and it lands on exactly one preliminary board: P5, the
++    # only 4-bay instance. That board consequently gets no assignment machinery
++    # at all -- no construction lock, no pref-first insertion -- while being the
++    # board whose assignment is LEAST determined (two of our own boards agree on
++    # only 39% of bays there, against 98% on P3) and the one whose target is
++    # demonstrably reproducible rather than a lottery draw (its all-time minimum
++    # and the best value any team actually shipped differ by 0.2%, against 9.6%
++    # and 12.6% on P3 and P4). Let the paired gate judge it.
+     return _saturation(p) < 1.0
+ 
+ 
+@@ -890,29 +897,55 @@
+     B = p["blocks"]; n = len(B)
+     bays = p["bays"]
+     recs = {}
+-    t = 0
++    # One cursor PER BAY, not one for the whole yard. Blocks in different bays
++    # never interact, so running them concurrently is just as feasible and
++    # divides the makespan -- and therefore the tardiness -- by roughly the bay
++    # count. Choosing the emptiest bay that still fits makes this list
++    # scheduling on m machines instead of one. This path only runs when the
++    # gate could not legalise anything, but when it does run it decides the
++    # whole instance: measured 5.5e9 on P5 against a normal 1.0e7.
++    cur = [0] * len(bays)
+     for i in sorted(range(n),
+                     key=lambda i: int(round(B[i]["due_date"]))):
+-        best = None                      # (margin, j, oi, x, y)
++        best = None                      # (start, -margin, j, oi, x, y)
+         for oi, sh in enumerate(B[i]["shape"]):
+             xs = [v[0] for lay in sh["layers"] for v in lay]
+             ys = [v[1] for lay in sh["layers"] for v in lay]
+             w_i = max(xs) - min(xs)
+             h_i = max(ys) - min(ys)
++            R_i = int(math.ceil(B[i]["release_time"] - 1e-9))
++            # The placement rounds UP to an integer corner, so a block whose
++            # bbox merely fits can still overhang by nearly a unit. The old
++            # code hid that by always taking the largest margin; choosing the
++            # emptiest bay does not, so test the ACTUAL placed extent.
++            px = int(math.ceil(-min(xs) + 1e-9))
++            py = int(math.ceil(-min(ys) + 1e-9))
+             for j in range(len(bays)):
++                if (px + max(xs) > bays[j]["width"] + 1e-9
++                        or py + max(ys) > bays[j]["height"] + 1e-9):
++                    continue                    # would overhang this bay
+                 m = min(bays[j]["width"] - w_i, bays[j]["height"] - h_i)
+-                if best is None or m > best[0]:
+-                    # checker translates the RAW polygon by (x,y): align
+-                    # the raw min-corner to the bay origin.
+-                    best = (m, j, oi,
+-                            int(math.ceil(-min(xs) + 1e-9)),
+-                            int(math.ceil(-min(ys) + 1e-9)))
+-        _, j, oi, x, y = best
++                key = (max(cur[j], R_i), -m, j, oi, px, py)
++                if best is None or key < best:
++                    best = key
++        if best is None:                        # fits nowhere: keep the old
++            for oi, sh in enumerate(B[i]["shape"]):   # largest-margin choice
++                xs = [v[0] for lay in sh["layers"] for v in lay]
++                ys = [v[1] for lay in sh["layers"] for v in lay]
++                w_i = max(xs) - min(xs); h_i = max(ys) - min(ys)
++                for j in range(len(bays)):
++                    m = min(bays[j]["width"] - w_i, bays[j]["height"] - h_i)
++                    k = (0, -m, j, oi,
++                         int(math.ceil(-min(xs) + 1e-9)),
++                         int(math.ceil(-min(ys) + 1e-9)))
++                    if best is None or k < best:
++                        best = k
++        _, _, j, oi, x, y = best
+         R = int(math.ceil(B[i]["release_time"] - 1e-9))
+         P = max(1, int(math.ceil(B[i]["processing_time"] - 1e-9)))
+-        e = max(t, R)
++        e = max(cur[j], R)
+         recs[i] = [j, x, y, oi, e, e + P]
+-        t = e + P
++        cur[j] = e + P
+     return _recs_to_sol(recs)
+ 
+ 
