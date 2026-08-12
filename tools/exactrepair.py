@@ -64,7 +64,10 @@ def main():
     base = eng.objective()[3]
     placed = [i for i in range(n) if st[i * 7 + 6]]
     rng = random.Random(seed)
-    print(f"{prob_id}: shipped pipeline board {base:,.0f} (TL {tl:.0f}s, seed {seed})")
+    RICH_DAYS = int(os.environ.get("RICH_DAYS", "1"))
+    RICH_CAND = int(os.environ.get("RICH_CAND", "30"))
+    print(f"{prob_id}: shipped pipeline board {base:,.0f} (TL {tl:.0f}s, seed {seed})"
+          f"   vocabulary: {RICH_DAYS} entry day(s) per bay, <= {RICH_CAND} candidates")
 
     for frac in (0.15, 0.30):
         q = max(2, int(frac * n))
@@ -93,8 +96,24 @@ def main():
             eng.build_occ(hz)
             CAND = {}
             for i in victims:
-                raw = eng.feasible_positions(i, 30, 0)
-                cs = [tuple(raw[k:k + 5]) for k in range(0, len(raw), 5)]
+                # RICH VOCABULARY. feasible_positions breaks at the earliest
+                # feasible day per bay (`if (any) break;` in api.cpp), so the
+                # exact repair has only ever chosen among the placements a
+                # greedy insert would already consider. Every board this solver
+                # can produce is a fixed point of "earliest legal day, lowest
+                # legal position", and the exact arm -- the one mechanism that
+                # could leave that set -- was confined to the same vocabulary.
+                # Walk eMin forward to collect positions at LATER entry days
+                # too, which is the degree of freedom greedy can never express.
+                cs, emin, rounds_ = [], 0, 0
+                while rounds_ < RICH_DAYS and len(cs) < RICH_CAND:
+                    raw = eng.feasible_positions(i, 8, emin)
+                    if not raw:
+                        break
+                    got = [tuple(raw[k:k + 5]) for k in range(0, len(raw), 5)]
+                    cs += [c for c in got if c not in cs]
+                    emin = min(c[4] for c in got) + 1
+                    rounds_ += 1
                 c0 = tuple(st[i * 7:i * 7 + 5])
                 if c0 not in cs:
                     cs.append(c0)              # the incumbent stays available
