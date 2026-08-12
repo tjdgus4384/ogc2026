@@ -81,10 +81,23 @@ def main():
         return cs
 
     for j in (2, 0, 1):                  # richest first, measured by repack.py
+        # Model note (the bug repack.py carried): a bay's OWN tardy residents
+        # are the richest targets -- repacking the bay can re-seat them at
+        # their punctual day with no Z2/Z3 cost -- but they must stay inside
+        # the conflict model when NOT seated. So a same-bay tardy block gets
+        # exactly-one over {its original placement} + {punctual grid}, with
+        # the reward attached only to the punctual candidates. Cross-bay tardy
+        # blocks stay optional (their original placement lives in another bay
+        # and cannot conflict here).
         mine = [i for i in range(n) if new[i * 7 + 6] and new[i * 7] == j
-                and i not in seated]
+                and i not in seated
+                and not (new[i * 7 + 5] > D[i] and R[i] <= D[i] - P[i])]
+        own_tardy = [i for i in range(n) if new[i * 7 + 6] and new[i * 7] == j
+                     and i not in seated
+                     and new[i * 7 + 5] > D[i] and R[i] <= D[i] - P[i]]
         pool = [i for i in tardy_pool if i not in seated and new[i * 7] != j]
         CAND, flat, idx, save = {}, [], [], {}
+        punct = {}                        # i -> set of punctual candidate ks
         for i in mine:
             cs = grid(i, j, new[i * 7 + 4], 60)
             wit = (j, new[i * 7 + 1], new[i * 7 + 2], new[i * 7 + 3],
@@ -92,6 +105,13 @@ def main():
             if wit not in cs:
                 cs.append(wit)
             CAND[i] = cs
+        for i in own_tardy:
+            cs = grid(i, j, D[i] - P[i], 40)
+            punct[i] = set(range(len(cs)))
+            cs = cs + [(j, new[i * 7 + 1], new[i * 7 + 2], new[i * 7 + 3],
+                        new[i * 7 + 4])]          # original = fallback
+            CAND[i] = cs
+            save[i] = new[i * 7 + 5] - D[i]
         for i in pool:
             cs = grid(i, j, D[i] - P[i], 40)
             if cs:
@@ -106,7 +126,12 @@ def main():
         V, use = {}, {}
         for i in CAND:
             V[i] = [mdl.NewBoolVar(f"z{i}_{k}") for k in range(len(CAND[i]))]
-            if i in save:
+            if i in punct:
+                mdl.AddExactlyOne(V[i])            # original or punctual
+                use[i] = mdl.NewBoolVar(f"u{i}")
+                mdl.Add(use[i] == sum(V[i][k] for k in punct[i]))
+                mdl.AddHint(V[i][len(CAND[i]) - 1], 1)
+            elif i in save:
                 use[i] = mdl.NewBoolVar(f"u{i}")
                 mdl.Add(sum(V[i]) == use[i])
             else:
@@ -128,14 +153,14 @@ def main():
         got = [i for i in save if sv.Value(use[i])]
         # commit: residents' new geometry, extras' relocation
         for i in CAND:
-            if i in save and i not in got:
-                continue
+            if i in save and i not in got and i not in punct:
+                continue                     # cross-bay unseated: untouched
             for k, c in enumerate(CAND[i]):
                 if sv.Value(V[i][k]):
                     e = c[4]
                     new[i * 7:i * 7 + 7] = [c[0], c[1], c[2], c[3], e,
                                             e + P[i], 1]
-                    if i in save:
+                    if i in got:
                         seated[i] = c
                     break
         print(f"   bay {j}: {nm}, +{len(got)} punctual"
