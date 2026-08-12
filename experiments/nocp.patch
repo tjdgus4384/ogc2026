@@ -1,0 +1,18 @@
+--- solver/myalgorithm.py	2026-08-12 20:04:07.663007137 +0900
++++ builds/nocp/myalgorithm.py	2026-08-12 20:30:18.422603127 +0900
+@@ -597,7 +597,14 @@
+     D = [int(round(b["due_date"])) for b in B]
+     PREF = [[float(v) for v in b["bay_preferences"]] for b in B]
+     SMAX = [max(pr) for pr in PREF]
+-    cp = _cpsat()
++    # RETIRE THE CP ARM. Its own bandit diagnostic says it earns nothing:
++    # P4 rate_a = 956.9/s against rate_p = 0.0, P5 rate_a = 389.8/s against
++    # rate_p = 0.0. Round 1 always explores "p" and every fifth round explores
++    # it again, so 2 of 6 rounds -- about 10% of the whole budget -- go to an
++    # arm measured at zero. This is NOT `noslice`: removing the refinement
++    # entirely measured +3.15% (9W/37L, p=0.0000), so the refinement earns; it
++    # earns through its anneal arm, and this gives that arm the rest.
++    cp = None if os.environ.get("OGC_SLICECP", "1") == "0" else _cpsat()
+     rng = random.Random(seed * 7919 + 13)
+     cur = eng.get_solution()
+     best = eng.objective()[3]
