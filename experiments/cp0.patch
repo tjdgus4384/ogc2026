@@ -1,0 +1,36 @@
+--- solver/myalgorithm.py	2026-08-12 11:28:06.871609681 +0900
++++ builds/cp0/myalgorithm.py	2026-08-12 17:24:30.611655648 +0900
+@@ -610,14 +610,30 @@
+     if span <= 8.0:
+         return
+     SLICE = max(3.0, span * 0.18)
++    # PROBE THE ANNEAL ARM FIRST, and only pay for the CP arm once there is a
++    # rate to beat. The bandit starts with rate["p"] = None, which forces round
++    # 1 onto the CP arm before anything is known -- and with only five or six
++    # rounds in a run that is 17-20% of the slice budget spent, unconditionally,
++    # on the arm the 08-12 diagnostic measured at 420 objective-units/second
++    # against the anneal arm's 5,459 (54.7 vs 1,252 with the old random
++    # cohort). Thirteen to twenty-three times less productive, probed first.
++    #
++    # Swapping the order costs nothing in coverage: round 2 then probes CP, and
++    # the existing `rounds % 5 == 0` re-probe keeps re-examining whichever arm
++    # is behind. The no-ortools path already runs with rate["p"] = -1.0, so a
++    # slice that never picks CP is an exercised configuration.
+     rate = {"p": None if cp else -1.0, "a": None}
++    if cp:
++        rate["p"] = float("-inf")        # deprioritised until the anneal is timed
+     rounds = 0
+     while time.time() < until - 3.0:
+         rounds += 1
+-        if rate["p"] is None:
+-            arm = "p"
+-        elif rate["a"] is None:
++        if rate["a"] is None:
+             arm = "a"
++        elif rate["p"] == float("-inf"):
++            arm = "p"
++        elif rate["p"] is None:
++            arm = "p"
+         elif rounds % 5 == 0:
+             arm = "a" if rate["p"] >= rate["a"] else "p"
+         else:
