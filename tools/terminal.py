@@ -34,7 +34,7 @@ REPO = pathlib.Path(__file__).resolve().parent.parent
 
 def main():
     solver_dir, prob_id = sys.argv[1], sys.argv[2]
-    anneal = float(sys.argv[3])
+    anneal = float(sys.argv[3])   # <0 => run the REAL pipeline at |anneal| TL
     trials = int(sys.argv[4])
     seed = int(sys.argv[5]) if len(sys.argv) > 5 else 7
     sys.path.insert(0, str(REPO / solver_dir))
@@ -42,22 +42,38 @@ def main():
     prob = json.load(open(REPO / "data" / "preliminary_test" / f"{prob_id}.json"))
     n = len(prob["blocks"])
 
-    # horizon ladder, as _seed_free does: on congested giants (P6) the loose
-    # insert overflows the base occupancy horizon and the construction fails
-    # outright, so doubling it is part of the shipping construction, not a
-    # probe convenience.
-    eng = None
-    for hmul in (1, 2, 4):
-        eng, D, P = ma._fresh(prob, hmul)
-        order = sorted(range(n), key=lambda i: (D[i], -P[i]))
-        if eng.reconstruct_ordered([-1] * n, order, False, seed) == -1:
-            break
+    # The board this has to be measured on is the one the pipeline actually
+    # ships. A single-arm anneal converges somewhere worse (P4: 3.54M against
+    # the pipeline's 3.01M median), so its local optimum is a different, easier
+    # point and says nothing about where the real search stops.
+    if anneal < 0:
+        import os
+        os.environ["OGC_SEED"] = str(seed)
+        sol = ma.algorithm(prob, timelimit=-anneal)
+        eng, D, P = ma._fresh(prob, 4)
+        st = [0] * (n * 7)
+        for day, ops in sol["operations"].items():
+            for op in ops:
+                i = op["block_id"]
+                if op["type"] == "ENTRY":
+                    st[i*7:i*7+7] = [op["bay_id"], op["orient_idx"], op["x"],
+                                     op["y"], int(day), int(day) + P[i], 1]
+        eng.set_solution(st)
+        eng.build_occ(eng.horizon())
+        c = eng.objective()
+    else:
         eng = None
-    if eng is None:
-        print(f"{prob_id}: construction failed at every horizon")
-        return
-    c = eng.objective()
-    eng.run_alns(anneal, 0.05, 0.15, 0.002, 0.9995, seed)
+        for hmul in (1, 2, 4):
+            eng, D, P = ma._fresh(prob, hmul)
+            order = sorted(range(n), key=lambda i: (D[i], -P[i]))
+            if eng.reconstruct_ordered([-1] * n, order, False, seed) == -1:
+                break
+            eng = None
+        if eng is None:
+            print(f"{prob_id}: construction failed at every horizon")
+            return
+        c = eng.objective()
+        eng.run_alns(anneal, 0.05, 0.15, 0.002, 0.9995, seed)
     base_state = eng.get_solution()
     base = eng.objective()
     hz = eng.horizon()
