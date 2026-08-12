@@ -1,5 +1,28 @@
 # 캠페인 대시보드
 
+## 지금 상태 (08-12 마감)
+
+**출하 = v6.2** (`06d3483`). 채택 근거: 결정적 12/12(파국 스테이징) + train 40쌍 중앙값
++0.04% p=0.87 + 예선 32쌍 +0.00% p=0.70 + 스모크 동일. zip 13멤버 solver/와 바이트 동일.
+실물 확인: train_final 11 @ seed 7에서 v6.1 876,467,166 → v6.2 8,131,553 (108배).
+
+**진행 중 게이트**: `pc2-train`(40쌍), `pc2-prelim`(48쌍). P4 3.2h / P5 4h / P6 6h 소요.
+`python3 tools/abgate.py collect pc2-prelim` 로 수확. **P3 셀은 구조적 A/A**
+(sec/n=1.13 ≤ 1.6 → memetic → 슬라이스 off → `pairConflicts` 미호출) — 무시할 것.
+
+**pc2가 통과하면**: `solver/src/api.cpp ← builds/pc2/src/api.cpp` → `build.sh`(Slurm) →
+zip 재생성(`experiments/pc2.patch`에 패치 보관). 통과 못 하면 원장에 기각 기록.
+
+**목표(P3-P6 전 팀 최솟값) 미달**: P3 +21.7% / P4 +57.5% / P5 +36.6% / P6 +12.8%.
+
+**다시 열지 말 것 (08-12 추가)**: 2D 압축(보드가 압축 고정점) · 배정 최적화 3종
+(기하무시/용량가능/핀) · 변동성 활용(스레드 이미 독립, best-of-4 작동) ·
+슬라이스 CP 팔 은퇴(P6 1W/11L p=0.0063) · lock1(누수가 하중을 받음).
+
+**살아 있는 유일한 결함류**: 모형이 오라클보다 엄격한 곳. 이 프로젝트에서 이득을 낸
+변경은 전부 이 종류였다(v6.0 `vpConservative` 2b, v6.2 floor, pc2). 찾는 법은
+`tools/incumbent_conflict.py` — **인컴번트만 모형에 먹여 0쌍이 아니면 결함이다.**
+
 > 단일 창구. 판정: `python3 tools/judge.py p36 <tag>` / `judge.py pair <base> <cand>`.
 > 잡은 항상 백그라운드(sbatch). 상태: `squeue -u $USER`.
 
