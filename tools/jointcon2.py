@@ -100,7 +100,14 @@ def main():
                 urg = 3000 if slack <= 0 else max(1, 3000 // (1 + slack))
                 reg = int(round(smax - pr[c[0]]))
                 corner = c[3] * 4 + c[2]
-                terms.append((urg * 100 - w3 * reg - corner) * V[i][k])
+                # COMMITMENT PRESSURE -- the v0 failure mode was deferral:
+                # tomorrow's value equalled today's, so the CP parked blocks
+                # at t+1 forever (Z1 ~9000, and the ballooning waiting set
+                # made every day's model huge, 731-810s). A 10% discount on
+                # tomorrow breaks every tie toward today while still allowing
+                # a genuine reservation when the joint value is higher.
+                scale = 100 if c[4] == day else 90
+                terms.append((urg * scale - w3 * reg - corner) * V[i][k])
         mdl.Maximize(sum(terms))
         sv = cp.CpSolver()
         sv.parameters.max_time_in_seconds = 1.0
