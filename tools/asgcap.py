@@ -172,6 +172,30 @@ def main():
         print(f"      -> NOT realisable: {len(diff)-ok} could not be placed in "
               f"their CP bay at all")
 
+    # ---- but can it be BUILT that way, instead of repaired into?
+    # Repairing a finished board is the hardest possible test: the bay is
+    # already full of the blocks that made it full. Building with just these
+    # few pinned is a far milder lock than the driver's own 40% argmax one --
+    # and the driver's lock was measured to HELP on P3 while a full CP lock
+    # hurt, so the interesting question is where between them the truth sits.
+    print(f"   built from scratch with only those {len(diff)} pinned:")
+    for label, lk in (("unlocked control", None), (f"{len(diff)} pinned", lock)):
+        e2, s2 = ma._seed_free(prob, asg=lk)
+        if e2 is None:
+            print(f"      {label:<20} SEED FAILED under this lock")
+            continue
+        if lk is not None:
+            e2.set_assignment_lock(lk)
+        starts = [s2[0], []] + s2[1:3] if s2 else []
+        e2.run_portfolio(4, 120.0, 1, 0.05, 0.15, 0.002, 0.9995, seed, 1, starts)
+        if lk is not None:
+            e2.set_assignment_lock([])
+        v = e2.objective()
+        off = sum(1 for i in diff
+                  if e2.get_block(i)[6] and e2.get_block(i)[0] != lock[i])
+        print(f"      {label:<20} {v[3]:>10,.0f}   Z1={v[0]:>4.0f} Z2={v[1]:>5.0f}"
+              f" Z3={v[2]:>4.0f}   off-pin {off}/{len(diff)}")
+
 
 if __name__ == "__main__":
     main()
