@@ -55,11 +55,14 @@ def main():
         tot_s += vals[0][1]
         if len(shadows) > 1:
             spread.append((min(shadows), max(shadows)))
-        # what the kernel would pick: smallest layer-0 bbox area
+        # What the kernel actually picks: smallest UNION bounding box. api.cpp
+        # builds OrientGeom::bb by folding every layer's bbox together, so the
+        # existing rank already sees the overhang -- it just measures it with a
+        # box instead of the polygon. (An earlier version of this probe scored
+        # the kernel against a layer-0 bbox and so overstated the gap.)
         def bbox_area(o):
-            lay = o["layers"][0]
-            xs = [p[0] for p in lay]
-            ys = [p[1] for p in lay]
+            xs = [p[0] for lay in o["layers"] for p in lay]
+            ys = [p[1] for lay in o["layers"] for p in lay]
             return (max(xs) - min(xs)) * (max(ys) - min(ys))
         pick_bbox = min(range(len(blk["shape"])), key=lambda k: bbox_area(blk["shape"][k]))
         pick_shadow = min(range(len(vals)), key=lambda k: vals[k][1])
@@ -75,7 +78,7 @@ def main():
         print(f"   choosing the shadow-minimal orientation instead of the worst"
               f" saves {gain:,} cells ({gain / max(1, base) * 100:.1f}%)")
     worse = [d for d in bbox_loss if d > 0]
-    print(f"   the kernel ranks by layer-0 bbox: that picks a worse-shadow"
+    print(f"   the kernel ranks by union bbox: that picks a worse-shadow"
           f" orientation for {len(worse)}/{n} blocks,"
           f" costing {sum(bbox_loss):,} cells in total"
           f" ({sum(bbox_loss) / max(1, tot_s) * 100:+.1f}% of the shadow it stamps)")
