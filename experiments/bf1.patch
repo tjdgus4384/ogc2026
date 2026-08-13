@@ -1,0 +1,228 @@
+--- solver/src/knobs.hpp	2026-08-13 19:50:58.360803279 +0900
++++ builds/bf1/src/knobs.hpp	2026-08-13 11:05:45.314761462 +0900
+@@ -41,12 +41,18 @@
+     return v;
+ }
+ 
+-// Peak-load ceiling for the energetic reservation, in percent. Above 1.60 the
+-// guard stands down: measured 08-13 over 35 train_final instances, free
+-// deferral is worth -5.09% below it (65W/19L, p=0.0000, 13 of 14 instances,
+-// replicated 65W/19L on disjoint seeds) and turns harmful above 2.2, where
+-// every insertGreedy phase starts at eBot and the block loses its early days
+-// without finding relief. On the instances it stands down for, the run is
+-// measured neutral (69 pairs, median +0.00%, p=0.80).
+-inline constexpr int    rsvMaxLoad() { return 160; }
++// bf1 candidate: best-fit position choice at CONSTRUCTION ONLY.
++// The shipped rule is first-fit -- scanBayAt returns the first corner
++// candidate that clears hitsSnap and vpConservative. Measured cause of Z1 is
++// fragmentation (78-83% of tardy days, tools/blocked.py), and the position
++// rule is live on Z1-dominated boards (pos1 flipped it and P4 lost 2.97%),
++// so a rule that packs tighter is the one untried cell on that axis.
++// Off (0) = shipped behaviour, bit-for-bit.
++inline int bestFit() {
++    static const int v = [] {
++        const char* q = std::getenv("OGC_BESTFIT");
++        return q ? atoi(q) : 0;
++    }();
++    return v;
++}
+ } // namespace knobs
+--- solver/src/core.hpp	2026-08-13 19:50:58.360803279 +0900
++++ builds/bf1/src/core.hpp	2026-08-13 11:05:33.918871855 +0900
+@@ -26,9 +26,6 @@
+     // ratio) -- otherwise it never rejects and every insertion scans
+     // every bay (measured: 65% of the iteration budget lost on P4).
+     double fillRatio = 1.0;
+-    double packFill  = 1.0;   // rsv: achievable packing density
+-    double peakLoad  = 0.0;   // rsv4: max_t dayLoadE / packFill
+-    std::vector<double> dayLoadE;  // rsv: residency-aware demand profile
+     // per-day mandatory demand / total bay area: blocks whose
+     // [release, punctual-entry] window covers a day MUST occupy space
+     // somewhere that day. Days where this exceeds what polygons can
+--- solver/src/api.cpp	2026-08-13 19:50:58.360803279 +0900
++++ builds/bf1/src/api.cpp	2026-08-13 11:06:57.946053029 +0900
+@@ -120,37 +120,6 @@
+             req = std::max(req, u);
+         }
+         pb.fillRatio = std::min(1.0, std::max(fill, req));
+-        // rsv: a SECOND, residency-aware profile, kept apart from fillRatio so
+-        // the density screen at repair.hpp:102 keeps its shipped input. A block
+-        // occupies its footprint for P days somewhere inside [R, D], so its
+-        // unavoidable demand on a day of that window is area * P / span -- the
+-        // standard energetic profile. The entry-window count above under-models
+-        // congestion by roughly half.
+-        std::vector<double> needE((size_t)Tmax + 2, 0.0);
+-        for (int i = 0; i < pb.n; i++) {
+-            double a = 1e18;
+-            for (const auto& g : pb.geo[i].orients)
+-                a = std::min(a, g.parea > 0 ? g.parea :
+-                             (g.bb.x1-g.bb.x0)*(g.bb.y1-g.bb.y0));
+-            const int lo = pb.R[i], hi = std::max(pb.R[i], pb.D[i]);
+-            const double span = std::max(1, pb.D[i] - pb.R[i]);
+-            const double share = a * std::min(1.0, (double)pb.P[i] / span);
+-            for (int t = lo; t <= hi && t <= Tmax; t++) needE[t] += share;
+-        }
+-        pb.dayLoadE.assign((size_t)Tmax + 2, 0.0);
+-        for (int t = 0; t <= Tmax; t++)
+-            pb.dayLoadE[t] = needE[t] / std::max(1e-9, capArea);
+-        pb.packFill = fill;
+-        // rsv4: the instance's peak energetic load, in units of the density it
+-        // can actually pack. Measured 08-13 on 35 train_final instances: the
+-        // reservation is worth -5.48% below 1.5, ~0 from 1.5 to 2.2, and turns
+-        // harmful above 2.2 (0 of 7 improve). Computed at runtime from the
+-        // instance alone, so a hidden board decides for itself.
+-        {
+-            double pk = 0.0;
+-            for (int t = 0; t <= Tmax; t++) pk = std::max(pk, pb.dayLoadE[t]);
+-            pb.peakLoad = (fill > 1e-9) ? pk / fill : 0.0;
+-        }
+     }
+ 
+     // occupancy grid over [0, horizon); stamps whatever is already placed
+@@ -272,7 +241,11 @@
+         if (bay >= 0) fbv[A] = bay;
+         const int* save = ctx.forcedBay;
+         ctx.forcedBay = fbv.data();
++        // bf1: construction-only best-fit (knobs::bestFit gates it; 0 = shipped)
++        const bool bfSave = ctx.bestFit;
++        ctx.bestFit = knobs::bestFit() != 0;
+         bool ok = repair::insertGreedy(ctx, A, eCap);
++        ctx.bestFit = bfSave;
+         ctx.forcedBay = save;
+         return ok;
+     }
+@@ -620,6 +593,7 @@
+         repair::Ctx c2; c2.pb=&pb; c2.s=&sol; c2.oc=&oc2; c2.horizon=horizon_;
+         c2.forcedBay = asg.data();
+         c2.rng.seed(seed);
++        c2.bestFit = knobs::bestFit() != 0;   // bf1: construction-only
+         for (int i = 0; i < pb.n; i++) sol.placed[i] = 0;
+         sol.rebuildIdx(pb.m);
+         int bad = -1;
+--- solver/src/repair.hpp	2026-08-13 19:50:58.364803232 +0900
++++ builds/bf1/src/repair.hpp	2026-08-13 11:06:43.118198307 +0900
+@@ -48,6 +48,14 @@
+                                       // transient starts wash out and only
+                                       // anneal-long constraints move the
+                                       // final basin.
++    bool bestFit = false;             // bf1: order scanBayAt's candidates by
++                                      // contact length instead of taking the
++                                      // first legal one. Set ONLY on the
++                                      // construction entry points (api.cpp
++                                      // insert_capped / reconstruct_ordered);
++                                      // the anneal keeps first-fit, because
++                                      // buying per-iteration quality with
++                                      // iteration count has lost six times.
+     bool prefStrong = false;          // z1==0 regime: chase preferred bays hard.
+                                       // Predicate lives in alns::run (sec 148):
+                                       // z1<=0 AND z3<n -- a measured two-order
+@@ -158,6 +166,39 @@
+     cornerSetsRB(c, A, oi, j, rbs, xs, ys);
+ }
+ 
++// bf1: shared boundary between A-at-(oi,x,y) and everything already fixed in
++// the bay -- residents that touch it edge-on, plus the four walls. Longer
++// contact means the block is flush into the existing structure rather than
++// stranded mid-floor, which is what keeps the remaining free floor in one
++// piece. Costs O(|rbs|) and runs only on candidates that already cleared
++// hitsSnap, so it never adds a vpConservative call.
++struct BFCand { double score; int oi, x, y; };
++
++inline double contactScore(const Ctx& c, int A, int oi, int x, int y, int j,
++                           const std::vector<RB>& rbs) {
++    const Problem& pb = *c.pb;
++    const auto& g = pb.geo[A].orients[oi];
++    const double ax0 = g.bb.x0 + x, ax1 = g.bb.x1 + x;
++    const double ay0 = g.bb.y0 + y, ay1 = g.bb.y1 + y;
++    const double EPS = 1e-9;
++    double sc = 0.0;
++    if (ax0 <= EPS)                 sc += ay1 - ay0;      // left wall
++    if (ax1 >= pb.bayW[j] - EPS)    sc += ay1 - ay0;      // right wall
++    if (ay0 <= EPS)                 sc += ax1 - ax0;      // bottom wall
++    if (ay1 >= pb.bayH[j] - EPS)    sc += ax1 - ax0;      // top wall
++    for (const RB& r : rbs) {
++        if (std::fabs(r.x1 - ax0) < EPS || std::fabs(r.x0 - ax1) < EPS) {
++            double ov = std::min(r.y1, ay1) - std::max(r.y0, ay0);
++            if (ov > 0) sc += ov;
++        }
++        if (std::fabs(r.y1 - ay0) < EPS || std::fabs(r.y0 - ay1) < EPS) {
++            double ov = std::min(r.x1, ax1) - std::max(r.x0, ax0);
++            if (ov > 0) sc += ov;
++        }
++    }
++    return sc;
++}
++
+ // Try to place A at (bay j, entry e): every corner candidate of every
+ // orientation, snapshot-prefiltered, vp-confirmed. First fit wins; on success
+ // the placement is committed (index + occupancy stamp).
+@@ -169,6 +210,45 @@
+     c.oc->buildSnap(j, e, f, sn);
+     thread_local std::vector<RB> rbs;
+     rbCollect(c, j, e, f, rbs);
++    if (c.bestFit) {
++        // Same candidate set, same acceptance test, different ORDER: collect
++        // everything that clears the cheap snapshot filter, rank by how much
++        // boundary it shares with residents and walls, and only then run
++        // vpConservative down that list. Contact, not area -- sh1 minimised
++        // shadow area and lost 2.67% (p=0.024) by abandoning shape fit.
++        // vp calls stay first-fit-like: we still stop at the first acceptance.
++        thread_local std::vector<BFCand> cand;
++        cand.clear();
++        for (int oi : oris) {
++            cornerSetsRB(c, A, oi, j, rbs, xs, ys);
++            for (int y : ys)
++                for (int x : xs) {
++                    if (c.oc->hitsSnap(sn, A, oi, x, y)) continue;
++                    cand.push_back({contactScore(c, A, oi, x, y, j, rbs),
++                                    oi, x, y});
++                }
++        }
++        // Descending contact; ties keep the shipped bottom-left preference so
++        // the rule degrades exactly to first-fit when no contact separates the
++        // candidates.
++        std::stable_sort(cand.begin(), cand.end(),
++                         [](const BFCand& a, const BFCand& b) {
++                             if (a.score != b.score) return a.score > b.score;
++                             if (a.y != b.y) return a.y < b.y;
++                             return a.x < b.x;
++                         });
++        for (const BFCand& t : cand) {
++            s.bay[A]=j; s.ori[A]=t.oi; s.x[A]=t.x; s.y[A]=t.y;
++            s.e[A]=e; s.f[A]=f; s.placed[A]=1;
++            if (core::vpConservative(pb, s, A)) {
++                s.addIdx(A);
++                c.oc->stamp(pb, s, A, true);
++                return true;
++            }
++            s.placed[A]=0;
++        }
++        return false;
++    }
+     for (int oi : oris) {
+         cornerSetsRB(c, A, oi, j, rbs, xs, ys);
+         for (int y : ys) {
+@@ -282,20 +362,9 @@
+     if (knobs::reserve() && !c.pb->dayLoad.empty()) {
+         int punct = pb.D[A] - pb.P[A];
+         int lim = std::min(punct, (int)c.pb->dayLoad.size() - 1);
+-        // rsv: threshold is the ACHIEVABLE density and the profile is
+-        // residency-aware; with fillRatio and the entry-window profile this
+-        // loop provably never advances (thr >= max_t dayLoad by construction).
+-        // rsv4: stand down entirely above the load where the guard stops
+-        // paying. Outside the enabled regime the run is byte-identical to
+-        // shipped, so the downside is bounded at zero; the boundary is gradual
+-        // (-5.48% / -0.43% / +2.76% across the bands) so misclassifying an
+-        // instance near it costs about nothing.
+-        const int LMAX = knobs::rsvMaxLoad();
+-        const bool loadOK = (LMAX <= 0) || (c.pb->peakLoad * 100.0 < LMAX);
+-        const bool rs = !c.pb->dayLoadE.empty() && loadOK;
+-        const std::vector<double>& dl = rs ? c.pb->dayLoadE : c.pb->dayLoad;
+-        double thr = rs ? c.pb->packFill : c.pb->fillRatio;
+-        while (eBot < lim && eBot < (int)dl.size() && dl[eBot] > thr)
++        double thr = c.pb->fillRatio;
++        while (eBot < lim && eBot < (int)c.pb->dayLoad.size() &&
++               c.pb->dayLoad[eBot] > thr)
+             eBot++;
+     }
+     if (eTop < eBot) return false;
