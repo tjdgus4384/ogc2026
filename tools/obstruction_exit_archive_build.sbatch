@@ -70,8 +70,7 @@ fi
 PY="$(persistent_path Python "$PY")"
 [[ -x "$PY" ]] || die "Python 3.12 environment not found: $PY"
 
-mkdir -p "$DEST/.runtime/build/home" "$DEST/.runtime/build/tmp"
-export HOME="$DEST/.runtime/build/home"
+mkdir -p "$DEST/.runtime/build/tmp"
 export TMPDIR="$DEST/.runtime/build/tmp"
 unset OGC_PHASE2_ORIS OGC_EXIT_TWIN OGC_EXIT_TWIN_SHADOW OGC_PREFP
 export OGC_CAUSAL_BAY_RNG=1

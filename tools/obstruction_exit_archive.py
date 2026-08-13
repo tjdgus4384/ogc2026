@@ -118,6 +118,14 @@ def _inspect_flat(ma, problem: dict[str, Any], flat: list[int],
         # checker below remains authoritative for the emitted LIFO ranks.
         if len(greedy) != n or any(rank < 0 for rank in greedy):
             raise RuntimeError("independent EXIT-order search failed")
+        groups: dict[tuple[int, int], list[int]] = {}
+        for block_id in range(n):
+            if flat[7 * block_id + 6]:
+                groups.setdefault((flat[7 * block_id],
+                                   flat[7 * block_id + 5]), []).append(block_id)
+        for ids in groups.values():
+            if sorted(greedy[block_id] for block_id in ids) != list(range(len(ids))):
+                raise RuntimeError("independent EXIT ranks are not a permutation")
     recs = ma._extract(engine, n)
     solution = ma._recs_to_sol(recs, entry, exits)
     checked = ma._check(problem, solution)
@@ -327,6 +335,16 @@ def _run(args: argparse.Namespace) -> None:
         "solver": str(args.solver.resolve()),
         "solver_extension": str(module_path),
         "solver_extension_sha256": _sha256_file(module_path),
+        "solver_source_commit": (
+            (args.solver / "SOURCE_COMMIT").read_text().strip()
+            if (args.solver / "SOURCE_COMMIT").is_file() else None),
+        "driver_sha256": _sha256_file(Path(__file__).resolve()),
+        "helper_sha256": _sha256_file(
+            HARNESS_ROOT / "tools" / "assignment_transfer_fixed.py"),
+        "myalgorithm_sha256": _sha256_file(args.solver / "myalgorithm.py"),
+        "checker_sha256": _sha256_file(args.solver / "utils.py"),
+        "problem_sha256": _sha256_file(problem_path),
+        "plateau_sha256": _sha256_file(args.plateau),
         "problem": str(problem_path.resolve()),
         "plateau": str(args.plateau.resolve()),
         "start": start,
@@ -367,12 +385,19 @@ def _solution_signature(record: dict[str, Any]) -> dict[str, Any]:
 
 
 def _validate_solution_record(record: dict[str, Any], label: str) -> None:
+    flat = record.get("flat")
     objective = record.get("objective")
     audit = record.get("audit")
     exact = bool(record.get("overlong"))
     valid = (
+        isinstance(flat, list) and len(flat) > 0 and len(flat) % 7 == 0 and
+        all(isinstance(value, int) and not isinstance(value, bool)
+            for value in flat) and
         isinstance(record.get("flat_sha256"), str) and
+        len(record["flat_sha256"]) == 64 and
+        record["flat_sha256"] == flat_digest(flat) and
         isinstance(record.get("solution_sha256"), str) and
+        len(record["solution_sha256"]) == 64 and
         isinstance(objective, list) and len(objective) == 4 and
         isinstance(record.get("checker_objective"), (int, float)) and
         abs(float(record["checker_objective"]) -
@@ -487,6 +512,9 @@ def _collect(args: argparse.Namespace) -> None:
             f"extra={sorted(actual_files - expected_files)}")
     reference_binary: str | None = None
     candidate_binary: str | None = None
+    reference_provenance: dict[str, Any] | None = None
+    candidate_provenance: dict[str, Any] | None = None
+    common_provenance: dict[str, Any] | None = None
 
     for instance in range(3, 7):
         for eval_seed, plateau_seed in zip(eval_seeds, PLATEAU_SEEDS):
@@ -504,13 +532,39 @@ def _collect(args: argparse.Namespace) -> None:
                     reference_binary = reference_binary or binary
                     if binary != reference_binary:
                         raise RuntimeError("mixed reference binaries in gate")
+                    current = {key: report.get(key) for key in (
+                        "solver_source_commit", "myalgorithm_sha256",
+                        "checker_sha256")}
+                    reference_provenance = reference_provenance or current
+                    if current != reference_provenance:
+                        raise RuntimeError("mixed reference provenance in gate")
                 else:
                     candidate_binary = candidate_binary or binary
                     if binary != candidate_binary:
                         raise RuntimeError("mixed candidate binaries in gate")
+                    current = {key: report.get(key) for key in (
+                        "solver_source_commit", "myalgorithm_sha256",
+                        "checker_sha256")}
+                    candidate_provenance = candidate_provenance or current
+                    if current != candidate_provenance:
+                        raise RuntimeError("mixed candidate provenance in gate")
+                shared = {key: report.get(key) for key in (
+                    "driver_sha256", "helper_sha256", "problem_sha256",
+                    "plateau_sha256")}
+                # Problem and plateau intentionally vary by cell, while the
+                # immutable driver/helper must not. Their per-cell identities
+                # are compared across the three arms below.
+                fixed_shared = {key: shared[key]
+                                for key in ("driver_sha256", "helper_sha256")}
+                common_provenance = common_provenance or fixed_shared
+                if fixed_shared != common_provenance:
+                    raise RuntimeError("mixed harness provenance in gate")
             reference, control, archive = (
                 reports["reference"], reports["control"], reports["archive"])
             label = f"P{instance}-e{eval_seed}-ps{plateau_seed}"
+            for key in ("problem_sha256", "plateau_sha256"):
+                if len({report.get(key) for report in reports.values()}) != 1:
+                    raise RuntimeError(f"cross-arm {key} mismatch: {label}")
 
             start_sig = _solution_signature(reference["start"])
             if any(_solution_signature(report["start"]) != start_sig
@@ -548,9 +602,20 @@ def _collect(args: argparse.Namespace) -> None:
                 if (abs(float(archive_tel["archive_objective"]) -
                         float(archive["returned_final"]["checker_objective"])) >
                         1e-9 or
+                    abs(float(archive_tel["archive_gain"]) -
+                        (float(archive["control_final"]["checker_objective"]) -
+                         float(archive["returned_final"]["checker_objective"]))) >
+                        1e-9 or
                     int(archive_tel["returned_official"]) !=
                         int(bool(archive["returned_final"]["overlong"]))):
                     mismatches["telemetry"].append(label)
+            elif (_solution_signature(archive["returned_final"]) !=
+                  _solution_signature(archive["control_final"]) or
+                  float(archive_tel["archive_gain"]) != 0.0):
+                mismatches["telemetry"].append(label)
+            if (bool(archive["archive_returned"]) !=
+                    bool(archive_tel["archive_returned"])):
+                mismatches["telemetry"].append(label)
             for name, value in archive_tel.items():
                 totals[name] += float(value)
             if int(archive_tel["archive_updates"]) > 0:
@@ -614,6 +679,9 @@ def _collect(args: argparse.Namespace) -> None:
         "archive_update_boards": sorted(update_boards),
         "reference_binary_sha256": reference_binary,
         "candidate_binary_sha256": candidate_binary,
+        "reference_provenance": reference_provenance,
+        "candidate_provenance": candidate_provenance,
+        "harness_provenance": common_provenance,
         "median_slowdown": statistics.median(row["slowdown"] for row in rows),
         "passed": passed,
         "verdict": verdict,

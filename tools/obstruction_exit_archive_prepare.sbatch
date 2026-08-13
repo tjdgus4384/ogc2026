@@ -49,9 +49,8 @@ run_id="${SLURM_JOB_ID:-manual-$$}"
 STAGE="${OUT}.incomplete-$run_id"
 [[ ! -e "$STAGE" && ! -L "$STAGE" ]] ||
   die "staging directory already exists: $STAGE"
-mkdir -p "$STAGE/.runtime/prepare/home" "$STAGE/.runtime/prepare/tmp"
-chmod 0700 "$STAGE/.runtime/prepare/home" "$STAGE/.runtime/prepare/tmp"
-export HOME="$STAGE/.runtime/prepare/home"
+mkdir -p "$STAGE/.runtime/prepare/tmp"
+chmod 0700 "$STAGE/.runtime/prepare/tmp"
 export TMPDIR="$STAGE/.runtime/prepare/tmp"
 unset OGC_PHASE2_ORIS OGC_EXIT_TWIN OGC_EXIT_TWIN_SHADOW OGC_PREFP
 export OGC_CAUSAL_BAY_RNG=1

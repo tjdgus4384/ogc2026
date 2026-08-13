@@ -37,9 +37,8 @@ esac
 
 run_id="${SLURM_JOB_ID:-manual-$$}"
 RUNTIME="$OUT/.runtime/$PROFILE/collect-$run_id"
-mkdir -p "$RUNTIME/home" "$RUNTIME/tmp"
-chmod 0700 "$RUNTIME/home" "$RUNTIME/tmp"
-export HOME="$RUNTIME/home"
+mkdir -p "$RUNTIME/tmp"
+chmod 0700 "$RUNTIME/tmp"
 export TMPDIR="$RUNTIME/tmp"
 unset OGC_PHASE2_ORIS OGC_EXIT_TWIN OGC_EXIT_TWIN_SHADOW OGC_PREFP
 export OGC_CAUSAL_BAY_RNG=1
