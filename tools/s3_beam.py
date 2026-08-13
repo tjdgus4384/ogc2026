@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """S3: sequential rollout-guided construction, debt-free by design.
 
-S2 passed: at 8/8 (P4), 7/8 (P6), 1/8 (P5) sacrifice points, single-decision
+S2 passed: at 8/8 (P4), 8/8 (P5), 1/8 (P6) sacrifice points, single-decision
 variants evaluated by rollout beat the greedy construction, with edges up to
 -18.7% -- and crucially the DEFER variants (pure order, zero assignment debt,
 F3-safe) carry edges on their own. S3 iterates the mechanism: walk the
