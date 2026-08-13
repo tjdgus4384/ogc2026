@@ -1,0 +1,81 @@
+{
+  "schema_version": 1,
+  "as_of": "2026-08-13",
+  "preliminary_targets": {
+    "P3": 64695,
+    "P4": 1908043,
+    "P5": 7718486,
+    "P6": 25452695
+  },
+  "historical_preliminary_submission": {
+    "source": "data/prelim_refs.json:msga_final",
+    "P3": 87140,
+    "P4": 3259259,
+    "P5": 11089821,
+    "P6": 32104939
+  },
+  "last_server_measured_submission": {
+    "bundle": "submissions/2026-08-04_v51-finals.zip",
+    "version": "v5.1",
+    "submitted": "2026-08-04",
+    "source": "data/finals_server.json",
+    "server_validated": true,
+    "note": "These are eight new finals instances, not the preliminary P3-P6 benchmarks.",
+    "finals_hidden": {
+      "P3": 5880133,
+      "P4": 5095054,
+      "P5": 6802605,
+      "P6": 1007796
+    }
+  },
+  "local_canonical": {
+    "version": "v6.3",
+    "adoption_commit": "83a344bb6897bc428346c94b368fc796097c1634",
+    "comment_correction_commit": "69f92065606a1776619dc138567d7d7b1771be6e",
+    "bundle": "submissions/[OGC2026_AlgorithmCode]_MSGA.zip",
+    "bundle_sha256": "8b9eb579ea6db5f48ebc33f151aca4b97c08b10d46fca96556aaca75e881a842",
+    "binary_sha256": "7452e6cecc5ddfbb3bd3ed51827974cdbdd4eb557c400c487497644394abba50",
+    "server_validated": false,
+    "preliminary_official_tl": {
+      "source_run": "runs/abgate/floor3-noharm, B arm, jobs 74206/74208/74209",
+      "source_files_combined_sha256": "bd2d27c20a702ab8f1e35178d5ee3a22fac07673f82991318fdd58e359b33973",
+      "seeds": [7, 11, 23, 41, 59, 73, 89, 101],
+      "P3": {
+        "tl": 240,
+        "objectives": [78705, 78710, 80140, 78705, 78710, 80145, 80140, 78705],
+        "seed7": 78705,
+        "median": 78710,
+        "mean": 79245,
+        "best": 78705,
+        "seed7_gap_pct": 21.655460236494317
+      },
+      "P4": {
+        "tl": 480,
+        "objectives": [2879770, 2931506, 3109077, 2730819, 2920638, 2990504, 2993368, 2897498],
+        "seed7": 2879770,
+        "median": 2926072,
+        "mean": 2931647.5,
+        "best": 2730819,
+        "seed7_gap_pct": 50.927940303232155
+      },
+      "P5": {
+        "tl": 600,
+        "objectives": [10864216, 10970142, 10206812, 10427089, 10295420, 11124028, 10146205, 20111373],
+        "seed7": 10864216,
+        "median": 10645652.5,
+        "mean": 11768160.625,
+        "best": 10146205,
+        "seed7_gap_pct": 40.75579070817774
+      },
+      "P6": {
+        "tl": 900,
+        "objectives": [28154533, 28368875, 28286026, 28313159, 28934230, 28178013, 29096584, 28983838],
+        "seed7": 28154533,
+        "median": 28341017,
+        "mean": 28539407.25,
+        "best": 28154533,
+        "seed7_gap_pct": 10.615135253850339
+      }
+    }
+  }
+}

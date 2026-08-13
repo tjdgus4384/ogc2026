@@ -3,15 +3,18 @@
 조선소 블록 배치(공간 일정계획) 결선 저장소.
 
 ## 목표
-결선 히든 P3-P6에서 예선 모든-팀 최솟값급 이하. 기준선은
+결선의 새 히든 인스턴스에 일반화되는 단일 솔버를 만들고, 공개 추격 지표로
+예선 P3-P6 모든-팀 최솟값 이하를 목표로 한다. 현재 솔버·제출·점수의 단일
+권위표는 `docs/CURRENT_BASELINE.md`다. 목표 기준선은
 `data/prelim_refs.json`의 §3 전-제출 최솟값(P3 64,695 / P4 1,908,043 /
 P5 7,718,486 / P6 25,452,695). `data/leaderboard.json`(§5 최종-제출
-순위표)은 등수 환산 전용 — 최솟값 판정에 쓰지 말 것.
+순위표)은 등수 환산 전용이며, 결선 히든 점수는 서로 다른 입력이라 이 목표와
+직접 비교하지 않는다.
 
 ## 구조
-- `solver/`        커널(C++ `src/` + `sscore*.so`) + 드라이버 `myalgorithm.py`. 유일한 솔버 트리. (v4.1)
-- `submissions/`   제출 zip. 대표본 = `2026-08-03_v41-finals.zip` (= `[OGC2026_AlgorithmCode]_MSGA.zip`),
-                   포트폴리오 변형 = `v41-{nfp2,sh45,noslice,k60}`, 이정표 = v21/v22b/v30/v31/v31d4/v40.
+- `solver/`        v6.3 기반 커널(C++ `src/` + `sscore*.so`) + 드라이버 `myalgorithm.py`; 실험 중에는 mutable.
+- `submissions/`   로컬 canonical zip = `[OGC2026_AlgorithmCode]_MSGA.zip` (v6.3, 서버 미검증).
+                   마지막 서버 실측 제출은 `2026-08-04_v51-finals.zip`; 둘을 혼용하지 말 것.
 - `docs/`          기술 보고서(`TECHREPORT.md` → PDF), 설계 문서(PIPELINE/UNDERSTANDING/MODEL/EXACT_DESIGN),
                    예선 최종 보고서 PDF(권위 소스).
 - `data/`          `preliminary_test/`(6) · `train_final/`(40, 결선 판정용) · `train/`(40, 구) ·

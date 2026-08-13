@@ -36,5 +36,5 @@
    "total": 77045926.0
   }
  ],
- "_hold_note": "v5.5 (submissions/2026-08-05_v55-finals.zip) was NOT submitted: HOLD. The all-team minima were not reached (p36 ~2,367 vs rank-1 2,440) and v5.5 is a quality-neutral correctness repair (train_final 40 pairs 25W/13L median -0.22% p=0.073, below the adoption bar; p36 3 seeds +1.18/-1.68/+0.84%), so no server row exists for it and none should. The live submission remains v5.3, whose row is above."
+ "_hold_note": "No server row exists after v5.1. v5.3 and v5.5 were not submitted, and the current local canonical v6.3 is also server-unmeasured. The rows above are the complete server evidence; see docs/CURRENT_BASELINE.md for local status."
 }

@@ -1,5 +1,11 @@
 # Submission ledger (server campaign era)
 
+Current-state authority: `docs/CURRENT_BASELINE.md`.  The last submission with
+an actual server response is v5.1 (2026-08-04); the local canonical zip is
+v6.3 and has not been submitted.  Labels such as CANONICAL or live inside the
+historical rows below describe that row's campaign date, not today's server
+state.
+
 June-era ledger: `archive/notes-2026-06/SUBMISSIONS.md`. Board reference
 (v82, submitted 2026-07-26/27, standing 30-40th): P1 11,280 / P2 31,368 /
 P3 98,005 / P4 3,101,595 / P5 10,568,408 / P6 32,950,799.

@@ -18,8 +18,25 @@ No license and no network are required: ortools' CP-SAT is used, not a
 commercial solver. Verified against ortools 9.15.6755, the version present
 on the grading image.
 
-What the last revision changed (v6.0, 2026-08-12)
+What the last revision changed (v6.3, 2026-08-13)
 -------------------------------------------------
+v6.2 bought and retained a checker-accepted seed floor before the main search,
+closing the rare path that returned `_trivial` (five of 228 recorded P5 draws,
+124x the median).  v6.3 additionally gates an annealed incumbent immediately
+after the portfolio and promotes that floor, closing the residual path that
+fell back to a 20.1M seed after losing a roughly 10.6M P5 incumbent.
+
+The changes are tail-risk guards, not a median-quality claim.  Deterministic
+failure staging improved P5/P6 floors by 1.83x/1.54x; normal-path paired gates
+were neutral (preliminary median +0.00%, train_final +0.03%).  The post-gate
+trajectory is identical when the incumbent is checker-feasible or fixed by
+the RNG-free nudge/retime stages.  A stage-3 relocation can reseed the engine;
+that divergence is confined to the already-infeasible loss class.  Full
+provenance and current local/server status are in `VERSION` and
+`docs/CURRENT_BASELINE.md` in the repository.
+
+What v6.0 changed (2026-08-12)
+------------------------------
 0. INTRA-DAY EVENT ORDER (src/core.hpp, src/api.cpp, myalgorithm.py).
    The checker excludes same-day entrants from its Stage-2 present set
    and validates their relative order in Stage 5, i.e. only ONE order
