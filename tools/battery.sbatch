@@ -8,8 +8,9 @@
 #SBATCH --output=/data_fast/home/tjdgus4384/priv/ogc2026/runs/battery-solver.log
 #
 # Build + canary battery for any solver dir. Arg 1 (default: solver).
-# Canary refs p1 1499 / p2 3690 (v4.1 config; matches README + the latest
-# battery-solver.log). A trajectory-changing candidate reports different
+# data/train canary refs p1 1499 / p2 3690 (v4.1 config; matches README + the
+# latest battery-solver.log).  These are not preliminary_test P1/P2, whose
+# official minima are 11280/31368. A trajectory-changing candidate reports different
 # values -- read, don't assert. History: the 07-30 pref-lock config briefly
 # moved p1 to 2065 before the lock was reverted.
 #

@@ -50,7 +50,7 @@ every returned board checker-feasible, against 12/12 FAIL for v6.1.
 
 Quality-neutral where it does not fire: train_final 40 pairs 18W/20L median
 +0.04% p=0.87; prelim P3-P6 32 pairs median +0.00% p=0.70; P1/P2 smoke
-unchanged at the known optima 11,280 / 31,368.
+on `preliminary_test` unchanged at the known optima 11,280 / 31,368.
 
 And it fired in its own validation gate: train_final 11 at seed 7 drew
 876,467,176 (Z1=65,473, wall 592.6s) on v6.1 and 8,131,553 (Z1=452, wall
@@ -68,7 +68,8 @@ per-second earnings split) -> v4.1 mixAcc reverted to 0 (train_final 40-pair
 sign test: OFF wins 26-14, p=0.04).
 
 Judgment discipline: train_final 40-instance paired sign tests primary,
-prelim-6 secondary; multi-seed for engine changes; canaries p1 1499 / p2 3690.
+prelim-6 secondary; multi-seed for engine changes; `data/train` canaries
+P1 1,499 / P2 3,690.
 
 v5.5 = v5.3 + seed-lock repair: _seed_free replayed the winning insertion
 order with [-1]*n and so handed the portfolio an UNLOCKED board, silently

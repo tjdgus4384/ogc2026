@@ -25,7 +25,9 @@ P5 7,718,486 / P6 25,452,695). `data/leaderboard.json`(§5 최종-제출
 - `problem/`       문제 서술.
 
 ## 사용
-- 빌드+카나리아: `sbatch -p titan tools/battery.sbatch` (기대 p1 1499 / p2 3690)
+- 빌드+`data/train` 카나리아: `sbatch -p titan tools/battery.sbatch`
+  (기대 P1 1,499 / P2 3,690). `preliminary_test` P1/P2 smoke의 별도 기대값은
+  11,280 / 31,368이며 두 코퍼스의 같은 문제 번호를 혼용하지 말 것.
 - 대외 위치(P3–P6, 공식 TL 240/480/600/900): `sbatch -p titan tools/eval_p36.sbatch TAG $PWD/solver SEED`
   → 판정: `python3 tools/judge.py p36 TAG` (§3 최솟값 갭 + 등수 환산)
 - 강건성(train_final 40 스윕): `OGC_DATA=train_final SOLVER=$PWD/solver tools/submit_eval.sh TAG 600 titan`
