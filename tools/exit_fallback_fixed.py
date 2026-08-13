@@ -33,8 +33,8 @@ def problem_path(instance: int) -> pathlib.Path:
     return REPO / "data" / "preliminary_test" / f"prob_{instance}.json"
 
 
-def digest(flat: list[int]) -> str:
-    raw = json.dumps(flat, separators=(",", ":")).encode()
+def digest(value) -> str:
+    raw = json.dumps(value, separators=(",", ":"), sort_keys=True).encode()
     return hashlib.sha256(raw).hexdigest()
 
 
@@ -69,15 +69,25 @@ def cmd_run(args) -> None:
     ))
     elapsed = time.monotonic() - t0
     flat = list(eng.get_solution())
+    search_objective = list(eng.objective())
     exact = args.mode == "on"
     xr = list(eng.exit_ranks()) if exact else None
     sol = ma._recs_to_sol(ma._extract(eng, len(prob["blocks"])),
                           list(eng.entry_ranks()), xr)
-    checked = ma._check(prob, sol)
+    raw_checked = ma._check(prob, sol)
     audit = list(eng.audit_state())
-    if not checked or not checked.get("feasible") or audit[0] != 0:
+    if audit[0] != 0:
         raise RuntimeError(
-            f"invalid result mode={args.mode} checker={checked} audit={audit}")
+            f"invalid engine state mode={args.mode} audit={audit}")
+    gate_t0 = time.monotonic()
+    gated_sol, gated = ma._gate(prob, eng, len(prob["blocks"]))
+    gate_elapsed = time.monotonic() - gate_t0
+    if (gated_sol is None or not gated or
+            not gated.get("feasible") or
+            not isinstance(gated.get("objective"), (int, float))):
+        raise RuntimeError(
+            f"production gate failed mode={args.mode} raw={raw_checked} "
+            f"gate={gated}")
     report = {
         "instance": args.instance,
         "seed": args.seed,
@@ -85,8 +95,12 @@ def cmd_run(args) -> None:
         "iters": args.iters,
         "elapsed": elapsed,
         "start_objective": start,
-        "objective": list(eng.objective()),
-        "checker_objective": checked.get("objective"),
+        "objective": search_objective,
+        "raw_checker_feasible": bool(raw_checked and raw_checked.get("feasible")),
+        "raw_checker_stage": None if raw_checked is None else raw_checked.get("stage"),
+        "gated_objective": gated.get("objective"),
+        "gated_solution_sha256": digest(gated_sol),
+        "gate_elapsed": gate_elapsed,
         "flat_sha256": digest(flat),
         "audit": audit,
         "run_stats": stats,
@@ -115,11 +129,13 @@ def cmd_collect(args) -> None:
             off["flat_sha256"] == shadow["flat_sha256"]
             and off["objective"] == shadow["objective"]
             and off["run_stats"][:8] == shadow["run_stats"][:8]
+            and off["gated_solution_sha256"] == shadow["gated_solution_sha256"]
+            and off["gated_objective"] == shadow["gated_objective"]
         )
         if not aa_equal:
             raise RuntimeError(f"OFF/SHADOW trajectory mismatch at {stem}")
-        a = float(off["objective"][3])
-        b = float(on["objective"][3])
+        a = float(off["gated_objective"])
+        b = float(on["gated_objective"])
         rows.append({
             "instance": int(off["instance"]), "seed": int(off["seed"]),
             "off": a, "on": b, "delta_pct": 100.0 * (b - a) / a,
