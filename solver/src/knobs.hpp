@@ -52,6 +52,16 @@ inline bool causalBayRng() {
     }();
     return v;
 }
+// Diagnostic-only persistent-lock audit.  Production deliberately releases
+// assignment guidance after 60% of an anneal; a causal hard-lock experiment
+// must be able to suppress that release without changing the shipped default.
+inline bool keepAssignmentLock() {
+    static const bool v = [] {
+        const char* q = std::getenv("OGC_KEEP_ASSIGNMENT_LOCK");
+        return q && q[0] == '1' && q[1] == '\0';
+    }();
+    return v;
+}
 // Diagnostic wiring audit.  insertGreedy draws one orientation order, but
 // the ordinary phase-2 revival scan historically rebuilt ascending indices
 // and discarded that order.  Default OFF preserves the shipped path.

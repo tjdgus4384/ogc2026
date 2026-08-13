@@ -149,6 +149,13 @@ and run three arms for exactly 20,000 single-thread ALNS iterations at seeds 7,
 3. `lock`: the identical causal construction, retaining only the selected
    block-to-bay lock throughout ALNS.
 
+Source audit after launch found that the shipped ALNS intentionally clears
+`forcedBay` at 60% of its budget.  Therefore the first job's third arm is a
+60%-guidance diagnostic, not the persistent `lock` arm described above; its
+score cannot decide the hard-lock gate.  Baseline and `start` are unaffected.
+A default-off `OGC_KEEP_ASSIGNMENT_LOCK=1` audit switch must be frozen in a
+new build, and only a rerun under that switch may populate the lock column.
+
 The `start` and `lock` states must have the same byte hash before search, every
 run must execute exactly 20,000 iterations, and the lock arm must finish with
 the selected block in the selected bay.  The official checker and production

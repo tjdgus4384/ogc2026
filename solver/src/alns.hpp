@@ -431,7 +431,7 @@ inline RunStats run(repair::Ctx& c, double seconds, const RunParams& rp,
     while (now() < seconds &&
            (rp.maxIters <= 0 || st.iters < rp.maxIters)) {
         st.iters++;
-        if (c.forcedBay &&
+        if (c.forcedBay && !knobs::keepAssignmentLock() &&
             (rp.maxIters > 0
                  ? st.iters >= (long)(0.6 * rp.maxIters)
                  : now() > 0.6 * seconds))
