@@ -117,6 +117,12 @@ def sign_test(wins: int, losses: int) -> float:
     return min(1.0, 2 * sum(math.comb(n, i) for i in range(k + 1)) / 2**n)
 
 
+def stat_count(report: dict, index: int) -> int:
+    """Read an appended diagnostic while retaining old-artifact support."""
+    stats = report.get("run_stats", [])
+    return int(round(stats[index])) if index < len(stats) else 0
+
+
 def cmd_collect(args) -> None:
     rows = []
     for off_path in sorted(args.directory.glob("p*-s*-off.json")):
@@ -140,15 +146,15 @@ def cmd_collect(args) -> None:
         rows.append({
             "instance": int(off["instance"]), "seed": int(off["seed"]),
             "off": a, "on": b, "delta_pct": 100.0 * (b - a) / a,
-            "shadow_tests": int(round(shadow["run_stats"][8])),
-            "shadow_pass": int(round(shadow["run_stats"][9])),
-            "on_tests": int(round(on["run_stats"][8])),
-            "on_pass": int(round(on["run_stats"][9])),
-            "shadow_compared": int(round(shadow["run_stats"][10])),
-            "shadow_dominant": int(round(shadow["run_stats"][11])),
-            "on_compared": int(round(on["run_stats"][10])),
-            "on_dominant": int(round(on["run_stats"][11])),
-            "on_rescued": int(round(on["run_stats"][12])),
+            "shadow_tests": stat_count(shadow, 8),
+            "shadow_pass": stat_count(shadow, 9),
+            "on_tests": stat_count(on, 8),
+            "on_pass": stat_count(on, 9),
+            "shadow_compared": stat_count(shadow, 10),
+            "shadow_dominant": stat_count(shadow, 11),
+            "on_compared": stat_count(on, 10),
+            "on_dominant": stat_count(on, 11),
+            "on_rescued": stat_count(on, 12),
             "off_elapsed": float(off["elapsed"]),
             "shadow_elapsed": float(shadow["elapsed"]),
             "on_elapsed": float(on["elapsed"]),
@@ -201,6 +207,7 @@ def cmd_collect(args) -> None:
     losses = sum(d > 1e-12 for d in all_ds)
     summary["all"] = {
         "wins": wins, "losses": losses, "ties": len(rows)-wins-losses,
+        "changed": wins + losses,
         "median_delta_pct": statistics.median(all_ds),
         "mean_delta_pct": statistics.fmean(all_ds),
         "sign_p": sign_test(wins, losses),
