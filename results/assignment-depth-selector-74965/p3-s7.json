@@ -1,0 +1,145 @@
+{
+  "instance": 3,
+  "iters": 2000,
+  "manifest": "/data_fast/home/tjdgus4384/priv/ogc2026-worktrees/codex-fundamental/runs/joint-assignment-rollout-74933/prob_3.json",
+  "modes": [
+    {
+      "audit": [
+        0,
+        -1
+      ],
+      "checker": {
+        "feasible": true,
+        "flat_sha256": "c8bd444ce0feeda83747f88af9f3e5250bbc4eb8734106c806a55ab1156008c1",
+        "objective": 157365.0,
+        "rescued": false,
+        "solution_sha256": "d5af275926cfde5e44e54e3e58d4988c62bc0959a72fb039ee2d3cd55b963851"
+      },
+      "elapsed": 11.718818566994742,
+      "mode": "free",
+      "run_stats": [
+        2000.0,
+        645.0,
+        41.0,
+        117.0,
+        157365.0,
+        -1.0,
+        -1.0,
+        -1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "search_components": [
+        0.0,
+        2883.0,
+        953.0,
+        157365.0
+      ],
+      "search_flat_sha256": "c8bd444ce0feeda83747f88af9f3e5250bbc4eb8734106c806a55ab1156008c1",
+      "start_components": [
+        3.0,
+        3493.0,
+        3123.0,
+        539249.0
+      ],
+      "start_flat_sha256": "53361a5937dc64fb18430d4baeb453ff2323fa195e82022b64a111cf1d8bca84"
+    },
+    {
+      "audit": [
+        0,
+        -1
+      ],
+      "checker": {
+        "feasible": true,
+        "flat_sha256": "047bf17f574f3e387f0cea5b311bd279b4252e1ac7c6a8ebbdedc6ae32ccbfe9",
+        "objective": 133085.0,
+        "rescued": false,
+        "solution_sha256": "6086b2df6e7820f285bf076e435f145b4650a88d85a9d87ef8c91fbe7a59cc4a"
+      },
+      "elapsed": 11.481054238975048,
+      "mode": "one",
+      "run_stats": [
+        2000.0,
+        599.0,
+        55.0,
+        102.0,
+        133085.0,
+        -1.0,
+        -1.0,
+        -1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "search_components": [
+        0.0,
+        2317.0,
+        810.0,
+        133085.0
+      ],
+      "search_flat_sha256": "047bf17f574f3e387f0cea5b311bd279b4252e1ac7c6a8ebbdedc6ae32ccbfe9",
+      "start_components": [
+        0.0,
+        3841.0,
+        3216.0,
+        501605.0
+      ],
+      "start_flat_sha256": "dddf6aaf6246c9c843b0241ba0cbd14bdd82954c0da1b3e9eb1bf099e78e389d"
+    },
+    {
+      "audit": [
+        0,
+        -1
+      ],
+      "checker": {
+        "feasible": true,
+        "flat_sha256": "9f81f21289835dc7605919eab566ea2d8314ba2af5a48f98ef13860af6d13d45",
+        "objective": 114970.0,
+        "rescued": false,
+        "solution_sha256": "e33daa793bd9de39db50699ffb320fb752aabb14bc6622731227134c15699bfe"
+      },
+      "elapsed": 11.181101774098352,
+      "mode": "sequential",
+      "run_stats": [
+        2000.0,
+        630.0,
+        62.0,
+        177.0,
+        114970.0,
+        -1.0,
+        -1.0,
+        -1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "search_components": [
+        0.0,
+        3194.0,
+        660.0,
+        114970.0
+      ],
+      "search_flat_sha256": "9f81f21289835dc7605919eab566ea2d8314ba2af5a48f98ef13860af6d13d45",
+      "start_components": [
+        0.0,
+        4126.0,
+        3002.0,
+        470930.0
+      ],
+      "start_flat_sha256": "c149ce5a5a7c38df8253bdc519bab42c25855c400e83e3dcda05a85de0acec11"
+    }
+  ],
+  "order": "noisy_a",
+  "schema_version": 1,
+  "seed": 7,
+  "selected": "sequential",
+  "sequential": "/data_fast/home/tjdgus4384/priv/ogc2026-worktrees/codex-fundamental/results/assignment-sequential-74952/prob_3.json",
+  "solver": "/data_fast/home/tjdgus4384/priv/ogc2026-worktrees/codex-fundamental/builds/jasg-causal"
+}

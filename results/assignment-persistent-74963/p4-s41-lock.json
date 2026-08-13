@@ -1,0 +1,72 @@
+{
+  "action": {
+    "bay": 2,
+    "block": 13
+  },
+  "audit": [
+    0,
+    -1
+  ],
+  "baseline_start_objective": [
+    547.0,
+    2613.0,
+    4859.0,
+    8040292.0
+  ],
+  "causal_start_objective": [
+    446.0,
+    4059.0,
+    4666.0,
+    6674831.0
+  ],
+  "checker": {
+    "feasible": true,
+    "flat_sha256": "7a477e9017004acee6d87b15e52b5bf95fb1168ba557c8a338adecd2abdac200",
+    "objective": 4482080.0,
+    "rescued": false,
+    "solution_sha256": "b0921f806cdf4f848d126caaac1adb6f7b4e16a42e4c76f799e174018fbee8f3"
+  },
+  "elapsed": 113.35273600299843,
+  "instance": 4,
+  "iters": 20000,
+  "lock_held": true,
+  "manifest": "/data_fast/home/tjdgus4384/priv/ogc2026-worktrees/codex-fundamental/runs/joint-assignment-rollout-74933/prob_4.json",
+  "manifest_delta_pct": -16.982728985464707,
+  "mode": "lock",
+  "order": "due_long",
+  "run_stats": [
+    20000.0,
+    6097.0,
+    139.0,
+    365.0,
+    4482080.0,
+    -1.0,
+    -1.0,
+    -1.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+  ],
+  "schema_version": 1,
+  "search_flat_sha256": "7a477e9017004acee6d87b15e52b5bf95fb1168ba557c8a338adecd2abdac200",
+  "search_objective": [
+    284.0,
+    1344.0,
+    4574.0,
+    4482080.0
+  ],
+  "seed": 41,
+  "selected_action_retained": true,
+  "selected_bay_after": 2,
+  "selected_bay_before": 2,
+  "solver": "/data_fast/home/tjdgus4384/priv/ogc2026-worktrees/codex-fundamental/builds/jasg-full-lock",
+  "start_flat_sha256": "623042f2f1381a433bf2e99be31d417426c97e3fc20efc26ec64932454cca7e0",
+  "start_objective": [
+    446.0,
+    4059.0,
+    4666.0,
+    6674831.0
+  ]
+}

@@ -238,6 +238,31 @@ not a universal, checker-safe policy.  It does not advance to Train or enter
 the production solver.  The complete row-level result is frozen in
 `results/assignment-guidance-74948.json`.
 
+## Persistent-lock verdict: job 74963
+
+The complete audit reran all 16 baselines on the patched binary and reproduced
+the immutable job-74943 baseline rows exactly.  Every lock arm also finished
+with the selected block in its required bay, so the measurement is no longer
+confounded by any of the six previously identified lock leaks.  The isolated
+binary SHA-256 is
+`1cd668cc6b6b81eb923a0a4ad2db20e0d0f78ebe93a72fa229c41f8742d8e9bf`.
+
+| board | informative | W/L/T | median delta |
+|---|---:|---:|---:|
+| P3 | 4/4 | 0/4/0 | +8.563% |
+| P4 | 4/4 | 3/1/0 | -3.865% |
+| P5 | 3/4 | 3/0/0 | -4.112% |
+| P6 | 4/4 | 3/1/0 | -1.547% |
+
+The 15 checker-informative pairs contain 9 wins and 6 losses with pooled
+median -1.569%.  The arm nevertheless fails every relevant safety reading:
+the pooled median misses -2%, P3 exceeds the +2% board veto by a wide margin,
+and P5 seed 23 is checker-infeasible.  Keeping the causal assignment is thus
+not a robust search policy.  Its P4/P5 signal is evidence that the assignment
+contains useful information, while P3 proves that preserving it destroys
+necessary downstream freedom.  Complete rows are frozen under
+`results/assignment-persistent-74963/`.
+
 ## Frozen sequential construction gate
 
 The failed start-only form does not erase the construction mechanism: P4/P5
@@ -355,3 +380,26 @@ and no board's median regret may exceed 5%.  Passing requires an identical
 test on disjoint seeds 3, 17, 31, and 47 before native implementation or Train.
 Failure closes rollout-based causal-depth selection; the already-rejected
 construction-score selector is not revived.
+
+## Causal-depth selector verdict: job 74965
+
+The 2,000-iteration selector does not predict the 20,000-iteration winner.
+One free short control (P5 seed 41) is checker-infeasible, and the selected
+one-action long arm for P5 seed 11 is also checker-infeasible.  Even among the
+numerical cells, selected-versus-free is only 8 wins, 5 losses, and 2 ties
+with pooled median -0.426%, far short of the preregistered -2% effect.
+
+| board | selected vs free median | median regret vs long oracle |
+|---|---:|---:|
+| P3 | +0.705% | 5.639% |
+| P4 | -1.366% | 2.810% |
+| P5 | -6.231% (3 numerical) | 3.582% (3 numerical) |
+| P6 | -0.213% | 1.378% |
+
+The pooled long-oracle regret is 2.830%, above its 2% cap, and P3 exceeds the
+5% per-board regret cap.  The frozen verdict is
+`reject_depth_rollout_selector`; there is no disjoint-seed replication,
+native implementation, or Train run.  This closes short-ALNS selection among
+free/one/three-action starting depths.  It does not test rollout inside the
+repair transition itself.  Full short boards, checker records, long lookups,
+and the summary are frozen under `results/assignment-depth-selector-74965/`.

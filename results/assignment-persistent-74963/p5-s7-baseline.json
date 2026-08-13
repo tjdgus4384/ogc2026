@@ -1,0 +1,72 @@
+{
+  "action": {
+    "bay": 1,
+    "block": 57
+  },
+  "audit": [
+    0,
+    -1
+  ],
+  "baseline_start_objective": [
+    1462.0,
+    1303.0,
+    4582.0,
+    20111373.0
+  ],
+  "causal_start_objective": [
+    1327.0,
+    2040.0,
+    4428.0,
+    18296095.0
+  ],
+  "checker": {
+    "feasible": true,
+    "flat_sha256": "9bf2b72706c54a6c0da7aacdf893141ab8ef5d0853ea072b0d1e4eb57e3393c4",
+    "objective": 13543604.0,
+    "rescued": false,
+    "solution_sha256": "f82a21016d041187edf2673e819229a8458c2c96acfab73e5dba59a1d50761fc"
+  },
+  "elapsed": 155.96378199290484,
+  "instance": 5,
+  "iters": 20000,
+  "lock_held": true,
+  "manifest": "/data_fast/home/tjdgus4384/priv/ogc2026-worktrees/codex-fundamental/runs/joint-assignment-rollout-74933/prob_5.json",
+  "manifest_delta_pct": -9.026126659776038,
+  "mode": "baseline",
+  "order": "due",
+  "run_stats": [
+    20000.0,
+    6993.0,
+    254.0,
+    651.0,
+    13543604.0,
+    -1.0,
+    -1.0,
+    -1.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+  ],
+  "schema_version": 1,
+  "search_flat_sha256": "9bf2b72706c54a6c0da7aacdf893141ab8ef5d0853ea072b0d1e4eb57e3393c4",
+  "search_objective": [
+    971.0,
+    5048.0,
+    4225.0,
+    13543604.0
+  ],
+  "seed": 7,
+  "selected_action_retained": false,
+  "selected_bay_after": 0,
+  "selected_bay_before": 0,
+  "solver": "/data_fast/home/tjdgus4384/priv/ogc2026-worktrees/codex-fundamental/builds/jasg-full-lock",
+  "start_flat_sha256": "ef3ca265c113d6651b1f777f28788cb593ea9b4503feaf67285e962800d658ad",
+  "start_objective": [
+    1462.0,
+    1303.0,
+    4582.0,
+    20111373.0
+  ]
+}

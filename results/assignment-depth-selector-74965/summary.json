@@ -1,0 +1,559 @@
+{
+  "all_selected_long_feasible": false,
+  "free_short_controls_feasible": false,
+  "prediction_pass": false,
+  "prediction_regret": {
+    "instances": {
+      "P3": {
+        "losses": 4,
+        "median": 5.639064999985477,
+        "pairs": 4,
+        "ties": 0,
+        "wins": 0
+      },
+      "P4": {
+        "losses": 3,
+        "median": 2.8098803482073373,
+        "pairs": 4,
+        "ties": 1,
+        "wins": 0
+      },
+      "P5": {
+        "losses": 2,
+        "median": 3.582385835098758,
+        "pairs": 3,
+        "ties": 1,
+        "wins": 0
+      },
+      "P6": {
+        "losses": 3,
+        "median": 1.3781700952823646,
+        "pairs": 4,
+        "ties": 1,
+        "wins": 0
+      }
+    },
+    "median": 2.8299148756538846
+  },
+  "rows": [
+    {
+      "delta_from_free_pct": 1.4095771268619415,
+      "instance": 3,
+      "long": {
+        "free": 100030.0,
+        "one": 110750.0,
+        "sequential": 101440.0
+      },
+      "long_feasible": {
+        "free": true,
+        "one": true,
+        "sequential": true
+      },
+      "oracle": 100030.0,
+      "regret_pct": 1.4095771268619415,
+      "seed": 7,
+      "selected": "sequential",
+      "selected_long": 101440.0,
+      "selected_long_feasible": true,
+      "short": {
+        "free": 157365.0,
+        "one": 133085.0,
+        "sequential": 114970.0
+      },
+      "short_feasible": {
+        "free": true,
+        "one": true,
+        "sequential": true
+      }
+    },
+    {
+      "delta_from_free_pct": 0.0,
+      "instance": 3,
+      "long": {
+        "free": 103020.0,
+        "one": 107820.0,
+        "sequential": 95080.0
+      },
+      "long_feasible": {
+        "free": true,
+        "one": true,
+        "sequential": true
+      },
+      "oracle": 95080.0,
+      "regret_pct": 8.350862431636516,
+      "seed": 11,
+      "selected": "free",
+      "selected_long": 103020.0,
+      "selected_long_feasible": true,
+      "short": {
+        "free": 150400.0,
+        "one": 158640.0,
+        "sequential": 157415.0
+      },
+      "short_feasible": {
+        "free": true,
+        "one": true,
+        "sequential": true
+      }
+    },
+    {
+      "delta_from_free_pct": 2.0963984948933883,
+      "instance": 3,
+      "long": {
+        "free": 111620.0,
+        "one": 113960.0,
+        "sequential": 104765.0
+      },
+      "long_feasible": {
+        "free": true,
+        "one": true,
+        "sequential": true
+      },
+      "oracle": 104765.0,
+      "regret_pct": 8.776786140409488,
+      "seed": 23,
+      "selected": "one",
+      "selected_long": 113960.0,
+      "selected_long_feasible": true,
+      "short": {
+        "free": 146195.0,
+        "one": 132690.0,
+        "sequential": 139485.0
+      },
+      "short_feasible": {
+        "free": true,
+        "one": true,
+        "sequential": true
+      }
+    },
+    {
+      "delta_from_free_pct": -1.5024663981535955,
+      "instance": 3,
+      "long": {
+        "free": 110485.0,
+        "one": 108825.0,
+        "sequential": 105730.0
+      },
+      "long_feasible": {
+        "free": true,
+        "one": true,
+        "sequential": true
+      },
+      "oracle": 105730.0,
+      "regret_pct": 2.927267568334437,
+      "seed": 41,
+      "selected": "one",
+      "selected_long": 108825.0,
+      "selected_long_feasible": true,
+      "short": {
+        "free": 163265.0,
+        "one": 135105.0,
+        "sequential": 140550.0
+      },
+      "short_feasible": {
+        "free": true,
+        "one": true,
+        "sequential": true
+      }
+    },
+    {
+      "delta_from_free_pct": -12.364631715136007,
+      "instance": 4,
+      "long": {
+        "free": 4631347.0,
+        "one": 4058698.0,
+        "sequential": 4140132.0
+      },
+      "long_feasible": {
+        "free": true,
+        "one": true,
+        "sequential": true
+      },
+      "oracle": 4058698.0,
+      "regret_pct": 0.0,
+      "seed": 7,
+      "selected": "one",
+      "selected_long": 4058698.0,
+      "selected_long_feasible": true,
+      "short": {
+        "free": 5529683.0,
+        "one": 5246946.0,
+        "sequential": 5295071.0
+      },
+      "short_feasible": {
+        "free": true,
+        "one": true,
+        "sequential": true
+      }
+    },
+    {
+      "delta_from_free_pct": 2.78984582076079,
+      "instance": 4,
+      "long": {
+        "free": 4448848.0,
+        "one": 4572964.0,
+        "sequential": 4543030.0
+      },
+      "long_feasible": {
+        "free": true,
+        "one": true,
+        "sequential": true
+      },
+      "oracle": 4448848.0,
+      "regret_pct": 2.78984582076079,
+      "seed": 11,
+      "selected": "one",
+      "selected_long": 4572964.0,
+      "selected_long_feasible": true,
+      "short": {
+        "free": 5209675.0,
+        "one": 5032630.0,
+        "sequential": 5209871.0
+      },
+      "short_feasible": {
+        "free": true,
+        "one": true,
+        "sequential": true
+      }
+    },
+    {
+      "delta_from_free_pct": 0.32989147567024235,
+      "instance": 4,
+      "long": {
+        "free": 4304749.0,
+        "one": 4200091.0,
+        "sequential": 4318950.0
+      },
+      "long_feasible": {
+        "free": true,
+        "one": true,
+        "sequential": true
+      },
+      "oracle": 4200091.0,
+      "regret_pct": 2.8299148756538846,
+      "seed": 23,
+      "selected": "sequential",
+      "selected_long": 4318950.0,
+      "selected_long_feasible": true,
+      "short": {
+        "free": 6081121.0,
+        "one": 5700806.0,
+        "sequential": 5435796.0
+      },
+      "short_feasible": {
+        "free": true,
+        "one": true,
+        "sequential": true
+      }
+    },
+    {
+      "delta_from_free_pct": -3.0616363849359316,
+      "instance": 4,
+      "long": {
+        "free": 4481525.0,
+        "one": 4344317.0,
+        "sequential": 4177459.0
+      },
+      "long_feasible": {
+        "free": true,
+        "one": true,
+        "sequential": true
+      },
+      "oracle": 4177459.0,
+      "regret_pct": 3.994246263099171,
+      "seed": 41,
+      "selected": "one",
+      "selected_long": 4344317.0,
+      "selected_long_feasible": true,
+      "short": {
+        "free": 5938958.0,
+        "one": 5061902.0,
+        "sequential": 5141577.0
+      },
+      "short_feasible": {
+        "free": true,
+        "one": true,
+        "sequential": true
+      }
+    },
+    {
+      "delta_from_free_pct": -7.866576725072588,
+      "instance": 5,
+      "long": {
+        "free": 13543604.0,
+        "one": 12478186.0,
+        "sequential": 13336150.0
+      },
+      "long_feasible": {
+        "free": true,
+        "one": true,
+        "sequential": true
+      },
+      "oracle": 12478186.0,
+      "regret_pct": 0.0,
+      "seed": 7,
+      "selected": "one",
+      "selected_long": 12478186.0,
+      "selected_long_feasible": true,
+      "short": {
+        "free": 15224753.0,
+        "one": 14373735.0,
+        "sequential": 14939189.0
+      },
+      "short_feasible": {
+        "free": true,
+        "one": true,
+        "sequential": true
+      }
+    },
+    {
+      "delta_from_free_pct": null,
+      "instance": 5,
+      "long": {
+        "free": 12645859.0,
+        "one": null,
+        "sequential": 13056275.0
+      },
+      "long_feasible": {
+        "free": true,
+        "one": false,
+        "sequential": true
+      },
+      "oracle": 12645859.0,
+      "regret_pct": null,
+      "seed": 11,
+      "selected": "one",
+      "selected_long": null,
+      "selected_long_feasible": false,
+      "short": {
+        "free": 14886160.0,
+        "one": 14677902.0,
+        "sequential": 15051256.0
+      },
+      "short_feasible": {
+        "free": true,
+        "one": true,
+        "sequential": true
+      }
+    },
+    {
+      "delta_from_free_pct": -6.23109072305166,
+      "instance": 5,
+      "long": {
+        "free": 13404796.0,
+        "one": 11966308.0,
+        "sequential": 12569531.0
+      },
+      "long_feasible": {
+        "free": true,
+        "one": true,
+        "sequential": true
+      },
+      "oracle": 11966308.0,
+      "regret_pct": 5.041011814170252,
+      "seed": 23,
+      "selected": "sequential",
+      "selected_long": 12569531.0,
+      "selected_long_feasible": true,
+      "short": {
+        "free": 15474057.0,
+        "one": 15478069.0,
+        "sequential": 14409521.0
+      },
+      "short_feasible": {
+        "free": true,
+        "one": true,
+        "sequential": true
+      }
+    },
+    {
+      "delta_from_free_pct": -2.9706765306286944,
+      "instance": 5,
+      "long": {
+        "free": 12778638.0,
+        "one": 12399026.0,
+        "sequential": 11970207.0
+      },
+      "long_feasible": {
+        "free": true,
+        "one": true,
+        "sequential": true
+      },
+      "oracle": 11970207.0,
+      "regret_pct": 3.582385835098758,
+      "seed": 41,
+      "selected": "one",
+      "selected_long": 12399026.0,
+      "selected_long_feasible": true,
+      "short": {
+        "free": null,
+        "one": 14427593.0,
+        "sequential": 15349747.0
+      },
+      "short_feasible": {
+        "free": false,
+        "one": true,
+        "sequential": true
+      }
+    },
+    {
+      "delta_from_free_pct": 2.6505447698770266,
+      "instance": 6,
+      "long": {
+        "free": 33147299.0,
+        "one": 34025883.0,
+        "sequential": 33851148.0
+      },
+      "long_feasible": {
+        "free": true,
+        "one": true,
+        "sequential": true
+      },
+      "oracle": 33147299.0,
+      "regret_pct": 2.6505447698770266,
+      "seed": 7,
+      "selected": "one",
+      "selected_long": 34025883.0,
+      "selected_long_feasible": true,
+      "short": {
+        "free": 38066567.0,
+        "one": 37070095.0,
+        "sequential": 38630304.0
+      },
+      "short_feasible": {
+        "free": true,
+        "one": true,
+        "sequential": true
+      }
+    },
+    {
+      "delta_from_free_pct": -2.8006745683779326,
+      "instance": 6,
+      "long": {
+        "free": 34397106.0,
+        "one": 33433755.0,
+        "sequential": 33398421.0
+      },
+      "long_feasible": {
+        "free": true,
+        "one": true,
+        "sequential": true
+      },
+      "oracle": 33398421.0,
+      "regret_pct": 0.10579542068770258,
+      "seed": 11,
+      "selected": "one",
+      "selected_long": 33433755.0,
+      "selected_long_feasible": true,
+      "short": {
+        "free": 38169175.0,
+        "one": 36179900.0,
+        "sequential": 36891687.0
+      },
+      "short_feasible": {
+        "free": true,
+        "one": true,
+        "sequential": true
+      }
+    },
+    {
+      "delta_from_free_pct": -0.42614964828965984,
+      "instance": 6,
+      "long": {
+        "free": 34354833.0,
+        "one": 34208430.0,
+        "sequential": 34643743.0
+      },
+      "long_feasible": {
+        "free": true,
+        "one": true,
+        "sequential": true
+      },
+      "oracle": 34208430.0,
+      "regret_pct": 0.0,
+      "seed": 23,
+      "selected": "one",
+      "selected_long": 34208430.0,
+      "selected_long_feasible": true,
+      "short": {
+        "free": 38397302.0,
+        "one": 37083924.0,
+        "sequential": 37867514.0
+      },
+      "short_feasible": {
+        "free": true,
+        "one": true,
+        "sequential": true
+      }
+    },
+    {
+      "delta_from_free_pct": 0.0,
+      "instance": 6,
+      "long": {
+        "free": 34314242.0,
+        "one": 33358646.0,
+        "sequential": 32506571.0
+      },
+      "long_feasible": {
+        "free": true,
+        "one": true,
+        "sequential": true
+      },
+      "oracle": 32506571.0,
+      "regret_pct": 5.560940278813167,
+      "seed": 41,
+      "selected": "free",
+      "selected_long": 34314242.0,
+      "selected_long_feasible": true,
+      "short": {
+        "free": 37388073.0,
+        "one": 38762861.0,
+        "sequential": 37631883.0
+      },
+      "short_feasible": {
+        "free": true,
+        "one": true,
+        "sequential": true
+      }
+    }
+  ],
+  "schema_version": 1,
+  "score_pass": false,
+  "selected_vs_free": {
+    "instances": {
+      "P3": {
+        "losses": 2,
+        "median": 0.7047885634309707,
+        "pairs": 4,
+        "ties": 1,
+        "wins": 1
+      },
+      "P4": {
+        "losses": 2,
+        "median": -1.3658724546328447,
+        "pairs": 4,
+        "ties": 0,
+        "wins": 2
+      },
+      "P5": {
+        "losses": 0,
+        "median": -6.23109072305166,
+        "pairs": 3,
+        "ties": 0,
+        "wins": 3
+      },
+      "P6": {
+        "losses": 1,
+        "median": -0.21307482414482992,
+        "pairs": 4,
+        "ties": 1,
+        "wins": 2
+      }
+    },
+    "losses": 5,
+    "median": -0.42614964828965984,
+    "ties": 2,
+    "wins": 8
+  },
+  "verdict": "reject_depth_rollout_selector"
+}
