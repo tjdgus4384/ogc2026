@@ -32,6 +32,28 @@ struct BlockGeom {
     std::vector<OrientGeom> orients;
 };
 
+// A speculative observer must not perturb the direct-mapped geometry caches
+// used by the control trajectory.  Besides changing wall cost through cache
+// eviction, the historical slots retain only a 64-bit fingerprint rather than
+// the complete geometry tuple, so a hash collision could otherwise turn cache
+// history into a semantic dependency.  Archive probes enter this scope and do
+// the exact polygon work without reading or writing either memo.
+inline bool& memoEnabled() {
+    static thread_local bool enabled = true;
+    return enabled;
+}
+
+struct ScopedMemoBypass {
+    bool previous;
+    explicit ScopedMemoBypass(bool bypass)
+        : previous(memoEnabled()) {
+        if (bypass) memoEnabled() = false;
+    }
+    ~ScopedMemoBypass() { memoEnabled() = previous; }
+    ScopedMemoBypass(const ScopedMemoBypass&) = delete;
+    ScopedMemoBypass& operator=(const ScopedMemoBypass&) = delete;
+};
+
 // bbox overlap of two placed shapes (offsets applied), open-interval EPS.
 inline bool bboxOverlapOff(const BBox& a, double ax, double ay,
                            const BBox& b, double bx, double by) {
@@ -58,7 +80,7 @@ inline bool overlapsLay(const OrientGeom& ga, int la, double ax, double ay,
     bool exact = (std::abs((bx - ax) - (double)dx) < 1e-9 &&
                   std::abs((by - ay) - (double)dy) < 1e-9);
     uint64_t h = 0;
-    if (exact) {
+    if (exact && memoEnabled()) {
         h = (uint64_t)(uintptr_t)&ga * 0x9E3779B97F4A7C15ull;
         h ^= (uint64_t)(uintptr_t)&gb * 0xC2B2AE3D27D4EB4Full;
         h ^= ((uint64_t)(uint32_t)la << 48) ^ ((uint64_t)(uint32_t)lb << 40);
@@ -76,7 +98,7 @@ inline bool overlapsLay(const OrientGeom& ga, int la, double ax, double ay,
     geom::Pt ia{ga.ip[la].x + ax, ga.ip[la].y + ay};
     geom::Pt ib{gb.ip[lb].x + bx, gb.ip[lb].y + by};
     bool r = geom::overlapsAreaIP(ta, ia, tb, ib);
-    if (exact) {
+    if (exact && memoEnabled()) {
         OvSlot& s = memo[h & (memo.size() - 1)];
         s.key = h; s.val = r ? 1 : 0;
     }
@@ -91,6 +113,7 @@ inline bool overlapsLay(const OrientGeom& ga, int la, double ax, double ay,
 inline bool pairMemo(const OrientGeom& a, double ax, double ay,
                      const OrientGeom& b, double bx, double by,
                      int mode, bool& out) {
+    if (!memoEnabled()) return false;
     const long dx = std::lround(bx - ax), dy = std::lround(by - ay);
     if (std::abs((bx - ax) - (double)dx) > 1e-9 ||
         std::abs((by - ay) - (double)dy) > 1e-9) return false;

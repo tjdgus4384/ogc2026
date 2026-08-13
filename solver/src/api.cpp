@@ -247,6 +247,14 @@ struct Engine {
     std::vector<int> lockVec;
     std::vector<int> checkpointFlat_;          // experimental in-run snapshot
     int checkpointOfficial_ = 0;
+    std::vector<int> archiveCheckpointFlat_;   // archive-arm result at snapshot
+    int archiveCheckpointOfficial_ = 0;
+    std::vector<int> controlBestFlat_;          // final unmodified control arm
+    double controlBestObjective_ = 0.0;
+    std::string finalRngState_;                 // complete serialized mt19937
+    std::vector<int> archiveSolutionFlat_;      // final winning sidecar only
+    int archiveReturned_ = 0;
+    int returnedOfficial_ = 0;
     int lastChunks_ = 0;                 // rounds completed by the last
     int lastChunks() const { return lastChunks_; }   // portfolio call
     double phaseNs_[4] = {0, 0, 0, 0};   // remove/insert/eval/samples
@@ -273,6 +281,21 @@ struct Engine {
     }
     std::vector<double> lastPhase() const {
         return {phaseNs_[0], phaseNs_[1], phaseNs_[2], phaseNs_[3]};
+    }
+    std::vector<int> flattenSolution(const core::Sol& src) const {
+        std::vector<int> out;
+        if (src.placed.empty()) return out;
+        out.reserve((size_t)pb.n * 7);
+        for (int i = 0; i < pb.n; i++) {
+            out.push_back(src.bay[i]);
+            out.push_back(src.ori[i]);
+            out.push_back(src.x[i]);
+            out.push_back(src.y[i]);
+            out.push_back(src.e[i]);
+            out.push_back(src.f[i]);
+            out.push_back((int)src.placed[i]);
+        }
+        return out;
     }
     // insert ONE unplaced block with an entry cap and an optional forced
     // bay -- the primitive for chasing an external plan (plan seeds,
@@ -686,7 +709,11 @@ struct Engine {
                                 double bigQProb = 0.04, int opMask = 0xFF,
                                 long maxIters = 0, bool stayRollout = false,
                                 bool exitClosure = false,
-                                long checkpointIter = 0) {
+                                long checkpointIter = 0,
+                                bool exitClosureArchive = false) {
+        if (exitClosure && exitClosureArchive)
+            throw std::invalid_argument(
+                "exitClosure and exitClosureArchive are mutually exclusive");
         alns::RunParams rp;
         rp.qloF = qlo; rp.qhiF = qhi; rp.T0mul = T0mul; rp.cooling = cooling;
         rp.hcFrac = hcFrac; rp.bigQProb = bigQProb;
@@ -694,26 +721,42 @@ struct Engine {
         rp.maxIters = maxIters;
         rp.stayRollout = stayRollout;
         rp.exitClosure = exitClosure;
-        core::Sol checkpoint;
+        rp.exitClosureArchive = exitClosureArchive;
+        core::Sol checkpoint, archiveCheckpoint, controlBest, archiveReturned;
         checkpointFlat_.clear();
         checkpointOfficial_ = 0;
+        archiveCheckpointFlat_.clear();
+        archiveCheckpointOfficial_ = 0;
+        controlBestFlat_.clear();
+        controlBestObjective_ = 0.0;
+        finalRngState_.clear();
+        archiveSolutionFlat_.clear();
+        archiveReturned_ = 0;
+        returnedOfficial_ = 0;
         rp.checkpointIter = checkpointIter;
         rp.checkpointOut = checkpointIter > 0 ? &checkpoint : nullptr;
         rp.checkpointOfficialOut = checkpointIter > 0
             ? &checkpointOfficial_ : nullptr;
+        rp.archiveCheckpointOut = checkpointIter > 0 && exitClosureArchive
+            ? &archiveCheckpoint : nullptr;
+        rp.archiveCheckpointOfficialOut =
+            checkpointIter > 0 && exitClosureArchive
+                ? &archiveCheckpointOfficial_ : nullptr;
+        rp.controlBestOut = &controlBest;
+        rp.controlBestObjectiveOut = &controlBestObjective_;
+        rp.finalRngStateOut = &finalRngState_;
+        rp.archiveReturnedOut = exitClosureArchive
+            ? &archiveReturned : nullptr;
         auto st = alns::run(ctx, seconds, rp, seed, auditEvery);
-        if (!checkpoint.placed.empty()) {
-            checkpointFlat_.reserve((size_t)pb.n * 7);
-            for (int i = 0; i < pb.n; i++) {
-                checkpointFlat_.push_back(checkpoint.bay[i]);
-                checkpointFlat_.push_back(checkpoint.ori[i]);
-                checkpointFlat_.push_back(checkpoint.x[i]);
-                checkpointFlat_.push_back(checkpoint.y[i]);
-                checkpointFlat_.push_back(checkpoint.e[i]);
-                checkpointFlat_.push_back(checkpoint.f[i]);
-                checkpointFlat_.push_back((int)checkpoint.placed[i]);
-            }
-        }
+        checkpointFlat_ = flattenSolution(checkpoint);
+        archiveCheckpointFlat_ = flattenSolution(archiveCheckpoint);
+        controlBestFlat_ = flattenSolution(controlBest);
+        archiveSolutionFlat_ = flattenSolution(archiveReturned);
+        archiveReturned_ = st.archiveReturned ? 1 : 0;
+        returnedOfficial_ = st.finalOfficial;
+        // Stable telemetry ABI: existing indices 0..43 are unchanged;
+        // archive tail = bound-pruned, updates, returned, gain, objective,
+        // full-audit rejects at 44..49.
         return {(double)st.iters, (double)st.accepted, (double)st.improved,
                 (double)st.failed, st.best, (double)st.badIter,
                 (double)st.badKind, (double)st.badPhase,
@@ -743,10 +786,34 @@ struct Engine {
                 (double)st.closurePaidDays, st.closureGain,
                 (double)st.finalOfficial,
                 (double)st.closureDetectorNs,
-                (double)st.closureSuffixNs};
+                (double)st.closureSuffixNs,
+                (double)st.archiveBoundPruned,
+                (double)st.archiveUpdates,
+                (double)st.archiveReturned,
+                st.archiveGain,
+                st.archiveObjective,
+                (double)st.archiveAuditRejects};
     }
     std::vector<int> getCheckpointSolution() const { return checkpointFlat_; }
     int checkpointOfficial() const { return checkpointOfficial_; }
+    std::vector<int> getArchiveCheckpointSolution() const {
+        return archiveCheckpointFlat_;
+    }
+    int archiveCheckpointOfficial() const {
+        return archiveCheckpointOfficial_;
+    }
+    std::vector<int> getControlBestSolution() const {
+        return controlBestFlat_;
+    }
+    double controlBestObjective() const { return controlBestObjective_; }
+    std::string finalRngState() const { return finalRngState_; }
+    // Archive mode intentionally leaves get_solution()/Occ on the control
+    // trajectory.  Only a strict, audited winner appears in this sidecar.
+    std::vector<int> getArchiveSolution() const {
+        return archiveSolutionFlat_;
+    }
+    int archiveReturned() const { return archiveReturned_; }
+    int returnedOfficial() const { return returnedOfficial_; }
 
     // the production search: N threads anneal in parallel; per-thread
     // parameters split exploit/explore (removal size, start temperature,
@@ -1220,9 +1287,20 @@ PYBIND11_MODULE(sscore, m) {
              py::arg("bigQProb") = 0.04, py::arg("opMask") = 255,
              py::arg("maxIters") = 0, py::arg("stayRollout") = false,
              py::arg("exitClosure") = false,
-             py::arg("checkpointIter") = 0)
+             py::arg("checkpointIter") = 0,
+             py::arg("exitClosureArchive") = false)
         .def("get_checkpoint_solution", &Engine::getCheckpointSolution)
         .def("checkpoint_official", &Engine::checkpointOfficial)
+        .def("get_archive_checkpoint_solution",
+             &Engine::getArchiveCheckpointSolution)
+        .def("archive_checkpoint_official",
+             &Engine::archiveCheckpointOfficial)
+        .def("get_control_best_solution", &Engine::getControlBestSolution)
+        .def("control_best_objective", &Engine::controlBestObjective)
+        .def("final_rng_state", &Engine::finalRngState)
+        .def("get_archive_solution", &Engine::getArchiveSolution)
+        .def("archive_returned", &Engine::archiveReturned)
+        .def("returned_official", &Engine::returnedOfficial)
         .def("reconstruct_assigned", &Engine::reconstructAssigned)
         .def("reconstruct_ordered_stays", &Engine::reconstructOrderedStays)
         .def("insert_capped", &Engine::insertCapped)

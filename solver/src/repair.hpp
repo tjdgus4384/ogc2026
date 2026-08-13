@@ -94,6 +94,9 @@ struct Ctx {
         bool phase3Policy = false;
     } exitClosure;
     bool exitClosureProbe = false;
+    // Archive observation is causally read-only: exact geometry calls bypass
+    // the thread-local direct-mapped memos so their history remains control's.
+    bool exitClosureMemoNeutral = false;
     bool exitClosureSeedSpent = false; // one structural attempt/neighbourhood
     int exitClosureCandidateTests = 0;
     int exitClosurePhase3WindowsNow = 0;
@@ -277,6 +280,7 @@ inline bool minimumExitClosure(const Problem& pb, Sol& trial, int bay,
 // this is a scan-order rule and a hard cost bound, not a fitted frequency.
 inline void observeExitClosure(Ctx& c, int A, bool phase3Policy = false) {
     if (!exitClosureProbeOpen(c) || !c.s->placed[A]) return;
+    crane::ScopedMemoBypass memoBypass(c.exitClosureMemoNeutral);
     const auto detectorStart = std::chrono::steady_clock::now();
     struct DetectorTimer {
         Ctx& c;

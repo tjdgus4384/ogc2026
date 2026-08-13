@@ -1,8 +1,10 @@
 #include <cassert>
 #include <algorithm>
+#include <string>
+#include <utility>
 #include <vector>
 
-#include "../src/repair.hpp"
+#include "../src/alns.hpp"
 
 namespace {
 
@@ -40,6 +42,11 @@ core::Problem make_problem(std::vector<std::vector<geom::Poly>> layers,
     pb.P = std::move(processing);
     pb.bayW = {(double)width};
     pb.bayH = {1};
+    pb.workload.assign(pb.n, 1.0);
+    pb.pref.assign(pb.n, std::vector<double>(1, 0.0));
+    pb.Smax.assign(pb.n, 0.0);
+    pb.u = {1.0};
+    pb.w1 = pb.w2 = pb.w3 = 1.0;
     return pb;
 }
 
@@ -147,10 +154,230 @@ void test_apply_occ(const core::Problem& pb, int candidate_id) {
     assert_occ_matches_rebuild(pb, live, horizon, oc);
 }
 
+core::Problem run_problem() {
+    // With integer placement coordinates in a unit-width bay, both blocks have
+    // exactly one position.  Block 1's upper layer obstructs block 0, while
+    // their bases are disjoint and block 0 does not obstruct block 1.
+    const geom::Poly left{{0, 0}, {0.4, 0}, {0.4, 1}, {0, 1}};
+    const geom::Poly right{{0.6, 0}, {1, 0}, {1, 1}, {0.6, 1}};
+    core::Problem pb = make_problem({{left}, {right, left}}, {2, 3}, 1);
+    pb.R = {0, 1};
+    pb.D = {4, 4};
+    // Keep the heuristic area screen out of this semantic fixture.  Geometry,
+    // crane feasibility, and the official archive audit remain exact.
+    pb.fillRatio = 10.0;
+    return pb;
+}
+
+bool same_solution(const core::Sol& a, const core::Sol& b) {
+    return a.placed == b.placed && a.bay == b.bay && a.ori == b.ori &&
+           a.x == b.x && a.y == b.y && a.e == b.e && a.f == b.f &&
+           a.byBay == b.byBay;
+}
+
+std::vector<int> flat_solution(const core::Sol& s) {
+    std::vector<int> out;
+    out.reserve(s.placed.size() * 7);
+    for (size_t i = 0; i < s.placed.size(); i++) {
+        out.push_back(s.bay[i]);
+        out.push_back(s.ori[i]);
+        out.push_back(s.x[i]);
+        out.push_back(s.y[i]);
+        out.push_back(s.e[i]);
+        out.push_back(s.f[i]);
+        out.push_back((int)s.placed[i]);
+    }
+    return out;
+}
+
+bool same_live_occ(const occ::OccIndex& a, const occ::OccIndex& b) {
+    if (a.bay.size() != b.bay.size() || a.areaUsed != b.areaUsed)
+        return false;
+    for (size_t j = 0; j < a.bay.size(); j++)
+        if (a.bay[j].bits != b.bay[j].bits) return false;
+    return true;
+}
+
+struct RunCapture {
+    core::Sol live, controlBest, checkpoint, archiveCheckpoint,
+              archiveReturned;
+    occ::OccIndex oc;
+    alns::RunStats stats;
+    double controlObjective = 0.0;
+    int checkpointOfficial = 0, archiveCheckpointOfficial = 0;
+    std::string finalRngState;
+};
+
+RunCapture run_arm(const core::Problem& pb, const core::Sol& start,
+                   uint64_t seed, bool archive) {
+    constexpr int horizon = 10;
+    RunCapture out;
+    out.live = start;
+    out.oc.build(pb, horizon);
+    stamp_all(pb, out.live, out.oc);
+
+    repair::Ctx ctx{};
+    ctx.pb = &pb;
+    ctx.s = &out.live;
+    ctx.oc = &out.oc;
+    ctx.horizon = horizon;
+
+    alns::RunParams rp;
+    rp.opMask = 1u << 0;       // every completed neighbourhood is random-removal
+    rp.bigQProb = 0.0;
+    rp.hcFrac = 1.0;           // exercise the ordinary shared SA draw on ties
+    rp.maxIters = 8;
+    rp.exitClosureArchive = archive;
+    rp.checkpointIter = rp.maxIters;
+    rp.checkpointOut = &out.checkpoint;
+    rp.checkpointOfficialOut = &out.checkpointOfficial;
+    if (archive) {
+        rp.archiveCheckpointOut = &out.archiveCheckpoint;
+        rp.archiveCheckpointOfficialOut =
+            &out.archiveCheckpointOfficial;
+    }
+    rp.controlBestOut = &out.controlBest;
+    rp.controlBestObjectiveOut = &out.controlObjective;
+    rp.finalRngStateOut = &out.finalRngState;
+    rp.archiveReturnedOut = &out.archiveReturned;
+    out.stats = alns::run(ctx, 60.0, rp, seed, 1);
+    return out;
+}
+
+void assert_common_stats(const alns::RunStats& control,
+                         const alns::RunStats& archive) {
+    assert(control.iters == archive.iters);
+    assert(control.accepted == archive.accepted);
+    assert(control.improved == archive.improved);
+    assert(control.failed == archive.failed);
+    assert(control.best == archive.best);
+    assert(control.tSamples == archive.tSamples);
+    assert(control.badIter == archive.badIter);
+    assert(control.badKind == archive.badKind);
+    assert(control.badPhase == archive.badPhase);
+    assert(control.exitTwinTests == archive.exitTwinTests);
+    assert(control.exitTwinPass == archive.exitTwinPass);
+    assert(control.exitTwinCompared == archive.exitTwinCompared);
+    assert(control.exitTwinDominant == archive.exitTwinDominant);
+    assert(control.exitTwinRescued == archive.exitTwinRescued);
+    assert(control.phase2Calls == archive.phase2Calls);
+    assert(control.phase2Success == archive.phase2Success);
+    assert(control.stayNeighbourhoods == archive.stayNeighbourhoods);
+    assert(control.stayTried == archive.stayTried);
+    assert(control.stayBuilt == archive.stayBuilt);
+    assert(control.staySelected == archive.staySelected);
+    assert(control.stayRescued == archive.stayRescued);
+    assert(control.stayGain == archive.stayGain);
+    for (int k = 0; k < 10; k++) {
+        assert(control.opUsed[k] == archive.opUsed[k]);
+        assert(control.opImp[k] == archive.opImp[k]);
+    }
+    // These are live-closure decision counters, not observer telemetry.  The
+    // archive arm must leave all of them exactly at the OFF value.
+    assert(control.closureSelected == archive.closureSelected);
+    assert(control.closureAccepted == archive.closureAccepted);
+    assert(control.closureNewBest == archive.closureNewBest);
+    assert(control.closureRescued == archive.closureRescued);
+    assert(control.closureExtendedBlocks == archive.closureExtendedBlocks);
+    assert(control.closureExtendedDays == archive.closureExtendedDays);
+    assert(control.closurePaidDays == archive.closurePaidDays);
+    assert(control.closureGain == archive.closureGain);
+}
+
+void test_archive_run_integration() {
+    const core::Problem pb = run_problem();
+    const core::Sol start = schedule(4, 6, 1, 4);
+    core::Sol auditedStart = start;
+    assert(alns::audit(pb, auditedStart) == 0);
+    assert(core::evaluate(pb, start).total == 2.0);
+
+    // Shift/swap are fixed production operators that can consume an iteration.
+    // Search a tiny deterministic seed range instead of adding a production
+    // test hook; every actual trial still traverses alns::run end-to-end.
+    RunCapture archive;
+    uint64_t chosenSeed = 0;
+    bool found = false;
+    for (uint64_t seed = 0; seed < 32 && !found; seed++) {
+        RunCapture trial = run_arm(pb, start, seed, true);
+        if (trial.stats.archiveReturned == 1) {
+            archive = std::move(trial);
+            chosenSeed = seed;
+            found = true;
+        }
+    }
+    assert(found);
+    RunCapture control = run_arm(pb, start, chosenSeed, false);
+
+    assert_common_stats(control.stats, archive.stats);
+    assert(flat_solution(control.controlBest) ==
+           flat_solution(archive.controlBest));
+    assert(flat_solution(control.checkpoint) ==
+           flat_solution(archive.checkpoint));
+    assert(same_solution(control.live, archive.live));
+    assert(same_solution(control.live, control.controlBest));
+    assert(same_solution(archive.live, archive.controlBest));
+    assert(same_live_occ(control.oc, archive.oc));
+    assert_occ_matches_rebuild(pb, control.live, 10, control.oc);
+    assert_occ_matches_rebuild(pb, archive.live, 10, archive.oc);
+    assert(control.controlObjective == archive.controlObjective);
+    assert(control.controlObjective == 2.0);
+    assert(!control.finalRngState.empty());
+    assert(control.finalRngState == archive.finalRngState);
+    assert(control.checkpointOfficial == 0);
+    assert(archive.checkpointOfficial == 0);
+    assert(control.stats.finalOfficial == 0);
+    assert(control.archiveCheckpoint.placed.empty());
+
+    assert(control.stats.archiveBoundPruned == 0);
+    assert(control.stats.archiveUpdates == 0);
+    assert(control.stats.archiveReturned == 0);
+    assert(control.stats.archiveGain == 0.0);
+    assert(control.stats.archiveObjective == 0.0);
+    assert(control.stats.archiveAuditRejects == 0);
+    assert(control.archiveReturned.placed.empty());
+
+    assert(archive.stats.archiveUpdates >= 1);
+    assert(archive.stats.archiveReturned == 1);
+    assert(archive.stats.archiveGain == 2.0);
+    assert(archive.stats.archiveObjective == 0.0);
+    assert(archive.stats.archiveAuditRejects == 0);
+    assert(archive.stats.finalOfficial == 1);
+    assert(archive.stats.closureSuffixBuilt >= archive.stats.archiveUpdates);
+    assert(!archive.archiveReturned.placed.empty());
+    assert(!same_solution(archive.live, archive.archiveReturned));
+    assert(archive.archiveReturned.e[0] == 0);
+    assert(archive.archiveReturned.f[0] == 4);
+    assert(alns::auditClosureArchive(pb, archive.archiveReturned, 10) == 0);
+    assert(core::evaluate(pb, archive.archiveReturned).total == 0.0);
+    assert(alns::hasExtendedStay(pb, archive.archiveReturned));
+    assert(archive.archiveCheckpointOfficial == 1);
+    assert(same_solution(archive.archiveCheckpoint,
+                         archive.archiveReturned));
+}
+
 }  // namespace
 
 int main() {
     const core::Problem pb = problem();
+
+    // Memo-neutral speculation must use the exact geometry fallback, restore
+    // nested state, and return the same predicate as the normal cached path.
+    assert(crane::memoEnabled());
+    const bool cachedBlock = core::entryBlocked(
+        pb, schedule(0, 2, 1, 4), 1, 0);
+    {
+        crane::ScopedMemoBypass outer(true);
+        assert(!crane::memoEnabled());
+        assert(core::entryBlocked(pb, schedule(0, 2, 1, 4), 1, 0) ==
+               cachedBlock);
+        {
+            crane::ScopedMemoBypass inner(true);
+            assert(!crane::memoEnabled());
+        }
+        assert(!crane::memoEnabled());
+    }
+    assert(crane::memoEnabled());
+
     assert(core::entryBlocked(pb, schedule(0, 2, 1, 4), 1, 0));
     assert(!core::entryBlocked(pb, schedule(0, 2, 1, 4), 0, 1));
     assert(!core::restOverlap(pb, schedule(0, 2, 1, 4), 0, 1));
@@ -234,4 +461,35 @@ int main() {
     assert(!repair::minimumExitClosure(
         pb, wrong, 0, 10, extensions, cycle, hard));
     assert(hard);
+
+    // The archive selector is a pure, strict true-objective minimum.  It must
+    // recompute both values instead of trusting a stale scalar, preserve both
+    // inputs, return an overlong official sidecar when it wins, and give every
+    // tie to control.
+    core::Problem choicePb = problem();
+    choicePb.D = {4, 10};
+    const core::Sol control = schedule(4, 6, 1, 4);  // two tardy days
+    core::Sol archived = schedule(0, 4, 1, 4); // overlong, no tardiness
+    assert(alns::auditClosureArchive(choicePb, archived, 10) == 0);
+    const auto chosen = alns::chooseClosureArchive(
+        choicePb, control, &archived,
+        std::numeric_limits<double>::infinity());
+    assert(chosen.returnedArchive && chosen.official);
+    assert(chosen.controlObjective == 2.0);
+    assert(chosen.archiveObjective == 0.0);
+    assert(chosen.solution.e == archived.e && chosen.solution.f == archived.f);
+    assert(control.e == std::vector<int>({4, 1}));
+    assert(control.f == std::vector<int>({6, 4}));
+
+    const auto tied = alns::chooseClosureArchive(
+        choicePb, archived, &archived, -1e300); // malicious stale hint
+    assert(!tied.returnedArchive && !tied.official);
+    assert(tied.controlObjective == tied.archiveObjective);
+
+    core::Sol incomplete = archived;
+    incomplete.placed[1] = 0;
+    incomplete.rebuildIdx(1);
+    assert(alns::auditClosureArchive(choicePb, incomplete, 10) != 0);
+
+    test_archive_run_integration();
 }

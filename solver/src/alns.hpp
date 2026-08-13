@@ -12,6 +12,9 @@
 #include <cmath>
 #include <cstdio>
 #include <limits>
+#include <sstream>
+#include <stdexcept>
+#include <string>
 
 namespace alns {
 using core::Problem; using core::Sol;
@@ -64,6 +67,9 @@ struct RunStats { long iters=0, accepted=0, improved=0, failed=0; double best;
                        closureExtendedDays=0, closurePaidDays=0;
                   double closureGain=0.0;
                   long closureDetectorNs=0, closureSuffixNs=0;
+                  long archiveBoundPruned=0, archiveUpdates=0,
+                       archiveReturned=0, archiveAuditRejects=0;
+                  double archiveGain=0.0, archiveObjective=0.0;
                   int finalOfficial=0;
                   long badIter=-1; int badKind=-1; int badPhase=-1; };
 
@@ -100,6 +106,43 @@ inline bool hasExtendedStay(const core::Problem& pb, const core::Sol& s) {
     return false;
 }
 
+// Pure end-of-run selector for the closure archive.  `auditedArchive`, when
+// non-null, is a complete solution already checked with flexible exits by the
+// caller. `auditedArchiveObjective` is only a diagnostic hint; selection
+// recomputes the official total from the immutable solution.
+// The control incumbent wins every tie; selecting an archive never mutates
+// either input or feeds it back into the search trajectory.
+struct ClosureArchiveChoice {
+    Sol solution;
+    double controlObjective = 0.0;
+    double archiveObjective = 0.0;
+    bool returnedArchive = false;
+    bool official = false;
+};
+
+inline ClosureArchiveChoice chooseClosureArchive(
+        const Problem& pb, const Sol& control,
+        const Sol* auditedArchive = nullptr,
+        double auditedArchiveObjective =
+            std::numeric_limits<double>::infinity()) {
+    ClosureArchiveChoice out;
+    out.solution = control;
+    out.controlObjective = core::evaluate(pb, control).total;
+    if (auditedArchive) {
+        // Never trust a cached scalar at the hard-dominance boundary.  The
+        // argument remains part of the sidecar API for diagnostics, but the
+        // immutable solution is the sole source of truth for selection.
+        (void)auditedArchiveObjective;
+        out.archiveObjective = core::evaluate(pb, *auditedArchive).total;
+        if (out.archiveObjective < out.controlObjective) {
+            out.solution = *auditedArchive;
+            out.returnedArchive = true;
+            out.official = hasExtendedStay(pb, out.solution);
+        }
+    }
+    return out;
+}
+
 inline int audit(const core::Problem& pb, core::Sol& s,
                  int* badBlock = nullptr, bool flexibleExits = false) {
     std::vector<int> cnt(pb.n, 0);
@@ -120,6 +163,45 @@ inline int audit(const core::Problem& pb, core::Sol& s,
         if (!ok && !flexibleExits && knobs::exitTwin())
             ok = core::vpFlexibleExits(pb, s, i);
         if (!ok) { if (badBlock) *badBlock = i; return 4; }
+    }
+    return 0;
+}
+
+// Strong archive-boundary audit.  `audit(..., true)` checks every placement
+// against the flexible-exit oracle, but that oracle proves same-day exits by
+// construction rather than materializing a complete checker event order.
+// A sidecar may be emitted much later, so additionally require a concrete
+// ENTRY and EXIT order on every distinct event day of every bay.
+inline int auditClosureArchive(const Problem& pb, Sol& s, int horizon,
+                               int* badBlock = nullptr) {
+    for (int i = 0; i < pb.n; i++) {
+        if (!s.placed[i] || s.bay[i] < 0 || s.bay[i] >= pb.m ||
+            s.ori[i] < 0 ||
+            s.ori[i] >= (int)pb.geo[i].orients.size() ||
+            s.e[i] < 0 || s.e[i] < pb.R[i] || s.f[i] < s.e[i] ||
+            s.f[i] - s.e[i] < pb.P[i] || s.f[i] > horizon) {
+            if (badBlock) *badBlock = i;
+            return 5;
+        }
+    }
+    const int base = audit(pb, s, badBlock, true);
+    if (base != 0) return base;
+
+    std::vector<int> days, order;
+    for (int bay = 0; bay < pb.m; bay++) {
+        days.clear();
+        for (int i : s.byBay[bay]) days.push_back(s.e[i]);
+        std::sort(days.begin(), days.end());
+        days.erase(std::unique(days.begin(), days.end()), days.end());
+        for (int day : days)
+            if (!core::entryOrderAt(pb, s, bay, day, order)) return 6;
+
+        days.clear();
+        for (int i : s.byBay[bay]) days.push_back(s.f[i]);
+        std::sort(days.begin(), days.end());
+        days.erase(std::unique(days.begin(), days.end()), days.end());
+        for (int day : days)
+            if (!core::exitOrderAt(pb, s, bay, day, order)) return 7;
     }
     return 0;
 }
@@ -441,12 +523,24 @@ struct RunParams {
     long checkpointIter = 0;     // read-only incumbent snapshot within this run
     Sol* checkpointOut = nullptr;
     int* checkpointOfficialOut = nullptr;
+    bool exitClosureArchive = false; // sidecar-only closure incumbent oracle
+    Sol* controlBestOut = nullptr;
+    double* controlBestObjectiveOut = nullptr;
+    std::string* finalRngStateOut = nullptr;
+    Sol* archiveReturnedOut = nullptr;
+    Sol* archiveCheckpointOut = nullptr;
+    int* archiveCheckpointOfficialOut = nullptr;
 };
 
 inline int spatialCompact(repair::Ctx& c, int passes);
 
 inline RunStats run(repair::Ctx& c, double seconds, const RunParams& rp,
                     uint64_t seedv, int auditEvery = 0) {
+
+    if (rp.exitClosure && rp.exitClosureArchive)
+        throw std::invalid_argument(
+            "exitClosure and exitClosureArchive are mutually exclusive");
+    if (rp.archiveReturnedOut) *rp.archiveReturnedOut = Sol{};
 
     const Problem& pb = *c.pb; Sol& s = *c.s;
     const long twinTests0 = c.exitTwinTests, twinPass0 = c.exitTwinPass;
@@ -486,6 +580,35 @@ inline RunStats run(repair::Ctx& c, double seconds, const RunParams& rp,
     };
     double cur = obj(), best = cur;
     Sol bestSol = s;
+    double controlBestTrue = rp.exitClosureArchive
+        ? core::evaluate(pb, bestSol).total : 0.0;
+    Sol archiveBestSol;
+    double archiveBestObjective = std::numeric_limits<double>::infinity();
+    bool archiveValid = false;
+    bool archiveLowerBoundSafe = rp.exitClosureArchive &&
+        (int)pb.Smax.size() >= pb.n && (int)pb.pref.size() >= pb.n &&
+        std::isfinite(pb.w1) && std::isfinite(pb.w2) &&
+        std::isfinite(pb.w3) && pb.w1 >= 0.0 && pb.w2 >= 0.0 &&
+        pb.w3 >= 0.0 && core::glsPen() == nullptr &&
+        core::slackW() == 0.0;
+    // The partial bound drops every future block's z1/z3 contribution.  Prove
+    // those omitted terms nonnegative for every bay, rather than relying only
+    // on the loader's Smax construction.  Malformed/negative regret simply
+    // disables pruning; suffix replay and archive correctness remain intact.
+    for (int i = 0; archiveLowerBoundSafe && i < pb.n; i++) {
+        if (!std::isfinite(pb.Smax[i]) ||
+            (int)pb.pref[i].size() < pb.m) {
+            archiveLowerBoundSafe = false;
+            break;
+        }
+        for (int bay = 0; bay < pb.m; bay++) {
+            const double regret = pb.Smax[i] - pb.pref[i][bay];
+            if (!std::isfinite(regret) || regret < 0.0) {
+                archiveLowerBoundSafe = false;
+                break;
+            }
+        }
+    }
     bool currentOfficial = false; // true only after this arm accepts a closure
     bool bestOfficial = false;
     int qlo = std::max(2, (int)(rp.qloF * pb.n));
@@ -519,11 +642,23 @@ inline RunStats run(repair::Ctx& c, double seconds, const RunParams& rp,
     bool closureOccReady = false;
     bool checkpointSaved = false;
     auto saveCheckpoint = [&] {
-        if (!checkpointSaved && rp.checkpointOut && rp.checkpointIter > 0) {
-            *rp.checkpointOut = bestSol;
+        if (!checkpointSaved && rp.checkpointIter > 0 &&
+            (rp.checkpointOut || rp.archiveCheckpointOut)) {
+            if (rp.checkpointOut) *rp.checkpointOut = bestSol;
             if (rp.checkpointOfficialOut)
                 *rp.checkpointOfficialOut =
                     bestOfficial && hasExtendedStay(pb, bestSol) ? 1 : 0;
+            if (rp.archiveCheckpointOut) {
+                // The existing checkpoint remains the immutable control arm.
+                // This second snapshot is what the archive arm would return
+                // at the same boundary, without ever seeding the next move.
+                const auto choice = chooseClosureArchive(
+                    pb, bestSol, archiveValid ? &archiveBestSol : nullptr,
+                    archiveBestObjective);
+                *rp.archiveCheckpointOut = choice.solution;
+                if (rp.archiveCheckpointOfficialOut)
+                    *rp.archiveCheckpointOfficialOut = choice.official ? 1 : 0;
+            }
             checkpointSaved = true;
         }
     };
@@ -632,6 +767,9 @@ inline RunStats run(repair::Ctx& c, double seconds, const RunParams& rp,
                             cur = nv4;
                             if (nv4 < best - 1e-9) {
                                 best = nv4; bestSol = s; st.improved++;
+                                if (rp.exitClosureArchive)
+                                    controlBestTrue =
+                                        core::evaluate(pb, bestSol).total;
                                 bestOfficial = currentOfficial;
                                 sinceBest = 0;
                             }
@@ -717,6 +855,9 @@ inline RunStats run(repair::Ctx& c, double seconds, const RunParams& rp,
                         cur = nv2;
                         if (nv2 < best - 1e-9) {
                             best = nv2; bestSol = s; st.improved++;
+                            if (rp.exitClosureArchive)
+                                controlBestTrue =
+                                    core::evaluate(pb, bestSol).total;
                             bestOfficial = currentOfficial;
                             sinceBest = 0;
                         }
@@ -815,7 +956,7 @@ no_swap:
                 return true;
             };
 
-            if (rp.exitClosure && !bigQ) {
+            if ((rp.exitClosure || rp.exitClosureArchive) && !bigQ) {
                 // Immutable normal repair plus at most one structural branch.
                 // The observer is reset once per neighbourhood, not once per
                 // inserted block: the first raw one-way witness owns the only
@@ -831,6 +972,8 @@ no_swap:
                 bool witnessNormalInserted = false;
                 repair::Ctx::ExitClosureWitness witness;
                 bool normalOK = true;
+                const bool memoNeutralBefore = c.exitClosureMemoNeutral;
+                c.exitClosureMemoNeutral = rp.exitClosureArchive;
                 repair::resetExitClosureProbe(c, true);
                 for (int pos = 0; pos < (int)rem.size(); pos++) {
                     const int A = rem[pos];
@@ -846,12 +989,17 @@ no_swap:
                     }
                 }
                 repair::resetExitClosureProbe(c, false);
+                c.exitClosureMemoNeutral = memoNeutralBefore;
                 const std::mt19937 rngAfterNormal = c.rng;
                 const auto exitFallbackAfterNormal = c.exitFallback;
-                const double normalPen = normalOK
+                // A no-witness neighbourhood never compares repairs; avoid a
+                // full objective pass on that overwhelmingly common path.
+                const double normalPen = normalOK && witnessPos >= 0 &&
+                    !rp.exitClosureArchive
                     ? core::evaluatePen(pb, s).total
                     : std::numeric_limits<double>::infinity();
-                const double normalTrue = normalOK
+                const double normalTrue = normalOK && witnessPos >= 0 &&
+                    !rp.exitClosureArchive
                     ? core::evaluate(pb, s).total
                     : std::numeric_limits<double>::infinity();
 
@@ -873,10 +1021,13 @@ no_swap:
                         if (closureSol.placed[i])
                             closureOcc.stamp(pb, closureSol, i, true);
                     closureOcc.areaUsed = destroyedArea;
+                    crane::ScopedMemoBypass archiveBranchMemo(
+                        rp.exitClosureArchive);
                     repair::Ctx branch = c;
                     branch.s = &closureSol;
                     branch.oc = &closureOcc;
                     branch.rng = rngBefore;
+                    branch.exitClosureMemoNeutral = rp.exitClosureArchive;
                     branch.exitFallback.valid = false;
                     repair::resetExitClosureProbe(branch, false);
                     branchOK = true;
@@ -913,6 +1064,43 @@ no_swap:
                                 branchOK = false;
                                 break;
                             }
+                            if (archiveLowerBoundSafe) {
+                                // Sound partial-suffix lower bound: every
+                                // unplaced block has nonnegative tardiness and
+                                // preference regret under official weights.
+                                // Load imbalance is deliberately bounded by
+                                // zero because future placements may reduce it.
+                                // With no surrogate/GLS, the control best true
+                                // objective is monotone, so today's incumbent
+                                // also remains a valid final upper bound.
+                                double placedZ1 = 0.0, placedZ3 = 0.0;
+                                for (int i = 0; i < pb.n; i++) {
+                                    if (!closureSol.placed[i]) continue;
+                                    placedZ1 += std::max(
+                                        0, closureSol.f[i] - pb.D[i]);
+                                    placedZ3 +=
+                                        (pb.Smax[i] -
+                                         pb.pref[i][closureSol.bay[i]]);
+                                }
+                                const double lowerBound =
+                                    pb.w1 * placedZ1 + pb.w3 * placedZ3;
+                                const double target = std::min(
+                                    controlBestTrue, archiveBestObjective);
+                                // A negative/nonfinite placed z3 would falsify
+                                // the omitted-future argument; be conservative
+                                // even though the global proof above excludes
+                                // it for well-formed official instances.
+                                if (placedZ3 >= 0.0 &&
+                                    std::isfinite(placedZ1) &&
+                                    std::isfinite(placedZ3) &&
+                                    std::isfinite(lowerBound) &&
+                                    std::isfinite(target) &&
+                                    lowerBound >= target) {
+                                    st.archiveBoundPruned++;
+                                    branchOK = false;
+                                    break;
+                                }
+                            }
                         } else if (!inserted) {
                             branchOK = false;
                             break;
@@ -920,19 +1108,41 @@ no_swap:
                     }
                     if (branchOK) {
                         int bad = -1;
-                        if (audit(pb, closureSol, &bad, true) != 0) {
+                        const int archiveAudit = rp.exitClosureArchive
+                            ? auditClosureArchive(
+                                  pb, closureSol, c.horizon, &bad)
+                            : audit(pb, closureSol, &bad, true);
+                        if (archiveAudit != 0) {
                             branchOK = false;
+                            if (rp.exitClosureArchive)
+                                st.archiveAuditRejects++;
                         } else {
                             st.closureSuffixBuilt++;
-                            branchPen = core::evaluatePen(
-                                pb, closureSol).total;
                             branchTrue = core::evaluate(
                                 pb, closureSol).total;
-                            branchFallback = branch.exitFallback;
-                            branchOcc = saveOcc(closureOcc);
+                            if (!rp.exitClosureArchive) {
+                                branchPen = core::evaluatePen(
+                                    pb, closureSol).total;
+                                branchFallback = branch.exitFallback;
+                                branchOcc = saveOcc(closureOcc);
+                            }
                         }
                     }
                     st.closureSuffixNs += tick() - suffixStart;
+                }
+
+                // Archive qualification is exclusively by audited official
+                // objective.  It is intentionally independent of normal
+                // repair, SA, destroyer rewards, and the live incumbent.
+                if (rp.exitClosureArchive && branchOK) {
+                    const double target = std::min(
+                        controlBestTrue, archiveBestObjective);
+                    if (branchTrue < target) {
+                        archiveBestSol = closureSol;
+                        archiveBestObjective = branchTrue;
+                        archiveValid = true;
+                        st.archiveUpdates++;
+                    }
                 }
 
                 // Speculation owns neither future randomness nor live state.
@@ -941,73 +1151,79 @@ no_swap:
                 // decision to the exact uniform draw normal would consume.
                 c.rng = rngAfterNormal;
                 c.exitFallback = exitFallbackAfterNormal;
-                double trueCurBefore = 0.0;
-                if (branchOK && !normalOK) {
-                    // Rescue is the only comparison that needs the true
-                    // pre-destroy objective.  Reconstruct it lazily from the
-                    // exact backups instead of paying an O(n+m^2) evaluation
-                    // in every closure-eligible neighbourhood.
-                    Sol incumbent = destroyed;
-                    for (const auto& b : bk) {
-                        incumbent.bay[b.A]=b.bay;
-                        incumbent.ori[b.A]=b.ori;
-                        incumbent.x[b.A]=b.x;
-                        incumbent.y[b.A]=b.y;
-                        incumbent.e[b.A]=b.e;
-                        incumbent.f[b.A]=b.f;
-                        incumbent.placed[b.A]=1;
-                        incumbent.addIdx(b.A);
-                    }
-                    trueCurBefore = core::evaluate(pb, incumbent).total;
-                }
-                const bool betterRepair = branchOK && normalOK &&
-                    branchPen < normalPen - 1e-9 &&
-                    branchTrue < normalTrue - 1e-9;
-                const bool improvingRescue = branchOK && !normalOK &&
-                    branchPen < cur - 1e-9 &&
-                    branchTrue < trueCurBefore - 1e-9;
-                if (betterRepair || improvingRescue) {
-                    st.closureSelected++;
-                    if (!normalOK) st.closureRescued++;
-                    st.closureGain += normalOK
-                        ? normalTrue - branchTrue
-                        : trueCurBefore - branchTrue;
-                    st.closureExtendedBlocks += witness.extendedBlocks;
-                    st.closureExtendedDays += witness.extendedDays;
-                    st.closurePaidDays += witness.paidDays;
-
-                    bool branchAccepted = true;
-                    if (normalOK) {
-                        const double normalDelta = normalPen - cur;
-                        const double branchDelta = branchPen - cur;
-                        if (hc) {
-                            branchAccepted = branchDelta < -1e-9;
-                        } else if (normalDelta >= -1e-9) {
-                            const double u = U(c.rng); // normal's one draw
-                            const bool normalAccepted =
-                                u < std::exp(-normalDelta /
-                                    std::max(1e-9, T));
-                            branchAccepted = branchDelta < -1e-9 ||
-                                u < std::exp(-branchDelta /
-                                    std::max(1e-9, T));
-                            // A strictly lower candidate cannot be rejected by
-                            // the shared draw when normal would be accepted.
-                            if (normalAccepted && !branchAccepted)
-                                branchAccepted = true;
-                        }
-                    }
-
-                    forcedAcceptance = branchAccepted ? 1 : 0;
-                    if (branchAccepted) {
-                        s = closureSol;
-                        loadOcc(*c.oc, branchOcc);
-                        c.exitFallback = branchFallback;
-                        currentOfficial = true;
-                        closureAcceptedCandidate = true;
-                    }
-                    ok = normalOK || branchAccepted;
-                } else {
+                if (rp.exitClosureArchive) {
+                    // The sidecar has no live-selection telemetry: normal
+                    // repair proceeds to the unmodified legacy SA below.
                     ok = normalOK;
+                } else {
+                    double trueCurBefore = 0.0;
+                    if (branchOK && !normalOK) {
+                        // Rescue is the only comparison that needs the true
+                        // pre-destroy objective.  Reconstruct it lazily from the
+                        // exact backups instead of paying an O(n+m^2) evaluation
+                        // in every closure-eligible neighbourhood.
+                        Sol incumbent = destroyed;
+                        for (const auto& b : bk) {
+                            incumbent.bay[b.A]=b.bay;
+                            incumbent.ori[b.A]=b.ori;
+                            incumbent.x[b.A]=b.x;
+                            incumbent.y[b.A]=b.y;
+                            incumbent.e[b.A]=b.e;
+                            incumbent.f[b.A]=b.f;
+                            incumbent.placed[b.A]=1;
+                            incumbent.addIdx(b.A);
+                        }
+                        trueCurBefore = core::evaluate(pb, incumbent).total;
+                    }
+                    const bool betterRepair = branchOK && normalOK &&
+                        branchPen < normalPen - 1e-9 &&
+                        branchTrue < normalTrue - 1e-9;
+                    const bool improvingRescue = branchOK && !normalOK &&
+                        branchPen < cur - 1e-9 &&
+                        branchTrue < trueCurBefore - 1e-9;
+                    if (betterRepair || improvingRescue) {
+                        st.closureSelected++;
+                        if (!normalOK) st.closureRescued++;
+                        st.closureGain += normalOK
+                            ? normalTrue - branchTrue
+                            : trueCurBefore - branchTrue;
+                        st.closureExtendedBlocks += witness.extendedBlocks;
+                        st.closureExtendedDays += witness.extendedDays;
+                        st.closurePaidDays += witness.paidDays;
+
+                        bool branchAccepted = true;
+                        if (normalOK) {
+                            const double normalDelta = normalPen - cur;
+                            const double branchDelta = branchPen - cur;
+                            if (hc) {
+                                branchAccepted = branchDelta < -1e-9;
+                            } else if (normalDelta >= -1e-9) {
+                                const double u = U(c.rng); // normal's one draw
+                                const bool normalAccepted =
+                                    u < std::exp(-normalDelta /
+                                        std::max(1e-9, T));
+                                branchAccepted = branchDelta < -1e-9 ||
+                                    u < std::exp(-branchDelta /
+                                        std::max(1e-9, T));
+                                // A strictly lower candidate cannot be rejected
+                                // by the shared draw when normal would be.
+                                if (normalAccepted && !branchAccepted)
+                                    branchAccepted = true;
+                            }
+                        }
+
+                        forcedAcceptance = branchAccepted ? 1 : 0;
+                        if (branchAccepted) {
+                            s = closureSol;
+                            loadOcc(*c.oc, branchOcc);
+                            c.exitFallback = branchFallback;
+                            currentOfficial = true;
+                            closureAcceptedCandidate = true;
+                        }
+                        ok = normalOK || branchAccepted;
+                    } else {
+                        ok = normalOK;
+                    }
                 }
             } else if (!rp.stayRollout || bigQ) {
                 ok = repairPlain(c, -1, -1, nullptr, nullptr);
@@ -1138,6 +1354,8 @@ no_swap:
             if (closureAcceptedCandidate) st.closureAccepted++;
             if (nv < best - 1e-9) {
                 best = nv; bestSol = s; st.improved++; sinceBest = 0;
+                if (rp.exitClosureArchive)
+                    controlBestTrue = core::evaluate(pb, bestSol).total;
                 bestOfficial = currentOfficial;
                 if (closureAcceptedCandidate) st.closureNewBest++;
                 ds.score[kind] += 3.0; ds.totImp[kind]++;
@@ -1180,7 +1398,38 @@ no_swap:
     }
     if (st.iters >= rp.checkpointIter && rp.checkpointIter > 0)
         saveCheckpoint();
+    // Export the exact control artifacts before selecting a sidecar result.
+    // mt19937's standard stream representation captures its complete state;
+    // serializing it is read-only and avoids a lossy sampled signature.
+    ClosureArchiveChoice archiveChoice;
+    if (rp.exitClosureArchive) {
+        archiveChoice = chooseClosureArchive(
+            pb, bestSol, archiveValid ? &archiveBestSol : nullptr,
+            archiveBestObjective);
+        controlBestTrue = archiveChoice.controlObjective;
+    } else if (rp.controlBestObjectiveOut) {
+        controlBestTrue = core::evaluate(pb, bestSol).total;
+    }
+    if (rp.controlBestOut) *rp.controlBestOut = bestSol;
+    if (rp.controlBestObjectiveOut)
+        *rp.controlBestObjectiveOut = controlBestTrue;
+    if (rp.finalRngStateOut) {
+        std::ostringstream rngState;
+        rngState << c.rng;
+        *rp.finalRngStateOut = rngState.str();
+    }
+
     s = bestSol;
+    if (rp.exitClosureArchive) {
+        st.archiveObjective = archiveValid
+            ? archiveChoice.archiveObjective : 0.0;
+        st.archiveReturned = archiveChoice.returnedArchive ? 1 : 0;
+        st.archiveGain = archiveChoice.returnedArchive
+            ? archiveChoice.controlObjective - archiveChoice.archiveObjective
+            : 0.0;
+        if (archiveChoice.returnedArchive && rp.archiveReturnedOut)
+            *rp.archiveReturnedOut = archiveChoice.solution;
+    }
     // A committed closure can leave the live occupancy cache on a different SA
     // state from bestSol.  Repair that cache only when this run actually
     // accepted a closure; no-selected/no-accepted experiment arms retain the
@@ -1217,8 +1466,10 @@ no_swap:
     st.closureBudgetHits =
         c.exitClosureBudgetHits - closureBudgetHits0;
     st.closureDetectorNs = c.exitClosureDetectorNs - closureDetectorNs0;
-    st.finalOfficial = rp.exitClosure && bestOfficial &&
-        hasExtendedStay(pb, bestSol) ? 1 : 0;
+    st.finalOfficial = rp.exitClosureArchive
+        ? (archiveChoice.returnedArchive && archiveChoice.official ? 1 : 0)
+        : (rp.exitClosure && bestOfficial &&
+           hasExtendedStay(pb, bestSol) ? 1 : 0);
     if (getenv("SMAX_DEBUG")) {   // per-op economics: who fired, who earned
         fprintf(stderr, "[ops]");
         for (int i = 0; i < ds.K; i++)
