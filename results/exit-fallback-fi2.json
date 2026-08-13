@@ -1,0 +1,33 @@
+{
+  "artifact": "runs/exit-fallback-fi2/summary.json",
+  "artifact_sha256": "bf14f336cd2c590b716db2f8e62ae20c81a029851d9b11433f1dd23b3d0a32c5",
+  "build_native_sha256": "75019dc282f57188fc9360eb61fe0489ad4a71f9e95098a5efe9b112611e91b2",
+  "fixed_iterations": 20000,
+  "job": 74753,
+  "rows": [
+    {"instance": 3, "seed": 7,  "off": 101655,   "on": 101655,   "delta_pct": 0.0},
+    {"instance": 3, "seed": 11, "off": 93850,    "on": 93850,    "delta_pct": 0.0},
+    {"instance": 3, "seed": 23, "off": 98625,    "on": 98625,    "delta_pct": 0.0},
+    {"instance": 3, "seed": 41, "off": 99275,    "on": 99275,    "delta_pct": 0.0},
+    {"instance": 4, "seed": 7,  "off": 3875052,  "on": 3875052,  "delta_pct": 0.0},
+    {"instance": 4, "seed": 11, "off": 4158831,  "on": 4158831,  "delta_pct": 0.0},
+    {"instance": 4, "seed": 23, "off": 4264413,  "on": 4264413,  "delta_pct": 0.0},
+    {"instance": 4, "seed": 41, "off": 4395935,  "on": 4395935,  "delta_pct": 0.0},
+    {"instance": 5, "seed": 7,  "off": 12361255, "on": 12361255, "delta_pct": 0.0},
+    {"instance": 5, "seed": 11, "off": 13233145, "on": 13233145, "delta_pct": 0.0},
+    {"instance": 5, "seed": 23, "off": 12780224, "on": 12780224, "delta_pct": 0.0},
+    {"instance": 5, "seed": 41, "off": 12794259, "on": 12794259, "delta_pct": 0.0},
+    {"instance": 6, "seed": 7,  "off": 34322359, "on": 34322359, "delta_pct": 0.0},
+    {"instance": 6, "seed": 11, "off": 33605218, "on": 33374730, "delta_pct": -0.6858696765484456},
+    {"instance": 6, "seed": 23, "off": 33371286, "on": 33371286, "delta_pct": 0.0},
+    {"instance": 6, "seed": 41, "off": 33192607, "on": 33192607, "delta_pct": 0.0}
+  ],
+  "summary": {
+    "aa_mismatches": 0,
+    "losses": 0,
+    "mean_delta_pct": -0.04286685478427785,
+    "median_delta_pct": 0.0,
+    "ties": 15,
+    "wins": 1
+  }
+}
