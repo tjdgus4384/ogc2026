@@ -169,6 +169,27 @@ at the end is recorded but not required.  `guide60` uses the same effect-size
 and checker thresholds as `start` and persistent `lock`; it cannot borrow a
 win from either arm.
 
+## Start-only verdict: job 74943
+
+All 16 baseline and all 16 start-only searches completed before the invalid
+lock arm made the Slurm job fail closed.  The start comparison itself remains
+valid: every pair used identical ALNS seeds and iteration counts, and only the
+recorded causal starting bytes differed.
+
+| board | informative | W/L/T | median delta |
+|---|---:|---:|---:|
+| P3 | 4/4 | 1/3/0 | +3.378% |
+| P4 | 4/4 | 3/1/0 | -2.746% |
+| P5 | 3/4 | 3/0/0 | -7.867% |
+| P6 | 4/4 | 3/1/0 | -1.605% |
+
+The 15 checker-informative pairs pool to 10 wins, 5 losses, and median
+-2.431%, but the frozen gate rejects the arm: P3 exceeds the +2% board veto,
+and P5 seed 11 remains checker-infeasible after the production rescue ladder.
+This is another direct F4 result.  A strong construction effect and even a
+favorable pooled median do not authorize using the causal board as just one
+more unlocked seed.
+
 The `start` and `lock` states must have the same byte hash before search, every
 run must execute exactly 20,000 iterations, and the lock arm must finish with
 the selected block in the selected bay.  The official checker and production

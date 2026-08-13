@@ -345,6 +345,50 @@ def collect(args) -> None:
     print(json.dumps(output["summary"], sort_keys=True), flush=True)
 
 
+def collect_start(args) -> None:
+    """Score valid A/start rows even when the original lock arm failed closed."""
+    rows = []
+    for base_path in sorted(args.directory.glob("p*-s*-baseline.json")):
+        stem = base_path.name[:-len("-baseline.json")]
+        base = json.loads(base_path.read_text())
+        start = json.loads((args.directory / f"{stem}-start.json").read_text())
+        if (base["instance"], base["seed"], base["iters"]) != (
+                start["instance"], start["seed"], start["iters"]):
+            raise RuntimeError(f"paired identity mismatch at {stem}")
+        a, b = base["checker"], start["checker"]
+        rows.append({
+            "instance": int(base["instance"]),
+            "seed": int(base["seed"]),
+            "baseline_feasible": bool(a["feasible"]),
+            "start_feasible": bool(b["feasible"]),
+            "baseline": a["objective"],
+            "start": b["objective"],
+            "start_delta_pct": (
+                100.0 * (float(b["objective"]) - float(a["objective"])) /
+                float(a["objective"])
+                if a["feasible"] and b["feasible"] else None),
+        })
+    if len(rows) != 16:
+        raise RuntimeError(f"expected 16 start pairs, found {len(rows)}")
+    all_feasible = all(
+        r["baseline_feasible"] and r["start_feasible"] for r in rows)
+    summary = arm_summary(rows, "start")
+    passed = arm_pass(summary, all_feasible)
+    output = {
+        "schema_version": 1,
+        "rows": rows,
+        "summary": {
+            "all_32_checker_feasible": all_feasible,
+            "start": summary,
+            "start_pass": passed,
+            "verdict": "start_only_survives" if passed else "reject_start_only",
+        },
+    }
+    (args.directory / "start-summary.json").write_text(
+        json.dumps(output, indent=2, sort_keys=True) + "\n")
+    print(json.dumps(output["summary"], sort_keys=True), flush=True)
+
+
 def baseline_signature(report: dict) -> dict:
     """Trajectory fields that must survive the diagnostic-only rebuild."""
     return {
@@ -531,6 +575,9 @@ def main() -> None:
     p_collect = sub.add_parser("collect")
     p_collect.add_argument("directory", type=pathlib.Path)
     p_collect.set_defaults(func=collect)
+    p_start = sub.add_parser("collect-start")
+    p_start.add_argument("directory", type=pathlib.Path)
+    p_start.set_defaults(func=collect_start)
     p_persistent = sub.add_parser("collect-persistent")
     p_persistent.add_argument("directory", type=pathlib.Path)
     p_persistent.add_argument("reference", type=pathlib.Path)
