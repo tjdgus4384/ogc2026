@@ -13,17 +13,22 @@ because it moved the blocks CP-SAT ranked best, and that ranking ignores
 packing -- every move it made created tardiness, which costs 89x more per unit
 than the regret it saved.
 
-The fix is to let feasibility choose the moves. reconstructAssigned's own
-comment names the oracle: "tight=true asks whether this assignment admits a
-zero-tardiness packing". So hill-climb the assignment cost (w2*spread +
-w3*regret) and accept a move ONLY if the tight reconstruction still succeeds.
-Every accepted assignment is therefore packable with z1 = 0 by construction,
-and the objective can only fall.
+So let feasibility choose the moves: hill-climb the assignment cost
+(w2*spread + w3*regret) and accept a move only if tardiness does not rise.
 
-Reports the annealed result too, since a cheaper assignment that the anneal
-cannot exploit is not worth shipping.
+The first version of this probe used reconstructAssigned(tight=True), whose
+comment says it "asks whether this assignment admits a zero-tardiness packing".
+It does not -- it tries ONE least-slack-first order, and it rejected P3's own
+shipped assignment even though that board has z1 = 0 and is therefore itself
+such a packing (instrument defect 9). The test here instead asks the question
+the way the solver would: lock the assignment, rebuild, anneal a few seconds,
+read z1. It is verified against the shipped assignment before any candidate is
+judged, and the probe refuses to run if that verification fails.
 
-    python3 tools/asgclimb.py prob_3 240 120
+Reports the annealed result too, since a cheaper assignment the anneal cannot
+exploit is not worth shipping.
+
+    python3 tools/asgclimb.py prob_3 240 120 900
 """
 import json
 import pathlib
@@ -66,14 +71,34 @@ def main():
     print(f"{pid}: shipped {tot:,.0f}  z1 {z1:,.0f}  asg-cost {cost(cur):,.0f}",
           flush=True)
 
-    def tight_ok(a):
-        return eng.reconstruct_assigned(list(a), True, 7) == -1
+    # FEASIBILITY TEST. reconstructAssigned(tight=True) is NOT an oracle: it
+    # tries one least-slack-first order, and it rejected P3's own shipped
+    # assignment even though that board has z1 = 0 and is itself a
+    # zero-tardiness packing (instrument defect 9). So test the way the solver
+    # would actually use the assignment -- lock it, rebuild, give the anneal a
+    # few seconds, and ask whether z1 came out at 0.
+    PROBE = 4.0
 
-    if not tight_ok(cur):
-        print("   the shipped assignment does not admit a zero-tardiness"
-              " packing -- the oracle cannot steer here", flush=True)
+    def z1_of(a):
+        eng.set_assignment_lock(list(a))
+        if eng.reconstruct_assigned(list(a), False, 7) != -1:
+            eng.set_assignment_lock([])
+            return None
+        eng.build_occ(hz)
+        eng.run_portfolio(ma._THR, PROBE, 1, 0.05, 0.15, 0.002, 0.9995,
+                          31337, 1, [eng.get_solution()])
+        o = eng.objective()
+        eng.set_assignment_lock([])
+        return o[0]
+
+    base_z1 = z1_of(cur)
+    print(f"   shipped assignment under a {PROBE:.0f}s probe: z1={base_z1}",
+          flush=True)
+    if base_z1 is None or base_z1 > 0:
+        print("   the test cannot even reproduce z1=0 on the shipped"
+              " assignment -- it would reject every candidate unfairly",
+              flush=True)
         return
-    print("   shipped assignment is tight-feasible; climbing", flush=True)
 
     t0 = time.time()
     c0 = cost(cur)
@@ -97,12 +122,13 @@ def main():
             break
         cand.sort()
         moved = False
-        for g, i, j in cand[:40]:
+        for g, i, j in cand[:8]:
             if time.time() - t0 > LIM:
                 break
             a = list(cur)
             a[i] = j
-            if tight_ok(a):
+            z = z1_of(a)
+            if z is not None and z <= base_z1:
                 cur = a
                 acc += 1
                 moved = True
@@ -110,11 +136,12 @@ def main():
             rej += 1
         if not moved:
             break
-    print(f"   climbed: {acc} moves accepted, {rej} rejected by the oracle,"
+    print(f"   climbed: {acc} moves accepted, {rej} rejected by the test,"
           f" asg-cost {c0:,.0f} -> {cost(cur):,.0f}"
           f"  [{time.time()-t0:.0f}s]", flush=True)
     if acc == 0:
-        print("   => every improving move breaks zero-tardiness packing",
+        print("   => every improving move raises z1 -- the assignment is"
+              " pinned by tardiness, not by preference",
               flush=True)
         return
     eng.set_assignment_lock(list(cur))
@@ -126,6 +153,16 @@ def main():
     eng.run_portfolio(ma._THR, T, 1, 0.05, 0.15, 0.002, 0.9995, 4242, 1,
                       [eng.get_solution()])
     o = eng.objective()
+    # Does the realised board actually SIT on the assignment we climbed? The
+    # objective is a function of (bay, entry), so if the climbed cost is not
+    # the realised cost, the lock did not hold and the climb optimised a proxy
+    # the solver never adopts.
+    got = [eng.get_block(i)[0] for i in range(n)]
+    pl = [bool(eng.get_block(i)[6]) for i in range(n)]
+    onplan = sum(1 for i in range(n) if pl[i] and got[i] == cur[i])
+    print(f"   realised board sits on the climbed assignment for"
+          f" {onplan}/{n} blocks; realised asg-cost {cost(got):,.0f}"
+          f" vs climbed {cost(cur):,.0f}", flush=True)
     eng.set_assignment_lock([])
     res = ma._check(prob, ma._recs_to_sol(ma._extract(eng, n),
                                           eng.entry_ranks()))
