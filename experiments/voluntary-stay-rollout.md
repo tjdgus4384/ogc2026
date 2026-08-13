@@ -54,3 +54,34 @@ Train splits.  It does not authorize a public-board action table or production
 change.  Failure closes zero-own-cost, existing-prefix-geometry stay extension;
 it does not claim that paid extension or a joint placement-and-stay action is
 impossible.
+
+## One-decision verdict: job 74969
+
+The isolated build came from source commit
+`f751861d0e30da7d9dc00d80540ed94fead0c357`; its extension binary SHA-256 is
+`be0d5ac41b9ab91b4354802221343c4a0b3b3a81fa3104fd2e9b7aa30f089728`.
+The unchanged production path passed the build smoke at preliminary P1
+11,280, P2 31,368, and a checker-feasible P3 86,895.
+
+Every deterministic replay and all 800 semantic no-ops reproduced the frozen
+baseline byte-for-byte.  The checker-authoritative winners are:
+
+| board | voluntary action | baseline | one action | delta | Z1 change |
+|---|---|---:|---:|---:|---:|
+| P3 | block 168, exit 66 -> 67 | 539,249 | 531,784 | -1.384% | 3 -> 3 |
+| P4 | block 115, exit 20 -> 23 | 8,040,292 | 7,223,445 | -10.159% | 547 -> 488 |
+| P5 | block 4, exit 24 -> 27 | 20,111,373 | 19,069,335 | -5.181% | 1462 -> 1380 |
+| P6 | block 102, exit 28 -> 29 | 43,224,763 | 42,285,462 | -2.173% | 6287 -> 6154 |
+
+The extended block remains on time in every arm.  Its small occupancy cost
+changes the suffix construction and saves 59, 82, and 133 total tardy days on
+P4-P6 respectively; P3 instead trades assignment terms at unchanged Z1.
+P5 demonstrates why the production gate is load-bearing: 10 of the fixed 20
+lowest-raw actions were checker-invalid, while the selected action needed no
+rescue and replayed exactly.
+
+Both P4 and P5 independently exceed the preregistered 5% edge.  The frozen
+verdict is `advance_voluntary_stay_rollout`.  This is a causal construction
+result, not a solver score: the action came from an exhaustive public-board
+scan and has not yet faced the ALNS plateau, disjoint seeds, or Train.  Full
+reports are frozen under `results/voluntary-stay-rollout-74969/`.

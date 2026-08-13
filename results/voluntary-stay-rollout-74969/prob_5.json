@@ -1,0 +1,579 @@
+{
+  "actions": {
+    "built": 146,
+    "checker_rejected": 10,
+    "checker_screened": 20,
+    "failed": 0,
+    "raw_losses": 78,
+    "raw_ties": 39,
+    "raw_wins": 29,
+    "tested": 146
+  },
+  "baseline": {
+    "checker": {
+      "feasible": true,
+      "objective": 20111373.0,
+      "rescued": true,
+      "solution_sha256": "f6457db0275530669a0ac199c4db384b9466769effa67b3674ed5637f29757f0"
+    },
+    "components": [
+      1462.0,
+      1303.0,
+      4582.0,
+      20111373.0
+    ],
+    "objective": 20111373.0,
+    "solution_sha256": "ef3ca265c113d6651b1f777f28788cb593ea9b4503feaf67285e962800d658ad"
+  },
+  "best_action": {
+    "base_exit": 24,
+    "block": 4,
+    "checker": {
+      "feasible": true,
+      "objective": 19069335.0,
+      "rescued": false,
+      "solution_sha256": "7ec4379f107a2fbf7c42bd65354a0e1e2bbb8a642afa7c55a1280909bfe860be"
+    },
+    "components": [
+      1380.0,
+      4238.0,
+      4813.0,
+      19069335.0
+    ],
+    "delta": -1042038.0,
+    "delta_pct": -5.181336948004494,
+    "fraction": 1.0,
+    "objective": 19069335.0,
+    "solution_sha256": "31b6e1fd4f6e38aa1ba6bcbfc8c17e48f0de7aa94da5b75014315f6eca215d99",
+    "status": "built",
+    "target_exit": 27
+  },
+  "deterministic_replay": true,
+  "frozen_manifest": "/data_fast/home/tjdgus4384/priv/ogc2026-worktrees/codex-fundamental/runs/joint-assignment-rollout-74933/prob_5.json",
+  "gated_delta_pct": -5.181336948004494,
+  "interpretation_valid": true,
+  "n": 200,
+  "order": "due",
+  "problem": "/data_fast/home/tjdgus4384/priv/ogc2026-worktrees/codex-fundamental/data/preliminary_test/prob_5.json",
+  "same_exit_null": {
+    "byte_identical": 200,
+    "failed": 0,
+    "pass": true,
+    "tested": 200
+  },
+  "schema_version": 1,
+  "solver": "/data_fast/home/tjdgus4384/priv/ogc2026-worktrees/codex-fundamental/builds/jasg-stay-rollout",
+  "top_actions": [
+    {
+      "base_exit": 24,
+      "block": 4,
+      "checker": {
+        "feasible": true,
+        "objective": 19069335.0,
+        "rescued": false,
+        "solution_sha256": "7ec4379f107a2fbf7c42bd65354a0e1e2bbb8a642afa7c55a1280909bfe860be"
+      },
+      "components": [
+        1380.0,
+        4238.0,
+        4813.0,
+        19069335.0
+      ],
+      "delta": -1042038.0,
+      "delta_pct": -5.181336948004494,
+      "fraction": 1.0,
+      "objective": 19069335.0,
+      "solution_sha256": "31b6e1fd4f6e38aa1ba6bcbfc8c17e48f0de7aa94da5b75014315f6eca215d99",
+      "status": "built",
+      "target_exit": 27
+    },
+    {
+      "base_exit": 25,
+      "block": 62,
+      "checker": {
+        "feasible": true,
+        "objective": 19267410.0,
+        "rescued": false,
+        "solution_sha256": "071371454103218a1ecca8398a662f064e5ef6e2e5f5ebb28f7b6ad1fbfbcfb8"
+      },
+      "components": [
+        1396.0,
+        3275.0,
+        4749.0,
+        19267410.0
+      ],
+      "delta": -843963.0,
+      "delta_pct": -4.196446458429268,
+      "fraction": 1.0,
+      "objective": 19267410.0,
+      "solution_sha256": "a4d1fb929a52d37fd3a2140b5f053a2b48389372321966e245f2d04d1c011a8d",
+      "status": "built",
+      "target_exit": 30
+    },
+    {
+      "base_exit": 28,
+      "block": 21,
+      "checker": {
+        "feasible": true,
+        "objective": 19361911.0,
+        "rescued": false,
+        "solution_sha256": "1068d47208c3f0f6bd52a918f131287dff37551c97ba29d834b94e4c8f74adcc"
+      },
+      "components": [
+        1406.0,
+        2839.0,
+        4480.0,
+        19361911.0
+      ],
+      "delta": -749462.0,
+      "delta_pct": -3.72655810222405,
+      "fraction": 1.0,
+      "objective": 19361911.0,
+      "solution_sha256": "d5b27c4939f7c7f27a0e5a44ed31e742d362cb8f9ae504f5433aca20a0e4bd3d",
+      "status": "built",
+      "target_exit": 30
+    },
+    {
+      "base_exit": 24,
+      "block": 136,
+      "checker": {
+        "feasible": true,
+        "objective": 19453510.0,
+        "rescued": false,
+        "solution_sha256": "4a9b05d7081a9c01514407f45a814fa304d8693c570adba3901fe0461da9eb6b"
+      },
+      "components": [
+        1411.0,
+        2829.0,
+        4668.0,
+        19453510.0
+      ],
+      "delta": -657863.0,
+      "delta_pct": -3.271099392368686,
+      "fraction": 1.0,
+      "objective": 19453510.0,
+      "solution_sha256": "e53b26eae712ec449e14cadaa1c7217d819607835785e5f941a88901ea3ee1d7",
+      "status": "built",
+      "target_exit": 28
+    },
+    {
+      "base_exit": 29,
+      "block": 76,
+      "checker": {
+        "feasible": false,
+        "gated_first": "Stage3: t=53: block 60 exit obstructed by block 140 (target_layer=0, exist_layer=0, kind=collision, area=0.000)",
+        "gated_stage": 3,
+        "gated_violations": 2,
+        "objective": null,
+        "raw_first": "Stage3: t=53: block 60 exit obstructed by block 140 (target_layer=0, exist_layer=0, kind=collision, area=0.000)",
+        "raw_stage": 3,
+        "raw_violations": 2,
+        "rescued": false
+      },
+      "components": [
+        1412.0,
+        2998.0,
+        4838.0,
+        19490636.0
+      ],
+      "delta": -620737.0,
+      "delta_pct": -3.086497376384994,
+      "fraction": 0.4,
+      "objective": 19490636.0,
+      "solution_sha256": "b5c3b5ae9b3cb10be1db3b893524f28927f13a2077ca3adaf118455d83a8f320",
+      "status": "built",
+      "target_exit": 31
+    },
+    {
+      "base_exit": 24,
+      "block": 4,
+      "checker": {
+        "feasible": false,
+        "gated_first": "Stage3: t=53: block 60 exit obstructed by block 140 (target_layer=0, exist_layer=0, kind=collision, area=0.000)",
+        "gated_stage": 3,
+        "gated_violations": 2,
+        "objective": null,
+        "raw_first": "Stage3: t=53: block 60 exit obstructed by block 140 (target_layer=0, exist_layer=0, kind=collision, area=0.000)",
+        "raw_stage": 3,
+        "raw_violations": 2,
+        "rescued": false
+      },
+      "components": [
+        1415.0,
+        5232.0,
+        4823.0,
+        19544278.0
+      ],
+      "delta": -567095.0,
+      "delta_pct": -2.819772672905027,
+      "fraction": 0.3333333333333333,
+      "objective": 19544278.0,
+      "solution_sha256": "02892df9cfcdaf4da393b245a36aedbb6d26cf8650e410271123a306e41d1517",
+      "status": "built",
+      "target_exit": 25
+    },
+    {
+      "base_exit": 28,
+      "block": 68,
+      "checker": {
+        "feasible": true,
+        "objective": 19579520.0,
+        "rescued": true,
+        "solution_sha256": "3800520e8566b90dfe82f5f6b9f21a357ec0897dfc9f9f382cb0106474d0f717"
+      },
+      "components": [
+        1420.0,
+        3289.0,
+        4689.0,
+        19579520.0
+      ],
+      "delta": -531853.0,
+      "delta_pct": -2.6445384907335763,
+      "fraction": 0.5,
+      "objective": 19579520.0,
+      "solution_sha256": "d1303197d0b257b20431e5f7cb6881997155d7324702747d6cd81ca0d5112f48",
+      "status": "built",
+      "target_exit": 29
+    },
+    {
+      "base_exit": 22,
+      "block": 14,
+      "checker": {
+        "feasible": false,
+        "gated_first": "Stage3: t=53: block 60 exit obstructed by block 140 (target_layer=0, exist_layer=0, kind=collision, area=0.000)",
+        "gated_stage": 3,
+        "gated_violations": 2,
+        "objective": null,
+        "raw_first": "Stage3: t=53: block 60 exit obstructed by block 140 (target_layer=0, exist_layer=0, kind=collision, area=0.000)",
+        "raw_stage": 3,
+        "raw_violations": 2,
+        "rescued": false
+      },
+      "components": [
+        1425.0,
+        4681.0,
+        4206.0,
+        19591690.0
+      ],
+      "delta": -519683.0,
+      "delta_pct": -2.5840254665854987,
+      "fraction": 1.0,
+      "objective": 19591690.0,
+      "solution_sha256": "f4002e767d01a001e647913805a638c32969dc19930d7935b4f80ee882dc637b",
+      "status": "built",
+      "target_exit": 26
+    },
+    {
+      "base_exit": 26,
+      "block": 157,
+      "checker": {
+        "feasible": false,
+        "gated_first": "Stage2: t=31: block 152 entry obstructed by block 5 (new_layer=0, exist_layer=1, kind=sweep, area=0.000)",
+        "gated_stage": 2,
+        "gated_violations": 2,
+        "objective": null,
+        "raw_first": "Stage2: t=31: block 152 entry obstructed by block 5 (new_layer=0, exist_layer=1, kind=sweep, area=0.000)",
+        "raw_stage": 2,
+        "raw_violations": 2,
+        "rescued": false
+      },
+      "components": [
+        1421.0,
+        1587.0,
+        4805.0,
+        19596367.0
+      ],
+      "delta": -515006.0,
+      "delta_pct": -2.5607699683159373,
+      "fraction": 1.0,
+      "objective": 19596367.0,
+      "solution_sha256": "8e072dff3f753b74b0feeca3bf4a1c640eb66d5dec9b00d2b19fdc2468616b41",
+      "status": "built",
+      "target_exit": 28
+    },
+    {
+      "base_exit": 24,
+      "block": 167,
+      "checker": {
+        "feasible": true,
+        "objective": 19629519.0,
+        "rescued": false,
+        "solution_sha256": "ff50aed914b9a95b717e7eab88c75fdb2e1e9421b8cafcc086ff4207e9f657ae"
+      },
+      "components": [
+        1421.0,
+        3720.0,
+        4942.0,
+        19629519.0
+      ],
+      "delta": -481854.0,
+      "delta_pct": -2.3959279160105083,
+      "fraction": 0.4444444444444444,
+      "objective": 19629519.0,
+      "solution_sha256": "f576a49bc6442f6108e2d226848210da2b11f66ce10946b547a05dd81cf050bf",
+      "status": "built",
+      "target_exit": 28
+    },
+    {
+      "base_exit": 24,
+      "block": 56,
+      "checker": {
+        "feasible": false,
+        "gated_first": "Stage2: t=29: block 55 entry obstructed by block 175 (new_layer=0, exist_layer=0, kind=collision, area=0.000)",
+        "gated_stage": 2,
+        "gated_violations": 1,
+        "objective": null,
+        "raw_first": "Stage2: t=29: block 55 entry obstructed by block 175 (new_layer=0, exist_layer=0, kind=collision, area=0.000)",
+        "raw_stage": 2,
+        "raw_violations": 1,
+        "rescued": false
+      },
+      "components": [
+        1426.0,
+        3321.0,
+        4529.0,
+        19638462.0
+      ],
+      "delta": -472911.0,
+      "delta_pct": -2.3514605392680052,
+      "fraction": 1.0,
+      "objective": 19638462.0,
+      "solution_sha256": "25b54c4d593db05d1c1c404ae9e93075131592c77b1ee16e54d910031b3a0974",
+      "status": "built",
+      "target_exit": 25
+    },
+    {
+      "base_exit": 24,
+      "block": 136,
+      "checker": {
+        "feasible": false,
+        "gated_first": "Stage3: t=54: block 172 exit obstructed by block 146 (target_layer=0, exist_layer=0, kind=collision, area=0.000)",
+        "gated_stage": 3,
+        "gated_violations": 3,
+        "objective": null,
+        "raw_first": "Stage3: t=54: block 172 exit obstructed by block 146 (target_layer=0, exist_layer=0, kind=collision, area=0.000)",
+        "raw_stage": 3,
+        "raw_violations": 3,
+        "rescued": false
+      },
+      "components": [
+        1431.0,
+        6508.0,
+        4637.0,
+        19741800.0
+      ],
+      "delta": -369573.0,
+      "delta_pct": -1.8376318712799966,
+      "fraction": 0.5,
+      "objective": 19741800.0,
+      "solution_sha256": "37eefb696449bc1fd4387b9e015970cdefec0fff58f48469564c1f4f913b1573",
+      "status": "built",
+      "target_exit": 26
+    },
+    {
+      "base_exit": 29,
+      "block": 27,
+      "checker": {
+        "feasible": false,
+        "gated_first": "Stage2: t=58: block 78 entry obstructed by block 180 (new_layer=0, exist_layer=0, kind=collision, area=0.000)",
+        "gated_stage": 2,
+        "gated_violations": 2,
+        "objective": null,
+        "raw_first": "Stage2: t=58: block 78 entry obstructed by block 180 (new_layer=0, exist_layer=0, kind=collision, area=0.000)",
+        "raw_stage": 2,
+        "raw_violations": 2,
+        "rescued": false
+      },
+      "components": [
+        1444.0,
+        3104.0,
+        4288.0,
+        19844884.0
+      ],
+      "delta": -266489.0,
+      "delta_pct": -1.3250661702709208,
+      "fraction": 0.5,
+      "objective": 19844884.0,
+      "solution_sha256": "4488c2ffd115344ca5f73099a64be3226be0f1b79e1b30ab9dc7388d8aded630",
+      "status": "built",
+      "target_exit": 32
+    },
+    {
+      "base_exit": 29,
+      "block": 178,
+      "checker": {
+        "feasible": false,
+        "gated_first": "Stage2: t=58: block 78 entry obstructed by block 180 (new_layer=0, exist_layer=0, kind=collision, area=0.000)",
+        "gated_stage": 2,
+        "gated_violations": 2,
+        "objective": null,
+        "raw_first": "Stage2: t=58: block 78 entry obstructed by block 180 (new_layer=0, exist_layer=0, kind=collision, area=0.000)",
+        "raw_stage": 2,
+        "raw_violations": 2,
+        "rescued": false
+      },
+      "components": [
+        1444.0,
+        3104.0,
+        4288.0,
+        19844884.0
+      ],
+      "delta": -266489.0,
+      "delta_pct": -1.3250661702709208,
+      "fraction": 0.4,
+      "objective": 19844884.0,
+      "solution_sha256": "2c3f5f5ba91d0f66116b747582c4a8f859c6a5172db6e09a61ec9ca4dd6a0b66",
+      "status": "built",
+      "target_exit": 31
+    },
+    {
+      "base_exit": 29,
+      "block": 178,
+      "checker": {
+        "feasible": false,
+        "gated_first": "Stage2: t=58: block 78 entry obstructed by block 180 (new_layer=0, exist_layer=0, kind=collision, area=0.000)",
+        "gated_stage": 2,
+        "gated_violations": 2,
+        "objective": null,
+        "raw_first": "Stage2: t=58: block 78 entry obstructed by block 180 (new_layer=0, exist_layer=0, kind=collision, area=0.000)",
+        "raw_stage": 2,
+        "raw_violations": 2,
+        "rescued": false
+      },
+      "components": [
+        1444.0,
+        3104.0,
+        4288.0,
+        19844884.0
+      ],
+      "delta": -266489.0,
+      "delta_pct": -1.3250661702709208,
+      "fraction": 1.0,
+      "objective": 19844884.0,
+      "solution_sha256": "95acde0ec2a2eee7a48701b1ab7c0e9bd3005a5bd9a4d7e6ef4aabccc53f345f",
+      "status": "built",
+      "target_exit": 34
+    },
+    {
+      "base_exit": 28,
+      "block": 121,
+      "checker": {
+        "feasible": false,
+        "gated_first": "Stage2: t=30: block 80 entry obstructed by block 172 (new_layer=0, exist_layer=0, kind=collision, area=0.000)",
+        "gated_stage": 2,
+        "gated_violations": 3,
+        "objective": null,
+        "raw_first": "Stage2: t=30: block 80 entry obstructed by block 172 (new_layer=0, exist_layer=0, kind=collision, area=0.000)",
+        "raw_stage": 2,
+        "raw_violations": 3,
+        "rescued": false
+      },
+      "components": [
+        1438.0,
+        5059.0,
+        4817.0,
+        19848928.0
+      ],
+      "delta": -262445.0,
+      "delta_pct": -1.3049581448268102,
+      "fraction": 0.4444444444444444,
+      "objective": 19848928.0,
+      "solution_sha256": "8ec0df33c85cda2fc2bd79362a53a98f85aebdcb2e1af5694b71b5b7ff174cc0",
+      "status": "built",
+      "target_exit": 32
+    },
+    {
+      "base_exit": 27,
+      "block": 96,
+      "checker": {
+        "feasible": true,
+        "objective": 19861126.0,
+        "rescued": true,
+        "solution_sha256": "c0bd633fc4a8522cbb55698c4d697034d4dbc85f4bd9ab29fc43e00ae91cf688"
+      },
+      "components": [
+        1443.0,
+        4289.0,
+        4448.0,
+        19861126.0
+      ],
+      "delta": -250247.0,
+      "delta_pct": -1.2443058959723934,
+      "fraction": 0.5,
+      "objective": 19861126.0,
+      "solution_sha256": "2d5690f5ee142ad48fdf2bca241c6551d0170075f6ef21044ad6404c6f5693b8",
+      "status": "built",
+      "target_exit": 28
+    },
+    {
+      "base_exit": 32,
+      "block": 165,
+      "checker": {
+        "feasible": true,
+        "objective": 19870375.0,
+        "rescued": false,
+        "solution_sha256": "69f94bf08be25de19ee70deb7722c9ec47de90ff474b2c638a792f17f8ab5bfe"
+      },
+      "components": [
+        1442.0,
+        4228.0,
+        4621.0,
+        19870375.0
+      ],
+      "delta": -240998.0,
+      "delta_pct": -1.1983169920820422,
+      "fraction": 1.0,
+      "objective": 19870375.0,
+      "solution_sha256": "d7725aa5b045d28840bfb763eec3f156e9b8102019baf5633b39dcb621e67b78",
+      "status": "built",
+      "target_exit": 38
+    },
+    {
+      "base_exit": 34,
+      "block": 155,
+      "checker": {
+        "feasible": true,
+        "objective": 19978358.0,
+        "rescued": true,
+        "solution_sha256": "b2d42d5426d7dc129227e248c7ac65d123c427b4ab8125f64e84d617375e9efe"
+      },
+      "components": [
+        1452.0,
+        1025.0,
+        4599.0,
+        19978358.0
+      ],
+      "delta": -133015.0,
+      "delta_pct": -0.6613919397745743,
+      "fraction": 1.0,
+      "objective": 19978358.0,
+      "solution_sha256": "c45d5d97868da2d390c75cd00a4e55cfb2e650991729feb9a3c06a01a9d40862",
+      "status": "built",
+      "target_exit": 41
+    },
+    {
+      "base_exit": 48,
+      "block": 71,
+      "checker": {
+        "feasible": true,
+        "objective": 20026321.0,
+        "rescued": true,
+        "solution_sha256": "6c08aa750a7265e8efd119646dc0673ebf4e6ea84205e0f7cfc3dd57d53433e9"
+      },
+      "components": [
+        1453.0,
+        2063.0,
+        4504.0,
+        19986322.0
+      ],
+      "delta": -125051.0,
+      "delta_pct": -0.6217924554429973,
+      "fraction": 0.3333333333333333,
+      "objective": 19986322.0,
+      "solution_sha256": "c4100259e4650b62f7680e91efec74858a09593528a10cd8c1082e9945aed6c4",
+      "status": "built",
+      "target_exit": 49
+    }
+  ],
+  "wall_seconds": 53.969021442113444
+}

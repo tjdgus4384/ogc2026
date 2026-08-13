@@ -1,0 +1,529 @@
+{
+  "actions": {
+    "built": 122,
+    "checker_rejected": 0,
+    "checker_screened": 20,
+    "failed": 2,
+    "raw_losses": 35,
+    "raw_ties": 47,
+    "raw_wins": 40,
+    "tested": 124
+  },
+  "baseline": {
+    "checker": {
+      "feasible": true,
+      "objective": 8040292.0,
+      "rescued": false,
+      "solution_sha256": "4f5b62a3ce524c44015e85e49cac0c116df311d1d0f0bc1d42aad6d7459bb690"
+    },
+    "components": [
+      547.0,
+      2613.0,
+      4859.0,
+      8040292.0
+    ],
+    "objective": 8040292.0,
+    "solution_sha256": "be41e646405ca6d4c1496d2b909f322849600f4c4673e3db3318f12848f29ce3"
+  },
+  "best_action": {
+    "base_exit": 20,
+    "block": 115,
+    "checker": {
+      "feasible": true,
+      "objective": 7223445.0,
+      "rescued": false,
+      "solution_sha256": "a40c3866812ca57276ccb2857613f94bdcc1e350e86302717438611129f420a1"
+    },
+    "components": [
+      488.0,
+      3163.0,
+      4632.0,
+      7223445.0
+    ],
+    "delta": -816847.0,
+    "delta_pct": -10.159419583268866,
+    "fraction": 0.5,
+    "objective": 7223445.0,
+    "solution_sha256": "f80b62e5d2c29215c61776f60ea9e07d5302fef1203fea790fe26b1efd63d5dd",
+    "status": "built",
+    "target_exit": 23
+  },
+  "deterministic_replay": true,
+  "frozen_manifest": "/data_fast/home/tjdgus4384/priv/ogc2026-worktrees/codex-fundamental/runs/joint-assignment-rollout-74933/prob_4.json",
+  "gated_delta_pct": -10.159419583268866,
+  "interpretation_valid": true,
+  "n": 150,
+  "order": "due_long",
+  "problem": "/data_fast/home/tjdgus4384/priv/ogc2026-worktrees/codex-fundamental/data/preliminary_test/prob_4.json",
+  "same_exit_null": {
+    "byte_identical": 150,
+    "failed": 0,
+    "pass": true,
+    "tested": 150
+  },
+  "schema_version": 1,
+  "solver": "/data_fast/home/tjdgus4384/priv/ogc2026-worktrees/codex-fundamental/builds/jasg-stay-rollout",
+  "top_actions": [
+    {
+      "base_exit": 20,
+      "block": 115,
+      "checker": {
+        "feasible": true,
+        "objective": 7223445.0,
+        "rescued": false,
+        "solution_sha256": "a40c3866812ca57276ccb2857613f94bdcc1e350e86302717438611129f420a1"
+      },
+      "components": [
+        488.0,
+        3163.0,
+        4632.0,
+        7223445.0
+      ],
+      "delta": -816847.0,
+      "delta_pct": -10.159419583268866,
+      "fraction": 0.5,
+      "objective": 7223445.0,
+      "solution_sha256": "f80b62e5d2c29215c61776f60ea9e07d5302fef1203fea790fe26b1efd63d5dd",
+      "status": "built",
+      "target_exit": 23
+    },
+    {
+      "base_exit": 21,
+      "block": 72,
+      "checker": {
+        "feasible": true,
+        "objective": 7277972.0,
+        "rescued": false,
+        "solution_sha256": "2a593e7881928d0e14b859ae1050f416cd3a997c2c0cff5e913dab0927ff9a71"
+      },
+      "components": [
+        487.0,
+        2743.0,
+        5104.0,
+        7277972.0
+      ],
+      "delta": -762320.0,
+      "delta_pct": -9.481247695979201,
+      "fraction": 0.5,
+      "objective": 7277972.0,
+      "solution_sha256": "a510aa979868c85c27f19dcb5e159fab1940129f965652a695abeb2fc75eec1c",
+      "status": "built",
+      "target_exit": 22
+    },
+    {
+      "base_exit": 15,
+      "block": 75,
+      "checker": {
+        "feasible": true,
+        "objective": 7426389.0,
+        "rescued": false,
+        "solution_sha256": "370bc0cf98baa2bfadeec5e7f64f1787b3aec70923d11eab9c96c7869e55d2cc"
+      },
+      "components": [
+        502.0,
+        4139.0,
+        4695.0,
+        7426389.0
+      ],
+      "delta": -613903.0,
+      "delta_pct": -7.635332149628397,
+      "fraction": 0.5,
+      "objective": 7426389.0,
+      "solution_sha256": "b660b369a6045de2b4075b20a33469020d08af8b1f4b4996c79141060d826f16",
+      "status": "built",
+      "target_exit": 17
+    },
+    {
+      "base_exit": 15,
+      "block": 75,
+      "checker": {
+        "feasible": true,
+        "objective": 7426389.0,
+        "rescued": false,
+        "solution_sha256": "b7847dfb0e8d49bb78a0b2f04ce5cecbe501eb5f75635b09e6b574ad1d931633"
+      },
+      "components": [
+        502.0,
+        4139.0,
+        4695.0,
+        7426389.0
+      ],
+      "delta": -613903.0,
+      "delta_pct": -7.635332149628397,
+      "fraction": 1.0,
+      "objective": 7426389.0,
+      "solution_sha256": "52ded7da44feeb8284ec7fed2880368ff342efc52250ef92d171dea7c820d12e",
+      "status": "built",
+      "target_exit": 19
+    },
+    {
+      "base_exit": 18,
+      "block": 4,
+      "checker": {
+        "feasible": true,
+        "objective": 7429202.0,
+        "rescued": false,
+        "solution_sha256": "26478efcd5a82ab7d0be5343787a8355566e826002cac20d1e716db1bba647ef"
+      },
+      "components": [
+        494.0,
+        1350.0,
+        5555.0,
+        7429202.0
+      ],
+      "delta": -611090.0,
+      "delta_pct": -7.600345858085751,
+      "fraction": 1.0,
+      "objective": 7429202.0,
+      "solution_sha256": "13406e094f327ade87cce851f88a8b492edc32e1b9cd56b80913701e3fa1f6a0",
+      "status": "built",
+      "target_exit": 22
+    },
+    {
+      "base_exit": 22,
+      "block": 129,
+      "checker": {
+        "feasible": true,
+        "objective": 7447625.0,
+        "rescued": false,
+        "solution_sha256": "ad25ed59387861692e2c5555a1ddc50e715a6c425c65d6a02cf345037121f153"
+      },
+      "components": [
+        505.0,
+        2530.0,
+        4645.0,
+        7447625.0
+      ],
+      "delta": -592667.0,
+      "delta_pct": -7.37121238880379,
+      "fraction": 1.0,
+      "objective": 7447625.0,
+      "solution_sha256": "cd50b56f33094102fa18046fb6d027e422617d3180acb82462b344ccf98f2e9e",
+      "status": "built",
+      "target_exit": 24
+    },
+    {
+      "base_exit": 22,
+      "block": 127,
+      "checker": {
+        "feasible": true,
+        "objective": 7553910.0,
+        "rescued": false,
+        "solution_sha256": "6205feef693e53c6cee85320d479c624bf768f8d699c8dcbb9cfc9b7357dbbf3"
+      },
+      "components": [
+        510.0,
+        3090.0,
+        4883.0,
+        7553910.0
+      ],
+      "delta": -486382.0,
+      "delta_pct": -6.049307661960536,
+      "fraction": 0.5,
+      "objective": 7553910.0,
+      "solution_sha256": "aa57ea91fecf1f18817b66c6c5d5b04fe56f8c44bf74bc97d686af5e3583aa07",
+      "status": "built",
+      "target_exit": 23
+    },
+    {
+      "base_exit": 22,
+      "block": 138,
+      "checker": {
+        "feasible": true,
+        "objective": 7568105.0,
+        "rescued": false,
+        "solution_sha256": "684247fd9e2f8001c8afa5be65da4f8d9c71c57e1490db22cda96915d45644f2"
+      },
+      "components": [
+        511.0,
+        2806.0,
+        4902.0,
+        7568105.0
+      ],
+      "delta": -472187.0,
+      "delta_pct": -5.872759347546084,
+      "fraction": 1.0,
+      "objective": 7568105.0,
+      "solution_sha256": "178972285ea7a65254610b84e5c4282deef20b998f221a51e4ed56207cdc94c0",
+      "status": "built",
+      "target_exit": 30
+    },
+    {
+      "base_exit": 17,
+      "block": 136,
+      "checker": {
+        "feasible": true,
+        "objective": 7613383.0,
+        "rescued": false,
+        "solution_sha256": "370d37be352efcadbcc0e66374128a4891ae0a691173d68c480f0ede0ae1e7f1"
+      },
+      "components": [
+        517.0,
+        4746.0,
+        4580.0,
+        7613383.0
+      ],
+      "delta": -426909.0,
+      "delta_pct": -5.309620595868906,
+      "fraction": 1.0,
+      "objective": 7613383.0,
+      "solution_sha256": "97e6bda06c5d715e0abf23ff735f17cb6526143ff97ff4097862f851d2668417",
+      "status": "built",
+      "target_exit": 23
+    },
+    {
+      "base_exit": 21,
+      "block": 44,
+      "checker": {
+        "feasible": true,
+        "objective": 7693209.0,
+        "rescued": false,
+        "solution_sha256": "77520c69a18d3a3a813266f0f5a26c4e0b2a9e4e33673436fda9ecc1f1351fec"
+      },
+      "components": [
+        514.0,
+        3371.0,
+        5443.0,
+        7693209.0
+      ],
+      "delta": -347083.0,
+      "delta_pct": -4.316795957161755,
+      "fraction": 1.0,
+      "objective": 7693209.0,
+      "solution_sha256": "dcd689ef66212ba731670887f197fc4a1d192444993cf53979d152bfc7c53fc2",
+      "status": "built",
+      "target_exit": 22
+    },
+    {
+      "base_exit": 22,
+      "block": 127,
+      "checker": {
+        "feasible": true,
+        "objective": 7697546.0,
+        "rescued": false,
+        "solution_sha256": "9a1e488536c0b44f2959904a7cc15ad807a43dc99e6565955c674fe4a0f80e7c"
+      },
+      "components": [
+        522.0,
+        3710.0,
+        4745.0,
+        7697546.0
+      ],
+      "delta": -342746.0,
+      "delta_pct": -4.262855130137065,
+      "fraction": 1.0,
+      "objective": 7697546.0,
+      "solution_sha256": "fb62f07c205a30ea530e29024f3073baea90f21a2aa26d4b6ea014190d683835",
+      "status": "built",
+      "target_exit": 24
+    },
+    {
+      "base_exit": 22,
+      "block": 138,
+      "checker": {
+        "feasible": true,
+        "objective": 7719290.0,
+        "rescued": false,
+        "solution_sha256": "47f65a8c33864c82337a9d9578ebdfe5814bf6a84134f99495a3ed124903b299"
+      },
+      "components": [
+        522.0,
+        2852.0,
+        4930.0,
+        7719290.0
+      ],
+      "delta": -321002.0,
+      "delta_pct": -3.992417190818443,
+      "fraction": 0.5,
+      "objective": 7719290.0,
+      "solution_sha256": "9bd4a67472f985fc8945ba8cffc9db92b3cd9b2dafb1de34a1b14a4c57d00bd0",
+      "status": "built",
+      "target_exit": 26
+    },
+    {
+      "base_exit": 30,
+      "block": 15,
+      "checker": {
+        "feasible": true,
+        "objective": 7740817.0,
+        "rescued": false,
+        "solution_sha256": "f0aad2a01dc94f035bfba3766bfd778c7ae90a7430857765ee36ffd3d18b6f92"
+      },
+      "components": [
+        527.0,
+        2318.0,
+        4654.0,
+        7740817.0
+      ],
+      "delta": -299475.0,
+      "delta_pct": -3.7246781584549415,
+      "fraction": 1.0,
+      "objective": 7740817.0,
+      "solution_sha256": "0b38d092fffc1f106cfa6b0bda169aaffdd7aef4fa28fd3b773667680913034e",
+      "status": "built",
+      "target_exit": 33
+    },
+    {
+      "base_exit": 25,
+      "block": 101,
+      "checker": {
+        "feasible": true,
+        "objective": 7751949.0,
+        "rescued": false,
+        "solution_sha256": "b8edbb05bfcbb2320dbb8f15d8db7d1c8d36cba18fb1e6939b8fb6fdeb93ebf1"
+      },
+      "components": [
+        525.0,
+        1332.0,
+        4952.0,
+        7751949.0
+      ],
+      "delta": -288343.0,
+      "delta_pct": -3.5862254753931824,
+      "fraction": 0.5,
+      "objective": 7751949.0,
+      "solution_sha256": "2b6a929d6ff7baa5131120e6eabe6dae60003344903d50d8b955bb8ea2ff2589",
+      "status": "built",
+      "target_exit": 27
+    },
+    {
+      "base_exit": 21,
+      "block": 67,
+      "checker": {
+        "feasible": true,
+        "objective": 7759462.0,
+        "rescued": false,
+        "solution_sha256": "6e9e409d6bb16f4e4b1a67dbaf91ca918e2b69c814e174ad699a7c05d1810a7b"
+      },
+      "components": [
+        525.0,
+        3691.0,
+        4892.0,
+        7759462.0
+      ],
+      "delta": -280830.0,
+      "delta_pct": -3.492783595421659,
+      "fraction": 1.0,
+      "objective": 7759462.0,
+      "solution_sha256": "d33cd899c1df9470254c6ea3b39140f1fa9048efa8ccf0256dd70ff2e8e560cd",
+      "status": "built",
+      "target_exit": 24
+    },
+    {
+      "base_exit": 22,
+      "block": 129,
+      "checker": {
+        "feasible": true,
+        "objective": 7761176.0,
+        "rescued": false,
+        "solution_sha256": "aa260ad9cbe0e02a763ee7439e557d69d640b66eb0040495c8246327b70a661e"
+      },
+      "components": [
+        529.0,
+        2317.0,
+        4612.0,
+        7761176.0
+      ],
+      "delta": -279116.0,
+      "delta_pct": -3.4714659616839785,
+      "fraction": 0.5,
+      "objective": 7761176.0,
+      "solution_sha256": "ce2b703ccbc49072dae823ce575f08aea91d25ba3d7c90d5455d437dd62a3561",
+      "status": "built",
+      "target_exit": 23
+    },
+    {
+      "base_exit": 37,
+      "block": 104,
+      "checker": {
+        "feasible": true,
+        "objective": 7764339.0,
+        "rescued": false,
+        "solution_sha256": "8ec8066d842488f8458edf089e126bbac4f7ce2e6031ebac9840441391d23589"
+      },
+      "components": [
+        531.0,
+        1788.0,
+        4480.0,
+        7764339.0
+      ],
+      "delta": -275953.0,
+      "delta_pct": -3.4321265944072676,
+      "fraction": 1.0,
+      "objective": 7764339.0,
+      "solution_sha256": "9818dd546fe7c3cdee0ca7cf27c3c3bb3ee216c733d3a312ae833e14c3ab5452",
+      "status": "built",
+      "target_exit": 42
+    },
+    {
+      "base_exit": 40,
+      "block": 55,
+      "checker": {
+        "feasible": true,
+        "objective": 7765790.0,
+        "rescued": false,
+        "solution_sha256": "6abf391897f7db94cbf9e37f121bd0ae7bb0cf32eb72cd784b558d7cc01effb6"
+      },
+      "components": [
+        525.0,
+        2795.0,
+        4976.0,
+        7765790.0
+      ],
+      "delta": -274502.0,
+      "delta_pct": -3.4140799861497566,
+      "fraction": 1.0,
+      "objective": 7765790.0,
+      "solution_sha256": "4b50677978e6d6d4feb16e5dbffb77000f88c7772026920163db60f987fec591",
+      "status": "built",
+      "target_exit": 41
+    },
+    {
+      "base_exit": 20,
+      "block": 99,
+      "checker": {
+        "feasible": true,
+        "objective": 7779461.0,
+        "rescued": false,
+        "solution_sha256": "19c1dd06e9b7354a446758b13be43d53d8834c3052b8612fc7c3c82ca9febfa8"
+      },
+      "components": [
+        523.0,
+        3886.0,
+        5194.0,
+        7779461.0
+      ],
+      "delta": -260831.0,
+      "delta_pct": -3.244048847977163,
+      "fraction": 0.42857142857142855,
+      "objective": 7779461.0,
+      "solution_sha256": "248742a608a181d97200c9ea1b72dc717eec22a17f11a2906a5cb6c00ee6936a",
+      "status": "built",
+      "target_exit": 23
+    },
+    {
+      "base_exit": 30,
+      "block": 45,
+      "checker": {
+        "feasible": true,
+        "objective": 7784496.0,
+        "rescued": false,
+        "solution_sha256": "6ebda092eba3f0f83ceb0ab772eb5acadec4e9663040b4afe72727620c71d095"
+      },
+      "components": [
+        526.0,
+        1634.0,
+        5066.0,
+        7784496.0
+      ],
+      "delta": -255796.0,
+      "delta_pct": -3.1814267442028226,
+      "fraction": 0.42857142857142855,
+      "objective": 7784496.0,
+      "solution_sha256": "3a46454e25fe7250888e21d099ca0ea16b778a4c1cfd775da604992dd7d2526f",
+      "status": "built",
+      "target_exit": 33
+    }
+  ],
+  "wall_seconds": 19.293804727960378
+}
