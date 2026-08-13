@@ -1,0 +1,56 @@
+--- builds/rsv/src/core.hpp
++++ builds/rsvcap/src/core.hpp
+@@ -27,6 +27,7 @@
+     double fillRatio = 1.0;
+     double packFill  = 1.0;   // rsv: achievable packing density
+     std::vector<double> dayLoadE;  // rsv: residency-aware demand profile
++    double rsvExposure = 0.0;      // max(dayLoadE) / packFill
+     // per-day mandatory demand / total bay area: blocks whose
+     // [release, punctual-entry] window covers a day MUST occupy space
+     // somewhere that day. Days where this exceeds what polygons can
+--- builds/rsv/src/knobs.hpp
++++ builds/rsvcap/src/knobs.hpp
+@@ -49,6 +49,12 @@
+ inline int rsv() {
+     static const int v = [] {
+         const char* q = std::getenv("OGC_RSV");
+         return q ? atoi(q) : 0;
+     }();
+     return v;
+ }
++// Highest source-faithful exposure on the preliminary P4-P6 boards. RSV won
++// two disjoint 72-pair gates inside this support; train_final was 0W/6L above
++// it. This is a pre-result support boundary, not a threshold fit to the losses.
++inline constexpr double rsvMaxExposure() {
++    return 2.864815051879244;
++}
+ } // namespace knobs
+--- builds/rsv/src/api.cpp
++++ builds/rsvcap/src/api.cpp
+@@ -137,10 +137,14 @@
+             for (int t = lo; t <= hi && t <= Tmax; t++) needE[t] += share;
+         }
+         pb.dayLoadE.assign((size_t)Tmax + 2, 0.0);
+-        for (int t = 0; t <= Tmax; t++)
++        double peakE = 0.0;
++        for (int t = 0; t <= Tmax; t++) {
+             pb.dayLoadE[t] = needE[t] / std::max(1e-9, capArea);
++            peakE = std::max(peakE, pb.dayLoadE[t]);
++        }
+         pb.packFill = fill;
++        pb.rsvExposure = peakE / std::max(1e-9, fill);
+     }
+ 
+     // occupancy grid over [0, horizon); stamps whatever is already placed
+--- builds/rsv/src/repair.hpp
++++ builds/rsvcap/src/repair.hpp
+@@ -285,7 +285,9 @@
+         // rsv: threshold is the ACHIEVABLE density and the profile is
+         // residency-aware; with fillRatio and the entry-window profile this
+         // loop provably never advances (thr >= max_t dayLoad by construction).
+-        const bool rs = knobs::rsv() != 0 && !c.pb->dayLoadE.empty();
++        const bool rs = knobs::rsv() != 0 && !c.pb->dayLoadE.empty()
++                     && c.pb->rsvExposure <= knobs::rsvMaxExposure();
+         const std::vector<double>& dl = rs ? c.pb->dayLoadE : c.pb->dayLoad;
+         double thr = rs ? c.pb->packFill : c.pb->fillRatio;
+         while (eBot < lim && eBot < (int)dl.size() && dl[eBot] > thr)
