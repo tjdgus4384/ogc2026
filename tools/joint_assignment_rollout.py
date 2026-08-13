@@ -78,6 +78,53 @@ def main() -> None:
             return None
         return tuple(float(v) for v in engine.objective()), list(engine.get_solution())
 
+    def checker_record(flat: list[int]) -> dict:
+        """Apply the same production authority without aborting on rejection."""
+        engine.set_solution(flat)
+        engine.build_occ(engine.horizon())
+        recs = ma._extract(engine, n)
+        ranks = list(engine.entry_ranks())
+        raw_solution = ma._recs_to_sol(recs, ranks)
+        raw = ma._check(prob, raw_solution)
+        if raw and raw.get("feasible"):
+            return {
+                "feasible": True,
+                "objective": float(raw["objective"]),
+                "rescued": False,
+                "solution_sha256": hashlib.sha256(
+                    json.dumps(raw_solution, sort_keys=True,
+                               separators=(",", ":")).encode()
+                ).hexdigest(),
+            }
+        # Raw deterministic seeds can carry the exact-touch artifact that the
+        # production pipeline sends through _gate.  A failed rescue is a
+        # rejected deterministic choice, not an instrument crash.
+        solution, gated = ma._gate(prob, engine, n, time.time() + 60.0)
+        if solution is None or not gated or not gated.get("feasible"):
+            raw_viol = (raw or {}).get("violations", [])
+            gated_viol = (gated or {}).get("violations", [])
+            return {
+                "feasible": False,
+                "objective": None,
+                "rescued": False,
+                "raw_stage": (raw or {}).get("stage"),
+                "raw_violations": len(raw_viol),
+                "raw_first": str(raw_viol[0])[:200] if raw_viol else None,
+                "gated_stage": (gated or {}).get("stage"),
+                "gated_violations": len(gated_viol),
+                "gated_first": (str(gated_viol[0])[:200]
+                                if gated_viol else None),
+            }
+        return {
+            "feasible": True,
+            "objective": float(gated["objective"]),
+            "rescued": True,
+            "solution_sha256": hashlib.sha256(
+                json.dumps(solution, sort_keys=True,
+                           separators=(",", ":")).encode()
+            ).hexdigest(),
+        }
+
     started = time.monotonic()
     free = [-1] * n
     baselines = []
@@ -85,10 +132,26 @@ def main() -> None:
         built = construct(free, order)
         if built is not None:
             obj, flat = built
-            baselines.append((obj[3], name, order, obj, flat))
+            checked = checker_record(flat)
+            baselines.append({
+                "name": name,
+                "order": order,
+                "objective": obj,
+                "flat": flat,
+                "checker": checked,
+            })
     if not baselines:
         raise RuntimeError("all deterministic baseline orders failed")
-    _, order_name, order, base_obj, base_flat = min(baselines, key=lambda row: row[0])
+    feasible_baselines = [row for row in baselines if row["checker"]["feasible"]]
+    if not feasible_baselines:
+        raise RuntimeError("all deterministic baseline orders failed the production gate")
+    baseline = min(feasible_baselines,
+                   key=lambda row: row["checker"]["objective"])
+    order_name = baseline["name"]
+    order = baseline["order"]
+    base_obj = baseline["objective"]
+    base_flat = baseline["flat"]
+    base_check = baseline["checker"]
 
     replay_a = construct(free, order)
     replay_b = construct(free, order)
@@ -133,35 +196,7 @@ def main() -> None:
     null_rows = [row for row in built_rows if row["kind"] == "same_bay_null"]
     if not alternative_rows:
         raise RuntimeError("every alternative forced-bay action failed")
-    best = min(alternative_rows, key=lambda row: row["objective"])
-    best_locks = [-1] * n
-    best_locks[best["block"]] = best["bay"]
-    best_replay = construct(best_locks, order)
-    if best_replay is None or best_replay[1] != best["flat"]:
-        raise AssertionError("best action did not replay exactly")
-
-    def checker_record(flat: list[int]) -> dict:
-        engine.set_solution(flat)
-        engine.build_occ(engine.horizon())
-        recs = ma._extract(engine, n)
-        ranks = list(engine.entry_ranks())
-        result = ma._check(prob, ma._recs_to_sol(recs, ranks))
-        if result and result.get("feasible"):
-            return {"feasible": True, "objective": float(result["objective"]),
-                    "rescued": False}
-        # Raw deterministic seeds can carry the exact-touch artifact that the
-        # production pipeline always sends through _gate.  Score both arms by
-        # that same authority instead of silently dropping the board.
-        solution, gated = ma._gate(prob, engine, n, time.time() + 60.0)
-        if solution is None or not gated or not gated.get("feasible"):
-            raise AssertionError(
-                "production gate could not legalize deterministic board: "
-                f"raw={result} gated={gated}")
-        return {"feasible": True, "objective": float(gated["objective"]),
-                "rescued": True,
-                "solution_sha256": hashlib.sha256(
-                    json.dumps(solution, sort_keys=True, separators=(",", ":")).encode()
-                ).hexdigest()}
+    raw_best = min(alternative_rows, key=lambda row: row["objective"])
 
     compact_rows = []
     for row in sorted(alternative_rows, key=lambda item: item["objective"])[:20]:
@@ -174,21 +209,40 @@ def main() -> None:
     # draw, not a causal assignment intervention.  Do not dignify its score
     # with an official-checker result; retain only the null diagnostics needed
     # to repair the instrument.
-    base_check = None
+    best = None
     best_check = None
     gated_delta_pct = None
+    checked_alternatives = 0
+    rejected_alternatives = 0
     if causal_null_pass:
-        base_check = checker_record(base_flat)
-        best_check = checker_record(best["flat"])
         if (not base_check["rescued"] and
                 abs(base_check["objective"] - base_obj[3]) > 1e-6):
             raise AssertionError("baseline kernel/checker objective mismatch")
-        if (not best_check["rescued"] and
-                abs(best_check["objective"] - best["objective"]) > 1e-6):
-            raise AssertionError("candidate kernel/checker objective mismatch")
-        gated_delta_pct = (100.0 *
-                           (best_check["objective"] - base_check["objective"]) /
-                           base_check["objective"])
+        # The kill test's fixed candidate vocabulary is the 20 best raw
+        # actions.  Apply the official production gate to all 20 and select by
+        # gated objective; do not assume that legalization preserves raw rank.
+        for row in sorted(alternative_rows,
+                          key=lambda item: item["objective"])[:20]:
+            checked = checker_record(row["flat"])
+            checked_alternatives += 1
+            if not checked["feasible"]:
+                rejected_alternatives += 1
+                continue
+            if (not checked["rescued"] and
+                    abs(checked["objective"] - row["objective"]) > 1e-6):
+                raise AssertionError("candidate kernel/checker objective mismatch")
+            if best_check is None or checked["objective"] < best_check["objective"]:
+                best = row
+                best_check = checked
+        if best_check is not None:
+            best_locks = [-1] * n
+            best_locks[best["block"]] = best["bay"]
+            best_replay = construct(best_locks, order)
+            if best_replay is None or best_replay[1] != best["flat"]:
+                raise AssertionError("best action did not replay exactly")
+            gated_delta_pct = (100.0 *
+                               (best_check["objective"] - base_check["objective"]) /
+                               base_check["objective"])
     report = {
         "schema_version": 1,
         "problem": str(problem_path),
@@ -202,7 +256,21 @@ def main() -> None:
             "solution_sha256": flat_hash(base_flat),
             "checker": base_check,
         },
-        "best_action": {key: value for key, value in best.items() if key != "flat"},
+        "baseline_candidates": [
+            {
+                "name": row["name"],
+                "objective": row["objective"][3],
+                "components": list(row["objective"]),
+                "solution_sha256": flat_hash(row["flat"]),
+                "checker": row["checker"],
+            }
+            for row in baselines
+        ],
+        "raw_best_action": {
+            key: value for key, value in raw_best.items() if key != "flat"
+        },
+        "best_action": ({key: value for key, value in best.items()
+                         if key != "flat"} if best is not None else None),
         "best_checker": best_check,
         "gated_delta_pct": gated_delta_pct,
         "actions": {
@@ -213,6 +281,8 @@ def main() -> None:
             "alternative_ties": sum(abs(row["delta"]) <= 1e-9
                                     for row in alternative_rows),
             "alternative_losses": sum(row["delta"] > 1e-9 for row in alternative_rows),
+            "checker_screened": checked_alternatives,
+            "checker_rejected": rejected_alternatives,
         },
         "same_bay_null": {
             "tested": n,
@@ -234,14 +304,15 @@ def main() -> None:
     args.output.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
     print(json.dumps({
         "problem": problem_path.stem,
-        "baseline": base_obj[3],
-        "best": best["objective"],
-        "delta_pct": best["delta_pct"],
+        "baseline": base_check["objective"],
+        "baseline_order": order_name,
+        "best": (best_check["objective"] if best_check else None),
+        "raw_delta_pct": (best["delta_pct"] if best else None),
         "gated_delta_pct": report["gated_delta_pct"],
-        "action": [best["block"], best["bay"]],
+        "action": ([best["block"], best["bay"]] if best else None),
         "wins": report["actions"]["alternative_wins"],
         "tested": report["actions"]["tested"],
-        "checker": causal_null_pass,
+        "checker": causal_null_pass and best_check is not None,
         "replay": replay_exact,
         "same_bay_null": f"{null_identical}/{n}",
         "interpretation_valid": causal_null_pass,

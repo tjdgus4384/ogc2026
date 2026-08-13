@@ -33,6 +33,11 @@ control is necessary because shrinking the C++ bay vector can otherwise change
 construction draw.  No alternative-bay score is interpretable unless all
 same-bay controls pass.  Raw exact-touch boards are sent through the same
 production checker gate in both arms; the gated objective is authoritative.
+The baseline is the lowest production-gated objective among all six shipped
+orders, not the lowest raw kernel score.  After the null passes, the same gate
+scores the 20 lowest-raw alternative actions and selects their lowest gated
+objective.  Twenty is the frozen kill-test vocabulary; a survivor requires a
+separate exhaustive/beam evaluator before adoption.
 
 The axis advances only if at least one of P3, P4, or P5 has a checker-feasible
 one-decision improvement of at least 5% **and** every same-bay null is byte
@@ -90,3 +95,18 @@ harness explicitly sets `OGC_CAUSAL_BAY_RNG=1`; with that switch,
 `insertGreedy` performs the full-vector sort/shuffle and only then filters.  A
 new isolated build must still prove all same-bay controls byte-identical.  The
 code change alone is not accepted as proof.
+
+## Repaired-instrument attempt 74932
+
+The causal RNG repair passed every measured same-bay null: P3 200/200, P4
+150/150, P6 250/250.  Those cells also produced checker-feasible apparent
+improvements, but the job is not the final kill-test verdict.  P5 selected the
+lowest *raw* baseline order, whose exact-touch board remained checker-invalid
+after the production rescue ladder; the process failed before writing P5's
+null report.  This exposed a second asymmetry: candidate actions were gated by
+the checker while the seed-order choice was made by the kernel alone.
+
+The next rerun selects the baseline by the checker-authoritative objective
+across all six orders and screens the fixed top-20 candidate vocabulary through
+the same gate.  No P3/P4/P6 delta from 74932 advances the route until that
+four-board rerun completes.
