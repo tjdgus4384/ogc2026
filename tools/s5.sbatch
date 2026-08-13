@@ -2,9 +2,10 @@
 #SBATCH -J s5split
 #SBATCH -N 1
 #SBATCH --exclusive
-#SBATCH -o slurm-%j.out
+#SBATCH -t 00:20:00
+#SBATCH -o runs/s5-recovery-%j.log
 export PYTHONNOUSERSITE=1
-PY="$PWD/.miniforge/envs/ogc2026/bin/python"
+PY="${OGC_PY312:-$PWD/.miniforge/envs/ogc2026/bin/python}"
 mkdir -p runs/s5
 i=0
 for arg in "prob_5 400 0.15 7" "prob_5 400 0.15 11" "prob_4 400 0.15 7" "prob_5 400 0.30 7"; do
