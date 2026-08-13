@@ -140,7 +140,11 @@ def _baseline_signature(report: dict[str, Any]) -> dict[str, Any]:
         "search_flat_sha256": report["search_flat_sha256"],
         "checker": report["checker"],
         "audit": report["audit"],
-        "run_stats": report["run_stats"],
+        # The stay probe appends two phase-2 instrumentation counters to the
+        # API result.  The first 13 fields are the complete frozen ALNS
+        # contract exposed by the reference build; compare those exactly and
+        # do not confuse an appended diagnostic tail with a trajectory change.
+        "run_stats": report["run_stats"][:13],
     }
 
 

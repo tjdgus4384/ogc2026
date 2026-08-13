@@ -24,8 +24,14 @@ CONSTRUCTIONS="${2:?sequential construction directory required}"
 REFERENCE="${3:-$ROOT/results/assignment-persistent-74963}"
 OUT="${4:-$ROOT/runs/voluntary-stay-transfer-${SLURM_JOB_ID}}"
 ITERS="${5:-20000}"
-unset OGC_CAUSAL_BAY_RNG OGC_KEEP_ASSIGNMENT_LOCK OGC_PHASE2_ORIS
+unset OGC_PHASE2_ORIS
 unset OGC_EXIT_TWIN OGC_EXIT_TWIN_SHADOW OGC_PREFP
+# Match the immutable job-74963 A/A environment.  No assignment vector is
+# installed in either transfer arm: KEEP therefore creates no lock.  These
+# flags only preserve the reference RNG consumption inside op8/op9's temporary
+# forced-bay insertion.
+export OGC_CAUSAL_BAY_RNG=1
+export OGC_KEEP_ASSIGNMENT_LOCK=1
 mkdir -p "$OUT"
 
 pids=()
