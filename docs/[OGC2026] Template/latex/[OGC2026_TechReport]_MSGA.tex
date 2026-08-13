@@ -363,10 +363,13 @@ limits.
 Honest limitations: the residual gap to the strongest known values on the
 public instances is concentrated in tardiness. Local analysis proves our
 boards exactly optimal for any re-placement of the 20--30 most congested
-blocks and time-globally optimal at fixed geometry, so the remaining gap
-lives in globally different layouts that our operators do not reach; the
-area-relaxation lower bound is vacuous, so the distance to true optimality
-is unknown.
+blocks. An earlier claim of time-global optimality at fixed geometry was too
+strong: that timing model imposed $f_i=e_i+P_i$ and therefore excluded the
+official $f_i-e_i\ge P_i$ crane-nesting freedom. A corrected exact-order audit
+proves equality of the restricted and flexible optima on P3--P4, but remains
+unresolved on P5--P6. Geometry and exit timing must therefore still be searched
+jointly; the area-relaxation lower bound is vacuous, so the distance to true
+optimality is unknown.
 
 % =================================================
 % 5. Team Members' Contributions

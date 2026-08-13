@@ -31,6 +31,22 @@ STATUS.md가 캠페인 6(08-06)에서 멈춘 뒤의 기록. 원본 증거는
 
 → 대책: `tools/abgate.py` (짝지은 AB/BA + 부호검정, 공식 TL, `--exclusive` 노드).
 
+## 08-13 정정: sec 192의 fixed-layout 시간 최적성은 증명이 아니었다
+
+과거 `exsched.py`는 `f_i=e_i+P_i`를 강제했다. 공식 모델은
+`f_i-e_i>=P_i`이고, one-way crane obstruction이 있는 두 블록은 obstructer를
+obstructed block의 체류 안에 중첩할 수 있다. 즉 그 실험은 검증하려던 공식
+시간 해공간에서 exit closure를 먼저 삭제했다. 더구나 ENTRY 시각 금지만 모델링하고
+EXIT obstruction과 같은 날 연산 순서를 완전히 모델링하지 않았으므로, 당시
+`OPTIMAL`은 공식 fixed-geometry 문제의 최적성 certificate가 아니다.
+
+정확한 방향은 `j`가 움직이는 `i`를 막을 때 `j`가 inner,
+`i`가 outer가 되어 `e_i<=e_j` 및 `f_j<=f_i`이다. 따라서 최소 closure는
+obstructer `j`가 아니라 obstructed outer `i`의 exit를 정확히 `f_j`까지
+늘린다. 자세한 수정 모델과 사전등록은
+`experiments/obstruction-exit-closure.md`에 둔다. 아래 sec 192 표는 역사적
+측정값으로만 남기며, 그 결론을 현재 규칙으로 사용하지 않는다.
+
 ## score-72h 50축 스크린 (유일하게 살아있는 실측)
 
 축소 TL 스크린, baseline P4 4,253,087 / P6 36,074,448, 시드 7. 생존자 8개.

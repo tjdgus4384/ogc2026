@@ -1,0 +1,64 @@
+{
+  "hard_disjoint_pairs": 1197,
+  "input_checker": {
+    "feasible": true,
+    "obj1": 4010.0,
+    "obj2": 1954,
+    "obj3": 6004.0,
+    "objective": 27650902.0,
+    "stage": 5,
+    "violations": []
+  },
+  "models": {
+    "fixed": {
+      "best_bound_z1": 0.0,
+      "branches": 307296,
+      "candidate_path": "/data_fast/home/tjdgus4384/priv/ogc2026-worktrees/codex-fundamental/runs/flexible-time-audit-75171/prob_6.sol-fixed.sol.json",
+      "checker": {
+        "feasible": true,
+        "obj1": 4010.0,
+        "obj2": 1954,
+        "obj3": 6004.0,
+        "objective": 27650902.0,
+        "stage": 5,
+        "violations": []
+      },
+      "checker_attempt": 1,
+      "conflicts": 16978,
+      "cp_z1": 4010.0,
+      "elapsed": 60.39039481105283,
+      "extended_blocks": 0,
+      "max_extra_days": 0,
+      "status": "FEASIBLE",
+      "total_extra_days": 0
+    },
+    "flex": {
+      "best_bound_z1": 0.0,
+      "branches": 193680,
+      "candidate_path": "/data_fast/home/tjdgus4384/priv/ogc2026-worktrees/codex-fundamental/runs/flexible-time-audit-75171/prob_6.sol-flex.sol.json",
+      "checker": {
+        "feasible": true,
+        "obj1": 4010.0,
+        "obj2": 1954,
+        "obj3": 6004.0,
+        "objective": 27650902.0,
+        "stage": 5,
+        "violations": []
+      },
+      "checker_attempt": 1,
+      "conflicts": 18211,
+      "cp_z1": 4010.0,
+      "elapsed": 60.42869335785508,
+      "extended_blocks": 0,
+      "max_extra_days": 0,
+      "status": "FEASIBLE",
+      "total_extra_days": 0
+    }
+  },
+  "n": 250,
+  "one_way_pairs": 123,
+  "problem": "/data_fast/home/tjdgus4384/priv/ogc2026-worktrees/codex-fundamental/data/preliminary_test/prob_6.json",
+  "relation_seconds": 0.9928948460146785,
+  "schema_version": 1,
+  "solution": "/data_fast/home/tjdgus4384/priv/ogc2026-worktrees/codex-fundamental/archive/best-boards-2026-08-04/prob_6.sol.json"
+}

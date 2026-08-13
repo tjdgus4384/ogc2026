@@ -80,10 +80,11 @@ Neither screen authorizes production or Train.  Failure of either closes this
 exhaustive, zero-own-cost half/due one-stay transition; it does not revive
 construction starts, public action tables, or persistent exit locks.  It also
 does not close the full exit-time variable: a rule-driven successor may extend
-an obstructing interval exactly to another block's exit boundary, including
-past its own due date only when the completed repair's net weighted objective
-strictly improves.  Such an exit-closure repair must be triggered by an
-observed one-way obstruction, not by a fitted day or frequency sweep.
+the obstructed outer/wrapper interval exactly to its inner obstructer's exit
+boundary, including past the wrapper's due date only when the completed
+repair's net weighted objective strictly improves.  Such an exit-closure
+repair must be triggered by an observed one-way obstruction, not by a fitted
+day or frequency sweep.
 
 ## Verdict: reject exhaustive half/due repair (job 75161)
 
@@ -113,6 +114,8 @@ The verdict is `reject_exhaustive_stay_repair`: no plateau continuation,
 frequency fit, wall gate, or Train run.  This closes exhaustive zero-cost
 half/due branching in every ordinary repair.  It does not close exit time as a
 decision variable.  The next distinct hypothesis is an obstruction-triggered
-exit-closure repair that extends an actual obstructer exactly to the inner
-block's required exit boundary and compares the completed suffix, including a
-paid extension only when its net weighted objective wins.
+exit-closure repair that extends the obstructed outer/wrapper exactly to the
+inner obstructer's exit boundary and compares the completed suffix, including
+a paid extension only when its net weighted objective wins.  Extending the
+obstructer itself is the opposite direction and makes the nesting inequality
+harder to satisfy.
