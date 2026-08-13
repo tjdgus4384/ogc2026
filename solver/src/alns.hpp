@@ -52,6 +52,19 @@ struct RunStats { long iters=0, accepted=0, improved=0, failed=0; double best;
                   long stayNeighbourhoods=0, stayTried=0, stayBuilt=0,
                        staySelected=0, stayRescued=0;
                   double stayGain=0.0;
+                  long closureNeighbourhoods=0, closureCandidates=0,
+                       closureSeeds=0,
+                       closureAttempts=0, closureBuilt=0,
+                       closureHardRejects=0, closureCycleRejects=0,
+                       closurePhase3Seeds=0, closurePhase3Windows=0,
+                       closureBudgetHits=0, closureSuffixTried=0,
+                       closureSuffixBuilt=0, closureSelected=0,
+                       closureAccepted=0, closureNewBest=0,
+                       closureRescued=0, closureExtendedBlocks=0,
+                       closureExtendedDays=0, closurePaidDays=0;
+                  double closureGain=0.0;
+                  long closureDetectorNs=0, closureSuffixNs=0;
+                  int finalOfficial=0;
                   long badIter=-1; int badKind=-1; int badPhase=-1; };
 
 // Voluntarily lengthen one already-inserted block without making that block
@@ -81,7 +94,14 @@ inline bool extendStay(repair::Ctx& c, int A, int target) {
 // Full-state audit -- the development assertion tool. Run it (auditEvery) when
 // a new operator misbehaves and it tells you WHERE the state broke:
 // 0 ok; 1 byBay out of bounds; 2 stale member; 3 dup/missing; 4 vp violation.
-inline int audit(const core::Problem& pb, core::Sol& s, int* badBlock = nullptr) {
+inline bool hasExtendedStay(const core::Problem& pb, const core::Sol& s) {
+    for (int i = 0; i < pb.n; i++)
+        if (s.placed[i] && s.f[i] - s.e[i] > pb.P[i]) return true;
+    return false;
+}
+
+inline int audit(const core::Problem& pb, core::Sol& s,
+                 int* badBlock = nullptr, bool flexibleExits = false) {
     std::vector<int> cnt(pb.n, 0);
     for (int j = 0; j < pb.m; j++)
         for (int i : s.byBay[j]) {
@@ -95,8 +115,9 @@ inline int audit(const core::Problem& pb, core::Sol& s, int* badBlock = nullptr)
     }
     for (int i = 0; i < pb.n; i++) {
         if (!s.placed[i]) continue;
-        bool ok = core::vpConservative(pb, s, i);
-        if (!ok && knobs::exitTwin())
+        bool ok = flexibleExits ? core::vpFlexibleExits(pb, s, i)
+                                : core::vpConservative(pb, s, i);
+        if (!ok && !flexibleExits && knobs::exitTwin())
             ok = core::vpFlexibleExits(pb, s, i);
         if (!ok) { if (badBlock) *badBlock = i; return 4; }
     }
@@ -416,6 +437,10 @@ struct RunParams {
     long maxIters = 0;           // 0 = wall-clock only; >0 makes runs exactly
                                  // reproducible (determinism tests, A/B)
     bool stayRollout = false;    // experiment: paired one-stay suffix repair
+    bool exitClosure = false;    // experiment: first C5' closure suffix
+    long checkpointIter = 0;     // read-only incumbent snapshot within this run
+    Sol* checkpointOut = nullptr;
+    int* checkpointOfficialOut = nullptr;
 };
 
 inline int spatialCompact(repair::Ctx& c, int passes);
@@ -430,6 +455,16 @@ inline RunStats run(repair::Ctx& c, double seconds, const RunParams& rp,
     const long twinRescued0 = c.exitTwinRescued;
     const long phase2Calls0 = c.phase2Calls;
     const long phase2Success0 = c.phase2Success;
+    const long closureCandidates0 = c.exitClosureCandidates;
+    const long closureSeeds0 = c.exitClosureSeeds;
+    const long closureAttempts0 = c.exitClosureAttempts;
+    const long closureBuilt0 = c.exitClosureBuilt;
+    const long closureHardRejects0 = c.exitClosureHardRejects;
+    const long closureCycleRejects0 = c.exitClosureCycleRejects;
+    const long closurePhase3Seeds0 = c.exitClosurePhase3Seeds;
+    const long closurePhase3Windows0 = c.exitClosurePhase3Windows;
+    const long closureBudgetHits0 = c.exitClosureBudgetHits;
+    const long closureDetectorNs0 = c.exitClosureDetectorNs;
     c.rng.seed(seedv);
     Destroyers ds(10); ds.rng = &c.rng;
     auto t0 = std::chrono::steady_clock::now();
@@ -451,6 +486,8 @@ inline RunStats run(repair::Ctx& c, double seconds, const RunParams& rp,
     };
     double cur = obj(), best = cur;
     Sol bestSol = s;
+    bool currentOfficial = false; // true only after this arm accepts a closure
+    bool bestOfficial = false;
     int qlo = std::max(2, (int)(rp.qloF * pb.n));
     // rare large jolt reach = nominal qhiF (widening refuted: the congested
     // 20-30 block neighbourhood is proven optimal, wider ruins wash)
@@ -477,6 +514,19 @@ inline RunStats run(repair::Ctx& c, double seconds, const RunParams& rp,
     occ::OccIndex stayOcc;
     Sol staySol;
     bool stayOccReady = false;
+    occ::OccIndex closureOcc;
+    Sol closureSol;
+    bool closureOccReady = false;
+    bool checkpointSaved = false;
+    auto saveCheckpoint = [&] {
+        if (!checkpointSaved && rp.checkpointOut && rp.checkpointIter > 0) {
+            *rp.checkpointOut = bestSol;
+            if (rp.checkpointOfficialOut)
+                *rp.checkpointOfficialOut =
+                    bestOfficial && hasExtendedStay(pb, bestSol) ? 1 : 0;
+            checkpointSaved = true;
+        }
+    };
 
     // mid-anneal lock release: with partial preference locks the deep
     // anneal can trap transiently-accepted tardiness (SA uphill moves
@@ -486,6 +536,11 @@ inline RunStats run(repair::Ctx& c, double seconds, const RunParams& rp,
     while (now() < seconds &&
            (rp.maxIters <= 0 || st.iters < rp.maxIters)) {
         st.iters++;
+        // At the start of iteration k+1, bestSol is exactly the read-only
+        // incumbent after iteration k.  This works across all early-continue
+        // operator paths without changing their control flow.
+        if (st.iters > rp.checkpointIter && rp.checkpointIter > 0)
+            saveCheckpoint();
         if (c.forcedBay && !knobs::keepAssignmentLock() &&
             (rp.maxIters > 0
                  ? st.iters >= (long)(0.6 * rp.maxIters)
@@ -572,9 +627,12 @@ inline RunStats run(repair::Ctx& c, double seconds, const RunParams& rp,
                         }
                         double nv4 = ok4 ? obj() : 1e300;
                         if (ok4 && nv4 <= cur + 1e-9) {
+                            currentOfficial = currentOfficial &&
+                                hasExtendedStay(pb, s);
                             cur = nv4;
                             if (nv4 < best - 1e-9) {
                                 best = nv4; bestSol = s; st.improved++;
+                                bestOfficial = currentOfficial;
                                 sinceBest = 0;
                             }
                         } else {
@@ -619,8 +677,10 @@ inline RunStats run(repair::Ctx& c, double seconds, const RunParams& rp,
                         c.forcedBay[B] != s.bay[A]) lockOK = false;
                 }
                 if (A != B && lockOK) {
-                    int aB=s.bay[A], aX=s.x[A], aY=s.y[A], aE=s.e[A];
-                    int bB=s.bay[B], bX=s.x[B], bY=s.y[B], bE=s.e[B];
+                    int aB=s.bay[A], aX=s.x[A], aY=s.y[A], aE=s.e[A],
+                        aF=s.f[A];
+                    int bB=s.bay[B], bX=s.x[B], bY=s.y[B], bE=s.e[B],
+                        bF=s.f[B];
                     c.oc->stamp(pb, s, A, false);
                     c.oc->stamp(pb, s, B, false);
                     int nAe = std::max(pb.R[A], bE);
@@ -652,18 +712,21 @@ inline RunStats run(repair::Ctx& c, double seconds, const RunParams& rp,
                         }
                     double nv2 = ok2 ? obj() : 1e300;
                     if (ok2 && nv2 <= cur + 1e-9) {
+                        currentOfficial = currentOfficial &&
+                            hasExtendedStay(pb, s);
                         cur = nv2;
                         if (nv2 < best - 1e-9) {
                             best = nv2; bestSol = s; st.improved++;
+                            bestOfficial = currentOfficial;
                             sinceBest = 0;
                         }
                     } else {                       // revert
                         c.oc->stamp(pb, s, A, false);
                         c.oc->stamp(pb, s, B, false);
                         s.bay[A]=aB; s.x[A]=aX; s.y[A]=aY;
-                        s.e[A]=aE; s.f[A]=aE+pb.P[A];
+                        s.e[A]=aE; s.f[A]=aF;
                         s.bay[B]=bB; s.x[B]=bX; s.y[B]=bY;
-                        s.e[B]=bE; s.f[B]=bE+pb.P[B];
+                        s.e[B]=bE; s.f[B]=bF;
                         s.rebuildIdx(pb.m);
                         c.oc->stamp(pb, s, A, true);
                         c.oc->stamp(pb, s, B, true);
@@ -682,6 +745,7 @@ no_swap:
         long t0 = tmr ? tick() : 0;
         auto rem = pickRemoval(c, kind, q);
         if (rem.empty()) { ds.used[kind]++; continue; }   // decay, don't re-pick forever
+        const bool officialBefore = currentOfficial;
         std::vector<Backup> bk;
         for (int A : rem) {
             bk.push_back({A, s.bay[A], s.ori[A], s.x[A], s.y[A], s.e[A], s.f[A]});
@@ -689,7 +753,8 @@ no_swap:
         }
         long t1 = tmr ? tick() : 0;
         if (auditEvery > 0) {
-            int bb = -1; int code = audit(pb, s, &bb);
+            int bb = -1; int code = audit(
+                pb, s, &bb, rp.exitClosure && hasExtendedStay(pb, s));
             if (code) { st.badIter = st.iters; st.badKind = kind;
                 st.badPhase = 10000 + code * 1000 + bb; break; }
         }
@@ -703,6 +768,8 @@ no_swap:
             double aa = (ga.x1-ga.x0)*(ga.y1-ga.y0)*pb.P[a];
             double ab = (gb.x1-gb.x0)*(gb.y1-gb.y0)*pb.P[b];
             return aa != ab ? aa > ab : pb.D[a] < pb.D[b]; });
+        int forcedAcceptance = -1; // -1: legacy SA rule; 0/1: coupled result
+        bool closureAcceptedCandidate = false;
         {
         bool ok = true;
         if ((kind == 8 || kind == 9) && c.tsBlk >= 0) {
@@ -748,7 +815,201 @@ no_swap:
                 return true;
             };
 
-            if (!rp.stayRollout || bigQ) {
+            if (rp.exitClosure && !bigQ) {
+                // Immutable normal repair plus at most one structural branch.
+                // The observer is reset once per neighbourhood, not once per
+                // inserted block: the first raw one-way witness owns the only
+                // closure certification even when that insertion later fails.
+                st.closureNeighbourhoods++;
+                const Sol destroyed = s;
+                const std::mt19937 rngBefore = c.rng;
+                // areaUsed is the only non-idempotent dynamic cache.  Keep it
+                // byte-exact cheaply; rebuild the much larger OR bitmap only
+                // if a witness actually exists.
+                const auto destroyedArea = c.oc->areaUsed;
+                int witnessPos = -1;
+                bool witnessNormalInserted = false;
+                repair::Ctx::ExitClosureWitness witness;
+                bool normalOK = true;
+                repair::resetExitClosureProbe(c, true);
+                for (int pos = 0; pos < (int)rem.size(); pos++) {
+                    const int A = rem[pos];
+                    const bool inserted = repair::insertGreedy(c, A, -1);
+                    if (witnessPos < 0 && c.exitClosure.valid) {
+                        witnessPos = pos;
+                        witnessNormalInserted = inserted;
+                        witness = c.exitClosure;
+                    }
+                    if (!inserted) {
+                        normalOK = false;
+                        break;
+                    }
+                }
+                repair::resetExitClosureProbe(c, false);
+                const std::mt19937 rngAfterNormal = c.rng;
+                const auto exitFallbackAfterNormal = c.exitFallback;
+                const double normalPen = normalOK
+                    ? core::evaluatePen(pb, s).total
+                    : std::numeric_limits<double>::infinity();
+                const double normalTrue = normalOK
+                    ? core::evaluate(pb, s).total
+                    : std::numeric_limits<double>::infinity();
+
+                bool branchOK = false;
+                double branchPen = std::numeric_limits<double>::infinity();
+                double branchTrue = std::numeric_limits<double>::infinity();
+                repair::Ctx::ExitFallback branchFallback;
+                OccState branchOcc;
+                if (witnessPos >= 0) {
+                    const long suffixStart = tick();
+                    st.closureSuffixTried++;
+                    if (!closureOccReady) {
+                        closureOcc = *c.oc;
+                        closureOccReady = true;
+                    }
+                    closureSol = destroyed;
+                    closureOcc.clearBits();
+                    for (int i = 0; i < pb.n; i++)
+                        if (closureSol.placed[i])
+                            closureOcc.stamp(pb, closureSol, i, true);
+                    closureOcc.areaUsed = destroyedArea;
+                    repair::Ctx branch = c;
+                    branch.s = &closureSol;
+                    branch.oc = &closureOcc;
+                    branch.rng = rngBefore;
+                    branch.exitFallback.valid = false;
+                    repair::resetExitClosureProbe(branch, false);
+                    branchOK = true;
+                    for (int pos = 0; pos < (int)rem.size(); pos++) {
+                        const int A = rem[pos];
+                        Sol witnessPrefix;
+                        OccState witnessPrefixOcc;
+                        if (pos == witnessPos) {
+                            witnessPrefix = closureSol;
+                            witnessPrefixOcc = saveOcc(closureOcc);
+                        }
+                        const bool inserted = repair::insertGreedy(
+                            branch, A, -1);
+                        if (pos == witnessPos) {
+                            // Consume exactly the control insertion's RNG.  A
+                            // witness can come from either a successful scan or
+                            // the failed insertion that ended normal repair.
+                            if (inserted != witnessNormalInserted) {
+                                branchOK = false;
+                                break;
+                            }
+                            // Restore the exact floating/cache prefix instead
+                            // of stamp(+A), stamp(-A), whose double additions
+                            // need not be byte-invertible.
+                            closureSol = std::move(witnessPrefix);
+                            loadOcc(closureOcc, witnessPrefixOcc);
+                            if (branch.rng != witness.rngAfterScan ||
+                                repair::exitClosurePrefixSignature(
+                                    closureSol, A) != witness.prefixSignature) {
+                                branchOK = false;
+                                break;
+                            }
+                            if (!repair::applyExitClosure(branch, A, witness)) {
+                                branchOK = false;
+                                break;
+                            }
+                        } else if (!inserted) {
+                            branchOK = false;
+                            break;
+                        }
+                    }
+                    if (branchOK) {
+                        int bad = -1;
+                        if (audit(pb, closureSol, &bad, true) != 0) {
+                            branchOK = false;
+                        } else {
+                            st.closureSuffixBuilt++;
+                            branchPen = core::evaluatePen(
+                                pb, closureSol).total;
+                            branchTrue = core::evaluate(
+                                pb, closureSol).total;
+                            branchFallback = branch.exitFallback;
+                            branchOcc = saveOcc(closureOcc);
+                        }
+                    }
+                    st.closureSuffixNs += tick() - suffixStart;
+                }
+
+                // Speculation owns neither future randomness nor live state.
+                // Require strict improvement in BOTH the anneal objective and
+                // the true weighted objective.  If it qualifies, couple its SA
+                // decision to the exact uniform draw normal would consume.
+                c.rng = rngAfterNormal;
+                c.exitFallback = exitFallbackAfterNormal;
+                double trueCurBefore = 0.0;
+                if (branchOK && !normalOK) {
+                    // Rescue is the only comparison that needs the true
+                    // pre-destroy objective.  Reconstruct it lazily from the
+                    // exact backups instead of paying an O(n+m^2) evaluation
+                    // in every closure-eligible neighbourhood.
+                    Sol incumbent = destroyed;
+                    for (const auto& b : bk) {
+                        incumbent.bay[b.A]=b.bay;
+                        incumbent.ori[b.A]=b.ori;
+                        incumbent.x[b.A]=b.x;
+                        incumbent.y[b.A]=b.y;
+                        incumbent.e[b.A]=b.e;
+                        incumbent.f[b.A]=b.f;
+                        incumbent.placed[b.A]=1;
+                        incumbent.addIdx(b.A);
+                    }
+                    trueCurBefore = core::evaluate(pb, incumbent).total;
+                }
+                const bool betterRepair = branchOK && normalOK &&
+                    branchPen < normalPen - 1e-9 &&
+                    branchTrue < normalTrue - 1e-9;
+                const bool improvingRescue = branchOK && !normalOK &&
+                    branchPen < cur - 1e-9 &&
+                    branchTrue < trueCurBefore - 1e-9;
+                if (betterRepair || improvingRescue) {
+                    st.closureSelected++;
+                    if (!normalOK) st.closureRescued++;
+                    st.closureGain += normalOK
+                        ? normalTrue - branchTrue
+                        : trueCurBefore - branchTrue;
+                    st.closureExtendedBlocks += witness.extendedBlocks;
+                    st.closureExtendedDays += witness.extendedDays;
+                    st.closurePaidDays += witness.paidDays;
+
+                    bool branchAccepted = true;
+                    if (normalOK) {
+                        const double normalDelta = normalPen - cur;
+                        const double branchDelta = branchPen - cur;
+                        if (hc) {
+                            branchAccepted = branchDelta < -1e-9;
+                        } else if (normalDelta >= -1e-9) {
+                            const double u = U(c.rng); // normal's one draw
+                            const bool normalAccepted =
+                                u < std::exp(-normalDelta /
+                                    std::max(1e-9, T));
+                            branchAccepted = branchDelta < -1e-9 ||
+                                u < std::exp(-branchDelta /
+                                    std::max(1e-9, T));
+                            // A strictly lower candidate cannot be rejected by
+                            // the shared draw when normal would be accepted.
+                            if (normalAccepted && !branchAccepted)
+                                branchAccepted = true;
+                        }
+                    }
+
+                    forcedAcceptance = branchAccepted ? 1 : 0;
+                    if (branchAccepted) {
+                        s = closureSol;
+                        loadOcc(*c.oc, branchOcc);
+                        c.exitFallback = branchFallback;
+                        currentOfficial = true;
+                        closureAcceptedCandidate = true;
+                    }
+                    ok = normalOK || branchAccepted;
+                } else {
+                    ok = normalOK;
+                }
+            } else if (!rp.stayRollout || bigQ) {
                 ok = repairPlain(c, -1, -1, nullptr, nullptr);
             } else {
                 st.stayNeighbourhoods++;
@@ -836,7 +1097,8 @@ no_swap:
             }
         }
         if (auditEvery > 0 && ok) {
-            int bb = -1; int code = audit(pb, s, &bb);
+            int bb = -1; int code = audit(
+                pb, s, &bb, rp.exitClosure && hasExtendedStay(pb, s));
             if (code) { st.badIter = st.iters; st.badKind = kind;
                 st.badPhase = 20000 + code * 1000 + bb; break; }
         }
@@ -844,6 +1106,7 @@ no_swap:
         if (tmr) { st.tRemove += t1 - t0; st.tInsert += t2 - t1;
                    st.tSamples++; }
         if (!ok) {
+            currentOfficial = officialBefore;
             st.failed++;
             for (int A : rem) if (s.placed[A]) repair::removeBlock(c, A);
             for (auto& b : bk) {
@@ -860,16 +1123,27 @@ no_swap:
         double nv = obj();
         if (tmr) st.tEval += tick() - t3;
         double dlt = nv - cur;
-        bool acc = dlt < -1e-9 ||
-                   (!hc && U(c.rng) < std::exp(-dlt / std::max(1e-9, T)));
+        bool acc = forcedAcceptance >= 0
+            ? forcedAcceptance != 0
+            : (dlt < -1e-9 ||
+               (!hc && U(c.rng) < std::exp(-dlt / std::max(1e-9, T))));
         ds.used[kind]++;
         if (acc) {
+            // `official` is experiment lineage, not merely an overlong stay:
+            // initial/control overlong states must never activate exact output.
+            // Once closure lineage exists, however, ordinary accepted moves
+            // clear it as soon as the last required extension disappears.
+            currentOfficial = currentOfficial && hasExtendedStay(pb, s);
             cur = nv; st.accepted++;
+            if (closureAcceptedCandidate) st.closureAccepted++;
             if (nv < best - 1e-9) {
                 best = nv; bestSol = s; st.improved++; sinceBest = 0;
+                bestOfficial = currentOfficial;
+                if (closureAcceptedCandidate) st.closureNewBest++;
                 ds.score[kind] += 3.0; ds.totImp[kind]++;
             } else { ds.score[kind] += (dlt < -1e-9 ? 1.0 : 0.3); sinceBest++; }
         } else {
+            currentOfficial = officialBefore;
             sinceBest++;
             for (int A : rem) if (s.placed[A]) repair::removeBlock(c, A);
             for (auto& b : bk) {
@@ -889,6 +1163,7 @@ no_swap:
         // intensification snaps back to the incumbent (n-scaled).
         if (sinceBest > 20L * pb.n) {
             s = bestSol;
+            currentOfficial = bestOfficial;
             c.oc->clearBits();
             for (int i2 = 0; i2 < pb.n; i2++)
                 if (s.placed[i2]) c.oc->stamp(pb, s, i2, true);
@@ -897,12 +1172,24 @@ no_swap:
             sinceBest = 0;
         }
         if (auditEvery > 0 && (st.iters % auditEvery) == 0) {
-            int bb = -1; int code = audit(pb, s, &bb);
+            int bb = -1; int code = audit(
+                pb, s, &bb, rp.exitClosure && hasExtendedStay(pb, s));
             if (code) { st.badIter = st.iters; st.badKind = kind;
                 st.badPhase = code * 1000 + bb; break; }
         }
     }
+    if (st.iters >= rp.checkpointIter && rp.checkpointIter > 0)
+        saveCheckpoint();
     s = bestSol;
+    // A committed closure can leave the live occupancy cache on a different SA
+    // state from bestSol.  Repair that cache only when this run actually
+    // accepted a closure; no-selected/no-accepted experiment arms retain the
+    // control path byte-for-byte.  bestSol already owns its exact byBay order.
+    if (rp.exitClosure && st.closureAccepted > 0) {
+        c.oc->clearBits();
+        for (int i = 0; i < pb.n; i++)
+            if (s.placed[i]) c.oc->stamp(pb, s, i, true);
+    }
     for (int k = 0; k < 10; k++) {          // per-operator contribution
         st.opUsed[k] = ds.used[k];
         st.opImp[k] = ds.totImp[k];
@@ -915,6 +1202,23 @@ no_swap:
     st.exitTwinRescued = c.exitTwinRescued - twinRescued0;
     st.phase2Calls = c.phase2Calls - phase2Calls0;
     st.phase2Success = c.phase2Success - phase2Success0;
+    st.closureCandidates = c.exitClosureCandidates - closureCandidates0;
+    st.closureSeeds = c.exitClosureSeeds - closureSeeds0;
+    st.closureAttempts = c.exitClosureAttempts - closureAttempts0;
+    st.closureBuilt = c.exitClosureBuilt - closureBuilt0;
+    st.closureHardRejects =
+        c.exitClosureHardRejects - closureHardRejects0;
+    st.closureCycleRejects =
+        c.exitClosureCycleRejects - closureCycleRejects0;
+    st.closurePhase3Seeds =
+        c.exitClosurePhase3Seeds - closurePhase3Seeds0;
+    st.closurePhase3Windows =
+        c.exitClosurePhase3Windows - closurePhase3Windows0;
+    st.closureBudgetHits =
+        c.exitClosureBudgetHits - closureBudgetHits0;
+    st.closureDetectorNs = c.exitClosureDetectorNs - closureDetectorNs0;
+    st.finalOfficial = rp.exitClosure && bestOfficial &&
+        hasExtendedStay(pb, bestSol) ? 1 : 0;
     if (getenv("SMAX_DEBUG")) {   // per-op economics: who fired, who earned
         fprintf(stderr, "[ops]");
         for (int i = 0; i < ds.K; i++)

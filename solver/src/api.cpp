@@ -235,8 +235,8 @@ struct Engine {
         return knobs::exitTwin() &&
                core::vpFlexibleExits(pb, sol, A);
     }
-    std::vector<int> auditState() {
-        int bb = -1; int code = alns::audit(pb, sol, &bb);
+    std::vector<int> auditState(bool flexibleExits = false) {
+        int bb = -1; int code = alns::audit(pb, sol, &bb, flexibleExits);
         return {code, bb};
     }
 
@@ -245,6 +245,8 @@ struct Engine {
     // assignment's values so the search optimizes pure Z1 geometry.
     std::vector<int> capVec;
     std::vector<int> lockVec;
+    std::vector<int> checkpointFlat_;          // experimental in-run snapshot
+    int checkpointOfficial_ = 0;
     int lastChunks_ = 0;                 // rounds completed by the last
     int lastChunks() const { return lastChunks_; }   // portfolio call
     double phaseNs_[4] = {0, 0, 0, 0};   // remove/insert/eval/samples
@@ -682,14 +684,36 @@ struct Engine {
                                 double T0mul, double cooling, uint64_t seed,
                                 int auditEvery = 0, double hcFrac = 0.75,
                                 double bigQProb = 0.04, int opMask = 0xFF,
-                                long maxIters = 0, bool stayRollout = false) {
+                                long maxIters = 0, bool stayRollout = false,
+                                bool exitClosure = false,
+                                long checkpointIter = 0) {
         alns::RunParams rp;
         rp.qloF = qlo; rp.qhiF = qhi; rp.T0mul = T0mul; rp.cooling = cooling;
         rp.hcFrac = hcFrac; rp.bigQProb = bigQProb;
         rp.opMask = (uint32_t)opMask;
         rp.maxIters = maxIters;
         rp.stayRollout = stayRollout;
+        rp.exitClosure = exitClosure;
+        core::Sol checkpoint;
+        checkpointFlat_.clear();
+        checkpointOfficial_ = 0;
+        rp.checkpointIter = checkpointIter;
+        rp.checkpointOut = checkpointIter > 0 ? &checkpoint : nullptr;
+        rp.checkpointOfficialOut = checkpointIter > 0
+            ? &checkpointOfficial_ : nullptr;
         auto st = alns::run(ctx, seconds, rp, seed, auditEvery);
+        if (!checkpoint.placed.empty()) {
+            checkpointFlat_.reserve((size_t)pb.n * 7);
+            for (int i = 0; i < pb.n; i++) {
+                checkpointFlat_.push_back(checkpoint.bay[i]);
+                checkpointFlat_.push_back(checkpoint.ori[i]);
+                checkpointFlat_.push_back(checkpoint.x[i]);
+                checkpointFlat_.push_back(checkpoint.y[i]);
+                checkpointFlat_.push_back(checkpoint.e[i]);
+                checkpointFlat_.push_back(checkpoint.f[i]);
+                checkpointFlat_.push_back((int)checkpoint.placed[i]);
+            }
+        }
         return {(double)st.iters, (double)st.accepted, (double)st.improved,
                 (double)st.failed, st.best, (double)st.badIter,
                 (double)st.badKind, (double)st.badPhase,
@@ -699,8 +723,30 @@ struct Engine {
                 (double)st.phase2Calls, (double)st.phase2Success,
                 (double)st.stayNeighbourhoods, (double)st.stayTried,
                 (double)st.stayBuilt, (double)st.staySelected,
-                (double)st.stayRescued, st.stayGain};
+                (double)st.stayRescued, st.stayGain,
+                (double)st.closureNeighbourhoods,
+                (double)st.closureCandidates, (double)st.closureSeeds,
+                (double)st.closureAttempts, (double)st.closureBuilt,
+                (double)st.closureHardRejects,
+                (double)st.closureCycleRejects,
+                (double)st.closurePhase3Seeds,
+                (double)st.closurePhase3Windows,
+                (double)st.closureBudgetHits,
+                (double)st.closureSuffixTried,
+                (double)st.closureSuffixBuilt,
+                (double)st.closureSelected,
+                (double)st.closureAccepted,
+                (double)st.closureNewBest,
+                (double)st.closureRescued,
+                (double)st.closureExtendedBlocks,
+                (double)st.closureExtendedDays,
+                (double)st.closurePaidDays, st.closureGain,
+                (double)st.finalOfficial,
+                (double)st.closureDetectorNs,
+                (double)st.closureSuffixNs};
     }
+    std::vector<int> getCheckpointSolution() const { return checkpointFlat_; }
+    int checkpointOfficial() const { return checkpointOfficial_; }
 
     // the production search: N threads anneal in parallel; per-thread
     // parameters split exploit/explore (removal size, start temperature,
@@ -1077,8 +1123,10 @@ struct Engine {
     // restores everything if the exchange is not legal.
     bool swapBlocks(int i, int j) {
         if (i == j || !sol.placed[i] || !sol.placed[j]) return false;
-        int aB=sol.bay[i], aX=sol.x[i], aY=sol.y[i], aE=sol.e[i];
-        int bB=sol.bay[j], bX=sol.x[j], bY=sol.y[j], bE=sol.e[j];
+        int aB=sol.bay[i], aX=sol.x[i], aY=sol.y[i], aE=sol.e[i],
+            aF=sol.f[i];
+        int bB=sol.bay[j], bX=sol.x[j], bY=sol.y[j], bE=sol.e[j],
+            bF=sol.f[j];
         oc.stamp(pb, sol, i, false);
         oc.stamp(pb, sol, j, false);
         int nAe = std::max(pb.R[i], bE), nBe = std::max(pb.R[j], aE);
@@ -1103,9 +1151,9 @@ struct Engine {
             oc.stamp(pb, sol, i, false);
             oc.stamp(pb, sol, j, false);
             sol.bay[i]=aB; sol.x[i]=aX; sol.y[i]=aY;
-            sol.e[i]=aE; sol.f[i]=aE+pb.P[i];
+            sol.e[i]=aE; sol.f[i]=aF;
             sol.bay[j]=bB; sol.x[j]=bX; sol.y[j]=bY;
-            sol.e[j]=bE; sol.f[j]=bE+pb.P[j];
+            sol.e[j]=bE; sol.f[j]=bF;
             sol.rebuildIdx(pb.m);
             oc.stamp(pb, sol, i, true);
             oc.stamp(pb, sol, j, true);
@@ -1170,7 +1218,11 @@ PYBIND11_MODULE(sscore, m) {
              py::arg("T0mul"), py::arg("cooling"), py::arg("seed"),
              py::arg("auditEvery") = 0, py::arg("hcFrac") = 0.75,
              py::arg("bigQProb") = 0.04, py::arg("opMask") = 255,
-             py::arg("maxIters") = 0, py::arg("stayRollout") = false)
+             py::arg("maxIters") = 0, py::arg("stayRollout") = false,
+             py::arg("exitClosure") = false,
+             py::arg("checkpointIter") = 0)
+        .def("get_checkpoint_solution", &Engine::getCheckpointSolution)
+        .def("checkpoint_official", &Engine::checkpointOfficial)
         .def("reconstruct_assigned", &Engine::reconstructAssigned)
         .def("reconstruct_ordered_stays", &Engine::reconstructOrderedStays)
         .def("insert_capped", &Engine::insertCapped)
@@ -1205,5 +1257,6 @@ PYBIND11_MODULE(sscore, m) {
         .def("exit_ranks", &Engine::exitRanks)
         .def("greedy_exit_ranks", &Engine::greedyExitRanks)
         .def("vp_ok", &Engine::vpOK)
-        .def("audit_state", &Engine::auditState);
+        .def("audit_state", &Engine::auditState,
+             py::arg("flexibleExits") = false);
 }

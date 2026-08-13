@@ -27,6 +27,7 @@
 #include "occ.hpp"
 #include <random>
 #include <algorithm>
+#include <chrono>
 
 namespace repair {
 using core::Problem; using core::Sol;
@@ -77,6 +78,33 @@ struct Ctx {
         bool valid = false;
         int bay = -1, ori = 0, x = 0, y = 0, e = 0, f = 0;
     } exitFallback;
+    // Default-off C5' experiment.  The normal insertion scan remains the
+    // control, but may remember the first candidate whose one-way crane
+    // obstruction has a feasible minimal exit closure.  Observation consumes
+    // no RNG and never mutates the live solution.
+    struct ExitExtension { int block = -1, from = 0, to = 0; };
+    struct ExitClosureWitness {
+        bool valid = false;
+        int block = -1;
+        ExitFallback candidate;
+        uint64_t prefixSignature = 0;
+        std::mt19937 rngAfterScan;
+        std::vector<ExitExtension> extensions;
+        int extendedBlocks = 0, extendedDays = 0, paidDays = 0;
+        bool phase3Policy = false;
+    } exitClosure;
+    bool exitClosureProbe = false;
+    bool exitClosureSeedSpent = false; // one structural attempt/neighbourhood
+    int exitClosureCandidateTests = 0;
+    int exitClosurePhase3WindowsNow = 0;
+    bool exitClosureCandidateCapReported = false;
+    bool exitClosurePhase3CapReported = false;
+    long exitClosureCandidates = 0;
+    long exitClosureSeeds = 0, exitClosureAttempts = 0;
+    long exitClosureBuilt = 0, exitClosureHardRejects = 0;
+    long exitClosureCycleRejects = 0, exitClosurePhase3Seeds = 0;
+    long exitClosurePhase3Windows = 0, exitClosureBudgetHits = 0;
+    long exitClosureDetectorNs = 0;
 };
 
 inline Ctx::ExitFallback currentPlacement(const Sol& s, int A) {
@@ -86,6 +114,331 @@ inline Ctx::ExitFallback currentPlacement(const Sol& s, int A) {
 inline void loadPlacement(Sol& s, int A, const Ctx::ExitFallback& q) {
     s.bay[A]=q.bay; s.ori[A]=q.ori; s.x[A]=q.x; s.y[A]=q.y;
     s.e[A]=q.e; s.f[A]=q.f; s.placed[A]=1;
+}
+
+inline void resetExitClosureProbe(Ctx& c, bool enabled) {
+    c.exitClosureProbe = enabled;
+    c.exitClosureSeedSpent = false;
+    c.exitClosureCandidateTests = 0;
+    c.exitClosurePhase3WindowsNow = 0;
+    c.exitClosureCandidateCapReported = false;
+    c.exitClosurePhase3CapReported = false;
+    c.exitClosure = {};
+}
+
+inline bool exitClosureProbeOpen(const Ctx& c) {
+    return c.exitClosureProbe && !c.exitClosure.valid &&
+           !c.exitClosureSeedSpent;
+}
+
+inline uint64_t exitClosurePrefixSignature(const Sol& s, int candidate) {
+    uint64_t h = 1469598103934665603ULL;
+    auto mix = [&](uint64_t value) {
+        h ^= value;
+        h *= 1099511628211ULL;
+    };
+    for (int i = 0; i < (int)s.placed.size(); i++) {
+        const bool placed = i != candidate && s.placed[i];
+        mix((uint64_t)i);
+        mix(placed ? 1ULL : 0ULL);
+        if (!placed) continue;
+        mix((uint32_t)s.bay[i]); mix((uint32_t)s.ori[i]);
+        mix((uint32_t)s.x[i]);   mix((uint32_t)s.y[i]);
+        mix((uint32_t)s.e[i]);   mix((uint32_t)s.f[i]);
+    }
+    for (int bay = 0; bay < (int)s.byBay.size(); bay++) {
+        mix(0x9e3779b97f4a7c15ULL ^ (uint64_t)bay);
+        for (int i : s.byBay[bay]) if (i != candidate) mix((uint32_t)i);
+    }
+    return h;
+}
+
+// Given fixed entries and geometry, compute the componentwise-minimal exits
+// reachable by extension only.  If resident `inner` obstructs moving `outer`,
+// coexistence requires inner's interval to be nested in outer's, hence
+// f[outer] >= f[inner].  Newly extended intervals can cross more entry events,
+// so scan to a monotone fixed point.  Same-entry directed cycles have no legal
+// operation order and are rejected explicitly.
+inline bool minimumExitClosure(const Problem& pb, Sol& trial, int bay,
+                               int horizon,
+                               std::vector<Ctx::ExitExtension>& extensions,
+                               bool& cycleReject, bool& hardReject) {
+    const std::vector<int>& ids = trial.byBay[bay];
+    std::vector<int> before = trial.f;
+    extensions.clear();
+    cycleReject = false;
+    hardReject = false;
+
+    for (int i : ids) {
+        if (!trial.placed[i] || trial.bay[i] != bay ||
+            trial.e[i] < pb.R[i] || trial.f[i] <= trial.e[i] ||
+            trial.f[i] - trial.e[i] < pb.P[i] || trial.f[i] > horizon) {
+            hardReject = true;
+            return false;
+        }
+    }
+
+    bool changed = true;
+    while (changed) {
+        changed = false;
+        for (size_t a = 0; a < ids.size(); a++) {
+            const int i = ids[a];
+            if (!trial.placed[i]) continue;
+            for (size_t b = a + 1; b < ids.size(); b++) {
+                const int k = ids[b];
+                if (!trial.placed[k]) continue;
+                if (!(trial.e[i] < trial.f[k] &&
+                      trial.e[k] < trial.f[i])) continue;
+                if (core::restOverlap(pb, trial, i, k)) {
+                    hardReject = true;
+                    return false;
+                }
+                const bool kBlocksI = core::entryBlocked(pb, trial, k, i);
+                const bool iBlocksK = core::entryBlocked(pb, trial, i, k);
+                if (kBlocksI && iBlocksK) {
+                    hardReject = true;
+                    return false;
+                }
+                if (kBlocksI) {
+                    // k is the inner obstructer; i must be its outer wrapper.
+                    if (trial.e[i] > trial.e[k]) {
+                        hardReject = true;
+                        return false;
+                    }
+                    if (trial.f[i] < trial.f[k]) {
+                        trial.f[i] = trial.f[k];
+                        if (trial.f[i] > horizon) {
+                            hardReject = true;
+                            return false;
+                        }
+                        changed = true;
+                    }
+                } else if (iBlocksK) {
+                    // i is the inner obstructer; k must be its outer wrapper.
+                    if (trial.e[k] > trial.e[i]) {
+                        hardReject = true;
+                        return false;
+                    }
+                    if (trial.f[k] < trial.f[i]) {
+                        trial.f[k] = trial.f[i];
+                        if (trial.f[k] > horizon) {
+                            hardReject = true;
+                            return false;
+                        }
+                        changed = true;
+                    }
+                }
+            }
+        }
+    }
+
+    for (int i : ids) {
+        if (!trial.placed[i] || trial.f[i] <= before[i]) continue;
+        extensions.push_back({i, before[i], trial.f[i]});
+    }
+    if (extensions.empty()) return false;
+
+    // A bool placement oracle is not enough when several operations share a
+    // day: the returned schedule must admit concrete checker event orders.
+    // Check ENTRY order before the aggregate placement oracle so a directed
+    // same-day cycle is classified as such instead of being folded into the
+    // generic hard-reject bucket by vpFlexibleExits.
+    std::vector<int> days, order;
+    for (int i : ids) if (trial.placed[i]) days.push_back(trial.e[i]);
+    std::sort(days.begin(), days.end());
+    days.erase(std::unique(days.begin(), days.end()), days.end());
+    for (int day : days)
+        if (!core::entryOrderAt(pb, trial, bay, day, order)) {
+            cycleReject = true;
+            return false;
+        }
+
+    for (int i : ids)
+        if (trial.placed[i] && !core::vpFlexibleExits(pb, trial, i)) {
+            hardReject = true;
+            return false;
+        }
+
+    days.clear();
+    for (int i : ids) if (trial.placed[i]) days.push_back(trial.f[i]);
+    std::sort(days.begin(), days.end());
+    days.erase(std::unique(days.begin(), days.end()), days.end());
+    for (int day : days)
+        if (!core::exitOrderAt(pb, trial, bay, day, order)) {
+            hardReject = true;
+            return false;
+        }
+    return true;
+}
+
+// Shadow the first structurally relevant rejected candidate.  A cheap
+// pair-direction screen runs before the full Sol copy/fixed point.  The first
+// seed owns the neighbourhood's single attempt whether or not closure works;
+// this is a scan-order rule and a hard cost bound, not a fitted frequency.
+inline void observeExitClosure(Ctx& c, int A, bool phase3Policy = false) {
+    if (!exitClosureProbeOpen(c) || !c.s->placed[A]) return;
+    const auto detectorStart = std::chrono::steady_clock::now();
+    struct DetectorTimer {
+        Ctx& c;
+        std::chrono::steady_clock::time_point start;
+        ~DetectorTimer() {
+            c.exitClosureDetectorNs +=
+                std::chrono::duration_cast<std::chrono::nanoseconds>(
+                    std::chrono::steady_clock::now() - start).count();
+        }
+    } detectorTimer{c, detectorStart};
+    const Problem& pb = *c.pb;
+    const Sol& s = *c.s;
+    const int bay = s.bay[A];
+    const auto& gA = pb.geo[A].orients[s.ori[A]];
+    bool bboxCandidate = false;
+    bool seed = false;
+    for (int k : s.byBay[bay]) {
+        if (!s.placed[k] ||
+            !(s.e[k] < s.f[A] && s.e[A] < s.f[k])) continue;
+        const auto& gk = pb.geo[k].orients[s.ori[k]];
+        if (!crane::bboxOverlapOff(gA.bb, s.x[A], s.y[A],
+                                   gk.bb, s.x[k], s.y[k])) continue;
+        bboxCandidate = true;
+    }
+    if (!bboxCandidate) return;
+    if (c.exitClosureCandidateTests >= 8) {
+        if (!c.exitClosureCandidateCapReported) {
+            c.exitClosureCandidateCapReported = true;
+            c.exitClosureBudgetHits++;
+        }
+        return;
+    }
+    c.exitClosureCandidateTests++;
+    c.exitClosureCandidates++;
+
+    for (int k : s.byBay[bay]) {
+        if (!s.placed[k] ||
+            !(s.e[k] < s.f[A] && s.e[A] < s.f[k])) continue;
+        const auto& gk = pb.geo[k].orients[s.ori[k]];
+        if (!crane::bboxOverlapOff(gA.bb, s.x[A], s.y[A],
+                                   gk.bb, s.x[k], s.y[k])) continue;
+        if (core::restOverlap(pb, s, A, k)) continue;
+        const bool kBlocksA = core::entryBlocked(pb, s, k, A);
+        const bool aBlocksK = core::entryBlocked(pb, s, A, k);
+        if (kBlocksA == aBlocksK) continue;
+        if (kBlocksA && s.e[A] <= s.e[k] && s.f[A] < s.f[k]) seed = true;
+        if (aBlocksK && s.e[k] <= s.e[A] && s.f[k] < s.f[A]) seed = true;
+        if (seed) break;
+    }
+    if (!seed) return;
+    // The first raw structural seed owns this neighbourhood even if the
+    // defensive official-oracle check below says it needs no duration change.
+    c.exitClosureSeedSpent = true;
+    c.exitClosureSeeds++;
+    c.exitClosurePhase3Seeds += phase3Policy;
+    c.exitClosureAttempts++;
+    // Do not mix the separate same-day EXIT-order relaxation into this probe.
+    // A minimum-duration candidate that is already official-feasible needs no
+    // duration closure and belongs to the exit-twin experiment instead.
+    if (core::vpFlexibleExits(pb, s, A)) return;
+    Sol trial = s;
+    trial.addIdx(A);
+    std::vector<Ctx::ExitExtension> extensions;
+    bool cycleReject = false, hardReject = false;
+    if (!minimumExitClosure(pb, trial, bay, c.horizon, extensions,
+                            cycleReject, hardReject)) {
+        c.exitClosureCycleRejects += cycleReject;
+        c.exitClosureHardRejects += hardReject;
+        return;
+    }
+
+    Ctx::ExitClosureWitness w;
+    w.valid = true;
+    w.block = A;
+    w.candidate = currentPlacement(s, A); // minimum-duration scan candidate
+    w.prefixSignature = exitClosurePrefixSignature(s, A);
+    w.rngAfterScan = c.rng;
+    w.extensions = std::move(extensions);
+    w.phase3Policy = phase3Policy;
+    for (const auto& q : w.extensions) {
+        w.extendedBlocks++;
+        w.extendedDays += q.to - q.from;
+        w.paidDays += std::max(0, q.to - pb.D[q.block]) -
+                      std::max(0, q.from - pb.D[q.block]);
+    }
+    c.exitClosure = std::move(w);
+    c.exitClosureBuilt++;
+}
+
+// Commit a previously certified witness to an identical replayed prefix.
+// A is currently absent (the normal replay placement was removed solely to
+// consume the control RNG).  Validate the complete new exit vector before
+// touching occupancy.  On success, existing residents stamp only their new
+// [oldF,newF) tails; this preserves the exact floating occupancy cache and
+// avoids the non-reference-counted bit-grid hazards of unstamp/restamp.
+inline bool applyExitClosure(Ctx& c, int A,
+                             const Ctx::ExitClosureWitness& w) {
+    if (!w.valid || w.block != A || A < 0 || A >= c.pb->n ||
+        c.s->placed[A] || w.extensions.empty()) return false;
+    const Problem& pb = *c.pb;
+    Sol& s = *c.s;
+    if (!w.candidate.valid || w.candidate.bay < 0 ||
+        w.candidate.bay >= pb.m || w.candidate.e < pb.R[A] ||
+        w.candidate.f - w.candidate.e != pb.P[A] ||
+        w.candidate.f > c.horizon ||
+        exitClosurePrefixSignature(s, A) != w.prefixSignature)
+        return false;
+    const Sol before = s;
+    std::vector<uint8_t> seen((size_t)pb.n, 0);
+    for (const auto& q : w.extensions) {
+        if (q.block < 0 || q.block >= pb.n || seen[q.block] ||
+            q.to <= q.from || q.to > c.horizon)
+            return false;
+        seen[q.block] = 1;
+        if (q.block == A) {
+            if (w.candidate.f != q.from) return false;
+        } else if (!s.placed[q.block] ||
+                   s.bay[q.block] != w.candidate.bay ||
+                   s.f[q.block] != q.from) {
+            return false;
+        }
+    }
+    loadPlacement(s, A, w.candidate);
+    s.addIdx(A);
+    for (const auto& q : w.extensions) {
+        if ((q.block != A && s.f[q.block] != q.from) ||
+            (q.block == A && s.f[A] != q.from)) {
+            s = before;
+            return false;
+        }
+        s.f[q.block] = q.to;
+    }
+    bool ok = true;
+    for (int k : s.byBay[s.bay[A]])
+        if (s.placed[k] && !core::vpFlexibleExits(pb, s, k)) {
+            ok = false;
+            break;
+        }
+    std::vector<int> days, order;
+    const int bay = s.bay[A];
+    for (int k : s.byBay[bay]) if (s.placed[k]) days.push_back(s.e[k]);
+    std::sort(days.begin(), days.end());
+    days.erase(std::unique(days.begin(), days.end()), days.end());
+    for (int day : days)
+        if (!core::entryOrderAt(pb, s, bay, day, order)) ok = false;
+    days.clear();
+    for (int k : s.byBay[bay]) if (s.placed[k]) days.push_back(s.f[k]);
+    std::sort(days.begin(), days.end());
+    days.erase(std::unique(days.begin(), days.end()), days.end());
+    for (int day : days)
+        if (!core::exitOrderAt(pb, s, bay, day, order)) ok = false;
+    if (!ok) { s = before; return false; }
+
+    for (const auto& q : w.extensions) {
+        if (q.block == A) continue;
+        const int oldE = s.e[q.block];
+        s.e[q.block] = q.from;
+        c.oc->stamp(pb, s, q.block, true);
+        s.e[q.block] = oldE;
+    }
+    c.oc->stamp(pb, s, A, true);
+    return true;
 }
 
 // Official-feasible state predicate for operators that move an already
@@ -131,6 +484,7 @@ inline bool insertionCandidate(Ctx& c, int A) {
         c.exitFallback.valid = false;
         return true;
     }
+    observeExitClosure(c, A);
     if (!c.exitFallback.valid &&
         (knobs::exitTwinShadow() || knobs::exitTwin()) &&
         core::hasExitTwin(s, A)) {
@@ -488,10 +842,55 @@ inline bool insertGreedy(Ctx& c, int A, int eCap = -1) {
         for (int j : bays) {
             thread_local std::vector<RB> rbs;
             rbCollect(c, j, e, f, rbs);
+            bool closureSnapReady = false;
+            thread_local occ::OccIndex::Snap closureSameLayer;
             for (int oi : oris) {
                 cornerSetsRB(c, A, oi, j, rbs, xs, ys);
                 for (int y : ys) for (int x : xs) {
-                    if (c.oc->hits(A, oi, j, x, y, e, f)) continue;
+                    const bool policyHit = c.oc->hits(A, oi, j, x, y, e, f);
+                    if (policyHit) {
+                        // The dense policy deliberately excludes crane-
+                        // interlocked positions.  Observe only candidates that
+                        // remain clear under the same-layer exact-underfilter;
+                        // the default path retains its original immediate
+                        // continue and pays no snapshot build.
+                        if (exitClosureProbeOpen(c) &&
+                            c.exitClosureCandidateTests < 8 &&
+                            (closureSnapReady ||
+                             c.exitClosurePhase3WindowsNow < 4)) {
+                            const auto detectorStart =
+                                std::chrono::steady_clock::now();
+                            if (!closureSnapReady) {
+                                c.oc->buildSnap(j, e, f, closureSameLayer);
+                                closureSnapReady = true;
+                                c.exitClosurePhase3WindowsNow++;
+                                c.exitClosurePhase3Windows++;
+                            }
+                            const bool sameLayerHit = c.oc->hitsSnap(
+                                closureSameLayer, A, oi, x, y);
+                            c.exitClosureDetectorNs +=
+                                std::chrono::duration_cast<
+                                    std::chrono::nanoseconds>(
+                                    std::chrono::steady_clock::now() -
+                                    detectorStart).count();
+                            if (!sameLayerHit) {
+                                s.bay[A]=j; s.ori[A]=oi; s.x[A]=x; s.y[A]=y;
+                                s.e[A]=e; s.f[A]=f; s.placed[A]=1;
+                                observeExitClosure(c, A, true);
+                                s.placed[A]=0;
+                            }
+                        } else if (exitClosureProbeOpen(c)) {
+                            bool& reported =
+                                c.exitClosureCandidateTests >= 8
+                                    ? c.exitClosureCandidateCapReported
+                                    : c.exitClosurePhase3CapReported;
+                            if (!reported) {
+                                reported = true;
+                                c.exitClosureBudgetHits++;
+                            }
+                        }
+                        continue;
+                    }
                     s.bay[A]=j; s.ori[A]=oi; s.x[A]=x; s.y[A]=y;
                     s.e[A]=e; s.f[A]=f; s.placed[A]=1;
                     if (insertionCandidate(c, A)) {
