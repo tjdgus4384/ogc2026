@@ -41,6 +41,10 @@ nonzero orientation index is not a valid substitute for that comparison.
 OFF and ON are run in separate processes from the same binary because knob
 values are cached on first use.  A repeated OFF run and a repeated ON run must
 each be byte-identical.  Every emitted board goes through the official checker.
+Some loose deterministic construction orders carry an unrepairable exact-touch
+artifact in both modes.  Such a pair is recorded as non-informative rather than
+dropped or treated as a harness crash.  An OFF-feasible/ON-invalid pair is an
+explicit loss; the reverse is an explicit recovery win.
 
 ## Judgment sequence
 

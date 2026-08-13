@@ -83,7 +83,20 @@ def run(args) -> None:
             }
         solution, gated = ma._gate(prob, engine, n, time.time() + 60.0)
         if solution is None or not gated or not gated.get("feasible"):
-            raise RuntimeError(f"production gate failed: raw={raw} gated={gated}")
+            raw_viol = (raw or {}).get("violations", [])
+            gated_viol = (gated or {}).get("violations", [])
+            return {
+                "feasible": False,
+                "objective": None,
+                "rescued": False,
+                "raw_stage": (raw or {}).get("stage"),
+                "raw_violations": len(raw_viol),
+                "raw_first": str(raw_viol[0])[:200] if raw_viol else None,
+                "gated_stage": (gated or {}).get("stage"),
+                "gated_violations": len(gated_viol),
+                "gated_first": (str(gated_viol[0])[:200]
+                                if gated_viol else None),
+            }
         return {
             "feasible": True,
             "objective": float(gated["objective"]),
@@ -111,8 +124,8 @@ def run(args) -> None:
             if first["status"] == "built":
                 flat = first["flat"]
                 checked = checker_record(flat)
-                if abs(checked["objective"] - first["objective"][3]) > 1e-6 \
-                        and not checked["rescued"]:
+                if (checked["feasible"] and not checked["rescued"] and
+                        abs(checked["objective"] - first["objective"][3]) > 1e-6):
                     raise RuntimeError("kernel/checker objective mismatch")
                 row.update({
                     "objective": first["objective"],
@@ -137,6 +150,9 @@ def run(args) -> None:
             "phase2_calls": sum(r["phase2"][0] for r in rows),
             "phase2_success": sum(r["phase2"][1] for r in rows),
             "rescued": sum(bool(r.get("checker", {}).get("rescued")) for r in rows),
+            "checker_rejected": sum(
+                r["status"] == "built" and not r["checker"]["feasible"]
+                for r in rows),
             "wall_seconds": time.monotonic() - started,
         },
     }
@@ -157,42 +173,70 @@ def collect(args) -> None:
             raise RuntimeError(f"case mismatch on P{instance}")
         for key in sorted(off_rows):
             a, b = off_rows[key], on_rows[key]
-            if a["status"] != b["status"]:
-                raise RuntimeError(f"construction status mismatch P{instance} {key}")
-            if a["status"] != "built":
-                continue
-            if not a["checker"]["feasible"] or not b["checker"]["feasible"]:
-                raise RuntimeError(f"checker rejection P{instance} {key}")
-            oa = float(a["checker"]["objective"])
-            ob = float(b["checker"]["objective"])
-            pairs.append({
+            a_valid = (a["status"] == "built" and
+                       bool(a.get("checker", {}).get("feasible")))
+            b_valid = (b["status"] == "built" and
+                       bool(b.get("checker", {}).get("feasible")))
+            raw_changed = (a["status"] != b["status"] or
+                           (a["status"] == "built" and
+                            a["flat_sha256"] != b["flat_sha256"]))
+            pair = {
                 "instance": instance,
                 "seed": key[0],
                 "order": key[1],
-                "off": oa,
-                "on": ob,
-                "delta_pct": 100.0 * (ob - oa) / oa,
-                "raw_changed": a["flat_sha256"] != b["flat_sha256"],
+                "off_status": a["status"],
+                "on_status": b["status"],
+                "off_checker_feasible": a_valid,
+                "on_checker_feasible": b_valid,
+                "off": (float(a["checker"]["objective"])
+                        if a_valid else None),
+                "on": (float(b["checker"]["objective"])
+                       if b_valid else None),
+                "delta_pct": None,
+                "raw_changed": raw_changed,
                 "off_phase2": a["phase2"],
                 "on_phase2": b["phase2"],
-            })
+            }
+            if not a_valid and not b_valid:
+                pair["outcome"] = "invalid_both"
+            elif a_valid and not b_valid:
+                pair["outcome"] = "loss"
+                pair["failure"] = "candidate_not_checker_feasible"
+            elif not a_valid and b_valid:
+                pair["outcome"] = "win"
+                pair["recovery"] = "baseline_not_checker_feasible"
+            elif not raw_changed:
+                pair["outcome"] = "unchanged"
+                pair["delta_pct"] = 0.0
+            else:
+                pair["delta_pct"] = 100.0 * (pair["on"] - pair["off"]) / pair["off"]
+                if pair["delta_pct"] < -1e-12:
+                    pair["outcome"] = "win"
+                elif pair["delta_pct"] > 1e-12:
+                    pair["outcome"] = "loss"
+                else:
+                    pair["outcome"] = "tie"
+            pairs.append(pair)
 
-    changed = [r for r in pairs if r["raw_changed"]]
-    wins = sum(r["delta_pct"] < -1e-12 for r in changed)
-    losses = sum(r["delta_pct"] > 1e-12 for r in changed)
-    ties = len(changed) - wins - losses
+    changed = [r for r in pairs if r["outcome"] in ("win", "loss", "tie")]
+    wins = sum(r["outcome"] == "win" for r in changed)
+    losses = sum(r["outcome"] == "loss" for r in changed)
+    ties = sum(r["outcome"] == "tie" for r in changed)
     per_instance = {}
     for instance in (3, 4, 5, 6):
         rows = [r for r in pairs if r["instance"] == instance]
-        cc = [r for r in rows if r["raw_changed"]]
+        cc = [r for r in rows if r["outcome"] in ("win", "loss", "tie")]
+        numeric = [r["delta_pct"] for r in cc if r["delta_pct"] is not None]
         per_instance[f"P{instance}"] = {
             "pairs": len(rows),
             "changed": len(cc),
-            "wins": sum(r["delta_pct"] < -1e-12 for r in cc),
-            "losses": sum(r["delta_pct"] > 1e-12 for r in cc),
-            "ties": sum(abs(r["delta_pct"]) <= 1e-12 for r in cc),
-            "median_delta_pct": statistics.median(
-                [r["delta_pct"] for r in cc]) if cc else None,
+            "wins": sum(r["outcome"] == "win" for r in cc),
+            "losses": sum(r["outcome"] == "loss" for r in cc),
+            "ties": sum(r["outcome"] == "tie" for r in cc),
+            "unchanged": sum(r["outcome"] == "unchanged" for r in rows),
+            "invalid_both": sum(r["outcome"] == "invalid_both" for r in rows),
+            "median_delta_pct": (statistics.median(numeric)
+                                 if numeric else None),
             "phase2_calls_off": sum(r["off_phase2"][0] for r in rows),
             "phase2_success_off": sum(r["off_phase2"][1] for r in rows),
             "phase2_calls_on": sum(r["on_phase2"][0] for r in rows),
@@ -210,8 +254,12 @@ def collect(args) -> None:
             "wins": wins,
             "losses": losses,
             "ties": ties,
+            "unchanged": sum(r["outcome"] == "unchanged" for r in pairs),
+            "invalid_both": sum(r["outcome"] == "invalid_both" for r in pairs),
             "median_changed_delta_pct": statistics.median(
-                [r["delta_pct"] for r in changed]) if changed else None,
+                [r["delta_pct"] for r in changed
+                 if r["delta_pct"] is not None])
+                if any(r["delta_pct"] is not None for r in changed) else None,
             "verdict": verdict,
             "instances": per_instance,
         },
