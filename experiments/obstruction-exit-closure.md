@@ -212,3 +212,86 @@ production portfolio.
 The checker-authoritative plateau states, all arm reports, aggregate summary,
 and a provenance receipt are frozen under
 `results/obstruction-exit-closure-9002c73/`.
+
+## Successor: control-preserving closure archive
+
+The first-delivery data identify live-trajectory substitution, not closure
+feasibility, as the next defect.  Of 1,817 accepted closure transitions only
+50 became an immediate incumbent.  P3 seed 23 accepted 15 closures but none
+became an incumbent; ON stayed at its iteration-1,000 value while OFF later
+escaped to a board 7.408% better.  P4 seed 11 also shows that allowing only an
+immediate incumbent into the live walk is insufficient: its sole accepted
+closure was a new best, yet its final result still lost.
+
+The successor therefore treats closure as a sidecar incumbent oracle, never
+as a Markov transition.  The normal repair, its acceptance decision, RNG,
+destroyer scores, temperature, `sinceBest`, live solution and occupancy, and
+the incumbent used by return-to-best remain exactly the OFF trajectory.  A
+fully replayed, officially audited closure suffix may update a disjoint archive
+using true objective only.  At termination the returned board is the better of
+the OFF incumbent and the archive; the OFF incumbent is separately exposed for
+trajectory comparison.  The archive must not seed a later neighbourhood,
+checkpoint, restart, or portfolio round.
+
+For the fixed-iteration experiment this creates the hard dominance contract
+
+```
+J(returned ON) = min(J(exact OFF incumbent), J(closure archive))
+               <= J(exact OFF incumbent).
+```
+
+Any paired regression, difference in the exposed OFF incumbent, checkpoint,
+common statistics, or RNG-derived trajectory is an implementation failure,
+not sampling noise.  The existing live first-witness arm remains available
+only to replay its rejected evidence; archive mode is a new default-off,
+mutually exclusive experimental flag.
+
+The archive keeps the same official one-way rule and first raw witness so this
+test changes one causal factor only: feedback into the live walk.  A sound
+partial-suffix lower bound may skip replay when the already placed blocks'
+nonnegative tardiness and preference cost cannot beat either incumbent.  The
+bound may not include a positive load-balancing term, assume future tardiness,
+or use an instance, seed, size, elapsed time, or firing-frequency threshold.
+Its prune decisions and time are counted.
+
+### Frozen validation ladder
+
+The already observed P3--P6 seeds 7, 11, 23, and 41 are development data only.
+A synthetic unit must force an archive return, and consumed P3 seed 23 must
+prove that the internal OFF checkpoint/final trajectory still reaches 100,770
+even if the returned ON board differs.  At least one consumed P4/P6 cell must
+exercise an archive update.  These checks establish implementation activity,
+not efficacy.
+
+After that smoke test, freeze source, binary, checker, harness, caps, all seeds,
+and thresholds.  The held-out plateau gate uses evaluation seeds 3, 17, 31,
+and 47.  To remove treatment-dependent start selection, map them in that order
+to the four already frozen checker-authoritative plateau states 7, 11, 23, and
+41 for each board.  The mapping is fixed before any archive run.  A frozen
+`9002c73` reference, candidate OFF, and archive ON each run 20,000 single-thread
+iterations with an iteration-1,000 read-only OFF checkpoint.
+
+All 48 raw outputs must be present and checker-feasible without rescue.
+Reference and candidate OFF must agree exactly.  ON's separately exposed OFF
+checkpoint, final flat/hash/objective, common statistics, and audit must also
+agree exactly with reference, regardless of which board ON returns.  Archive
+counters obey the existing candidate/attempt/suffix caps; OFF counters and
+timing are zero.  Exact exit ranks are used only when the returned archive has
+a strict overlong stay.
+
+The efficacy thresholds are not weakened after the near miss: more wins than
+losses, pooled median at most `-2%`, P4 or P5 median at most `-3%`, and every
+board median at most `0%`.  The last condition is stricter than the prior `+2%`
+veto because archive dominance makes a fixed-iteration regression impossible.
+A pass advances the unchanged binary to equal-wall testing on disjoint seeds
+59, 73, 89, and 101 at 240/480/600/900 seconds, counterbalanced AB/BA on four
+cores.  That gate retains pooled median `<=-1%`, combined P4/P5 median
+`<=-1%`, `W>L`, every-board median `<=+2%`, 32/32 raw feasibility, no timeout
+or overrun, and measured RSS.
+
+Only both public gates authorize the universal 40-instance `train_final`
+paired test at fixed-iteration seed 113.  It retains 40/40 feasibility,
+`W>=27`, pooled median `<=-1%`, worst regression `<=+10%`, and medians
+`<=+1.5%` for each predeclared `m<=3`, `m>=4`, saturation `<1`, and saturation
+`>=1` split.  Any code or rule change consumes the remaining held-out seeds
+and requires a new candidate and new data split.
