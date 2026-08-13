@@ -1,0 +1,80 @@
+--- a/solver/src/core.hpp
++++ b/solver/src/core.hpp
+@@ -26,6 +26,8 @@
+     // ratio) -- otherwise it never rejects and every insertion scans
+     // every bay (measured: 65% of the iteration budget lost on P4).
+     double fillRatio = 1.0;
++    double packFill  = 1.0;   // rsv: achievable packing density
++    std::vector<double> dayLoadE;  // rsv: residency-aware demand profile
+     // per-day mandatory demand / total bay area: blocks whose
+     // [release, punctual-entry] window covers a day MUST occupy space
+     // somewhere that day. Days where this exceeds what polygons can
+--- a/solver/src/knobs.hpp
++++ b/solver/src/knobs.hpp
+@@ -40,4 +40,17 @@
+     }();
+     return v;
+ }
++
++// rsv candidate: repair the DEAD energetic reservation. `reserve()` has been
++// on since v5 but has never once fired: the threshold is fillRatio, which is
++// max(fill, max_t dayLoad) by construction, so `dayLoad[t] > thr` cannot be
++// true; and dayLoad counted one area-unit per day of [R, D-P], peaking at
++// 0.19-0.54 of capacity against a real occupancy of 58%. Off (0) = shipped.
++inline int rsv() {
++    static const int v = [] {
++        const char* q = std::getenv("OGC_RSV");
++        return q ? atoi(q) : 0;
++    }();
++    return v;
++}
+ } // namespace knobs
+--- a/solver/src/api.cpp
++++ b/solver/src/api.cpp
+@@ -120,6 +120,27 @@
+             req = std::max(req, u);
+         }
+         pb.fillRatio = std::min(1.0, std::max(fill, req));
++        // rsv: a SECOND, residency-aware profile, kept apart from fillRatio so
++        // the density screen at repair.hpp:102 keeps its shipped input. A block
++        // occupies its footprint for P days somewhere inside [R, D], so its
++        // unavoidable demand on a day of that window is area * P / span -- the
++        // standard energetic profile. The entry-window count above under-models
++        // congestion by roughly half.
++        std::vector<double> needE((size_t)Tmax + 2, 0.0);
++        for (int i = 0; i < pb.n; i++) {
++            double a = 1e18;
++            for (const auto& g : pb.geo[i].orients)
++                a = std::min(a, g.parea > 0 ? g.parea :
++                             (g.bb.x1-g.bb.x0)*(g.bb.y1-g.bb.y0));
++            const int lo = pb.R[i], hi = std::max(pb.R[i], pb.D[i]);
++            const double span = std::max(1, pb.D[i] - pb.R[i]);
++            const double share = a * std::min(1.0, (double)pb.P[i] / span);
++            for (int t = lo; t <= hi && t <= Tmax; t++) needE[t] += share;
++        }
++        pb.dayLoadE.assign((size_t)Tmax + 2, 0.0);
++        for (int t = 0; t <= Tmax; t++)
++            pb.dayLoadE[t] = needE[t] / std::max(1e-9, capArea);
++        pb.packFill = fill;
+     }
+ 
+     // occupancy grid over [0, horizon); stamps whatever is already placed
+--- a/solver/src/repair.hpp
++++ b/solver/src/repair.hpp
+@@ -282,9 +282,13 @@
+     if (knobs::reserve() && !c.pb->dayLoad.empty()) {
+         int punct = pb.D[A] - pb.P[A];
+         int lim = std::min(punct, (int)c.pb->dayLoad.size() - 1);
+-        double thr = c.pb->fillRatio;
+-        while (eBot < lim && eBot < (int)c.pb->dayLoad.size() &&
+-               c.pb->dayLoad[eBot] > thr)
++        // rsv: threshold is the ACHIEVABLE density and the profile is
++        // residency-aware; with fillRatio and the entry-window profile this
++        // loop provably never advances (thr >= max_t dayLoad by construction).
++        const bool rs = knobs::rsv() != 0 && !c.pb->dayLoadE.empty();
++        const std::vector<double>& dl = rs ? c.pb->dayLoadE : c.pb->dayLoad;
++        double thr = rs ? c.pb->packFill : c.pb->fillRatio;
++        while (eBot < lim && eBot < (int)dl.size() && dl[eBot] > thr)
+             eBot++;
+     }
+     if (eTop < eBot) return false;
