@@ -1,0 +1,298 @@
+{
+  "reference": "/data_fast/home/tjdgus4384/priv/ogc2026-worktrees/codex-fundamental/runs/assignment-transfer-74943",
+  "rows": [
+    {
+      "baseline": 103020.0,
+      "baseline_feasible": true,
+      "guide60": 101375.0,
+      "guide60_action_retained": false,
+      "guide60_delta_pct": -1.5967773247913026,
+      "guide60_feasible": true,
+      "instance": 3,
+      "seed": 11,
+      "start": 107820.0,
+      "start_delta_pct": 4.6592894583576,
+      "start_feasible": true
+    },
+    {
+      "baseline": 111620.0,
+      "baseline_feasible": true,
+      "guide60": 120150.0,
+      "guide60_action_retained": false,
+      "guide60_delta_pct": 7.6419996416412825,
+      "guide60_feasible": true,
+      "instance": 3,
+      "seed": 23,
+      "start": 113960.0,
+      "start_delta_pct": 2.0963984948933883,
+      "start_feasible": true
+    },
+    {
+      "baseline": 110485.0,
+      "baseline_feasible": true,
+      "guide60": 101550.0,
+      "guide60_action_retained": false,
+      "guide60_delta_pct": -8.087070643073721,
+      "guide60_feasible": true,
+      "instance": 3,
+      "seed": 41,
+      "start": 108825.0,
+      "start_delta_pct": -1.5024663981535955,
+      "start_feasible": true
+    },
+    {
+      "baseline": 100030.0,
+      "baseline_feasible": true,
+      "guide60": 106110.0,
+      "guide60_action_retained": false,
+      "guide60_delta_pct": 6.0781765470358895,
+      "guide60_feasible": true,
+      "instance": 3,
+      "seed": 7,
+      "start": 110750.0,
+      "start_delta_pct": 10.716784964510646,
+      "start_feasible": true
+    },
+    {
+      "baseline": 4448848.0,
+      "baseline_feasible": true,
+      "guide60": 4188948.0,
+      "guide60_action_retained": false,
+      "guide60_delta_pct": -5.841961784264151,
+      "guide60_feasible": true,
+      "instance": 4,
+      "seed": 11,
+      "start": 4572964.0,
+      "start_delta_pct": 2.78984582076079,
+      "start_feasible": true
+    },
+    {
+      "baseline": 4304749.0,
+      "baseline_feasible": true,
+      "guide60": 4272373.0,
+      "guide60_action_retained": false,
+      "guide60_delta_pct": -0.7520995997676055,
+      "guide60_feasible": true,
+      "instance": 4,
+      "seed": 23,
+      "start": 4200091.0,
+      "start_delta_pct": -2.431221890056772,
+      "start_feasible": true
+    },
+    {
+      "baseline": 4481525.0,
+      "baseline_feasible": true,
+      "guide60": 4344317.0,
+      "guide60_action_retained": true,
+      "guide60_delta_pct": -3.0616363849359316,
+      "guide60_feasible": true,
+      "instance": 4,
+      "seed": 41,
+      "start": 4344317.0,
+      "start_delta_pct": -3.0616363849359316,
+      "start_feasible": true
+    },
+    {
+      "baseline": 4631347.0,
+      "baseline_feasible": true,
+      "guide60": 4354169.0,
+      "guide60_action_retained": false,
+      "guide60_delta_pct": -5.984824717301468,
+      "guide60_feasible": true,
+      "instance": 4,
+      "seed": 7,
+      "start": 4058698.0,
+      "start_delta_pct": -12.364631715136007,
+      "start_feasible": true
+    },
+    {
+      "baseline": 12645859.0,
+      "baseline_feasible": true,
+      "guide60": null,
+      "guide60_action_retained": true,
+      "guide60_delta_pct": null,
+      "guide60_feasible": false,
+      "instance": 5,
+      "seed": 11,
+      "start": null,
+      "start_delta_pct": null,
+      "start_feasible": false
+    },
+    {
+      "baseline": 13404796.0,
+      "baseline_feasible": true,
+      "guide60": 11966308.0,
+      "guide60_action_retained": true,
+      "guide60_delta_pct": -10.731144285970483,
+      "guide60_feasible": true,
+      "instance": 5,
+      "seed": 23,
+      "start": 11966308.0,
+      "start_delta_pct": -10.731144285970483,
+      "start_feasible": true
+    },
+    {
+      "baseline": 12778638.0,
+      "baseline_feasible": true,
+      "guide60": 12399026.0,
+      "guide60_action_retained": true,
+      "guide60_delta_pct": -2.9706765306286944,
+      "guide60_feasible": true,
+      "instance": 5,
+      "seed": 41,
+      "start": 12399026.0,
+      "start_delta_pct": -2.9706765306286944,
+      "start_feasible": true
+    },
+    {
+      "baseline": 13543604.0,
+      "baseline_feasible": true,
+      "guide60": 12792689.0,
+      "guide60_action_retained": true,
+      "guide60_delta_pct": -5.544425250472474,
+      "guide60_feasible": true,
+      "instance": 5,
+      "seed": 7,
+      "start": 12478186.0,
+      "start_delta_pct": -7.866576725072588,
+      "start_feasible": true
+    },
+    {
+      "baseline": 34397106.0,
+      "baseline_feasible": true,
+      "guide60": 33433755.0,
+      "guide60_action_retained": true,
+      "guide60_delta_pct": -2.8006745683779326,
+      "guide60_feasible": true,
+      "instance": 6,
+      "seed": 11,
+      "start": 33433755.0,
+      "start_delta_pct": -2.8006745683779326,
+      "start_feasible": true
+    },
+    {
+      "baseline": 34354833.0,
+      "baseline_feasible": true,
+      "guide60": 33709508.0,
+      "guide60_action_retained": true,
+      "guide60_delta_pct": -1.878411110308701,
+      "guide60_feasible": true,
+      "instance": 6,
+      "seed": 23,
+      "start": 34208430.0,
+      "start_delta_pct": -0.42614964828965984,
+      "start_feasible": true
+    },
+    {
+      "baseline": 34314242.0,
+      "baseline_feasible": true,
+      "guide60": 33358646.0,
+      "guide60_action_retained": true,
+      "guide60_delta_pct": -2.7848378524578803,
+      "guide60_feasible": true,
+      "instance": 6,
+      "seed": 41,
+      "start": 33358646.0,
+      "start_delta_pct": -2.7848378524578803,
+      "start_feasible": true
+    },
+    {
+      "baseline": 33147299.0,
+      "baseline_feasible": true,
+      "guide60": 34025883.0,
+      "guide60_action_retained": true,
+      "guide60_delta_pct": 2.6505447698770266,
+      "guide60_feasible": true,
+      "instance": 6,
+      "seed": 7,
+      "start": 34025883.0,
+      "start_delta_pct": 2.6505447698770266,
+      "start_feasible": true
+    }
+  ],
+  "schema_version": 1,
+  "summary": {
+    "all_guide60_arms_checker_feasible": false,
+    "all_start_arms_checker_feasible": false,
+    "guide60": {
+      "informative": 15,
+      "instances": {
+        "P3": {
+          "losses": 2,
+          "median_delta_pct": 2.2406996111222934,
+          "pairs": 4,
+          "ties": 0,
+          "wins": 2
+        },
+        "P4": {
+          "losses": 0,
+          "median_delta_pct": -4.451799084600041,
+          "pairs": 4,
+          "ties": 0,
+          "wins": 4
+        },
+        "P5": {
+          "losses": 0,
+          "median_delta_pct": -5.544425250472474,
+          "pairs": 3,
+          "ties": 0,
+          "wins": 3
+        },
+        "P6": {
+          "losses": 1,
+          "median_delta_pct": -2.3316244813832907,
+          "pairs": 4,
+          "ties": 0,
+          "wins": 3
+        }
+      },
+      "losses": 3,
+      "median_delta_pct": -2.8006745683779326,
+      "pairs": 16,
+      "ties": 0,
+      "wins": 12
+    },
+    "guide60_action_retained": 9,
+    "guide60_pass": false,
+    "start": {
+      "informative": 15,
+      "instances": {
+        "P3": {
+          "losses": 3,
+          "median_delta_pct": 3.377843976625494,
+          "pairs": 4,
+          "ties": 0,
+          "wins": 1
+        },
+        "P4": {
+          "losses": 1,
+          "median_delta_pct": -2.746429137496352,
+          "pairs": 4,
+          "ties": 0,
+          "wins": 3
+        },
+        "P5": {
+          "losses": 0,
+          "median_delta_pct": -7.866576725072588,
+          "pairs": 3,
+          "ties": 0,
+          "wins": 3
+        },
+        "P6": {
+          "losses": 1,
+          "median_delta_pct": -1.60549375037377,
+          "pairs": 4,
+          "ties": 0,
+          "wins": 3
+        }
+      },
+      "losses": 5,
+      "median_delta_pct": -2.431221890056772,
+      "pairs": 16,
+      "ties": 0,
+      "wins": 10
+    },
+    "start_pass": false,
+    "verdict": "reject_infeasible"
+  }
+}

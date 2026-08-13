@@ -190,6 +190,30 @@ This is another direct F4 result.  A strong construction effect and even a
 favorable pooled median do not authorize using the causal board as just one
 more unlocked seed.
 
+## 60%-guidance verdict: job 74948
+
+The production-style guidance arm replayed the same causal bytes on the
+original frozen build, held the selected bay for the first 60% of each search,
+and then released it.  Its paired reference is the immutable job-74943
+baseline; every pair used the same seed and exactly 20,000 iterations.
+
+| board | informative | W/L/T | median delta |
+|---|---:|---:|---:|
+| P3 | 4/4 | 2/2/0 | +2.241% |
+| P4 | 4/4 | 4/0/0 | -4.452% |
+| P5 | 3/4 | 3/0/0 | -5.544% |
+| P6 | 4/4 | 3/1/0 | -2.332% |
+
+The 15 checker-informative pairs pool to 12 wins, 3 losses, and median
+-2.801%; the selected action remained in the final engine state in 9 of 16
+arms.  Nevertheless the frozen gate rejects this treatment.  P5 seed 11 was
+checker-infeasible, and P3's +2.241% median exceeds the +2% board veto.  The
+correct scope is narrow: temporary guidance helps the public P4-P6 oracle
+actions more often than start-only seeding, but a board-tuned single action is
+not a universal, checker-safe policy.  It does not advance to Train or enter
+the production solver.  The complete row-level result is frozen in
+`results/assignment-guidance-74948.json`.
+
 ## Frozen sequential construction gate
 
 The failed start-only form does not erase the construction mechanism: P4/P5
