@@ -1,7 +1,19 @@
 # 실험 후보 (v5.3 기준)
 
-`builds/`는 무시되는 스크래치 빌드 영역이다. 측정에 올린 후보의 **소스 델타만**
-여기에 패치로 고정한다. 채택되면 `solver/`로 올라간다.
+## 2026-08-13 현재 구조 감사
+
+- `exit-lifo-v1.md`: 같은 날 EXIT의 정확 의미와 격리 검증.
+- `joint-assignment-rollout.md`: partial assignment의 인과적 rollout 및
+  same-bay RNG null.
+- `phase2-orientation-order.md`: 채택된 orientation 순서를 phase 2만
+  버리는 data-flow 결함과 사전 등록한 강건성 게이트.
+
+아래 표와 대기열은 주로 이전 캠페인의 역사 기록이다. 현재 판정은 위 문서와
+`docs/NEXT_SOLVER.md`를 우선한다.
+
+`builds/`는 worktree 안의 영속적이지만 Git에서 제외된 빌드 스냅샷 영역이다.
+실험 소스·결과에 `/tmp`를 쓰지 않는다. 측정에 올린 후보의 **소스 델타만**
+여기에 패치로 고정하고, 채택되면 `solver/`로 올린다.
 
 기준선 `builds/b53` = 제출 zip 압축해제본. 같은 플래그로 재빌드하면 출하 `.so`와
 **바이트 동일**(`6c600758…`)이므로 후보와 제출본의 차이는 아래 패치가 전부다.
