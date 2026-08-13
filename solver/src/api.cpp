@@ -682,12 +682,13 @@ struct Engine {
                                 double T0mul, double cooling, uint64_t seed,
                                 int auditEvery = 0, double hcFrac = 0.75,
                                 double bigQProb = 0.04, int opMask = 0xFF,
-                                long maxIters = 0) {
+                                long maxIters = 0, bool stayRollout = false) {
         alns::RunParams rp;
         rp.qloF = qlo; rp.qhiF = qhi; rp.T0mul = T0mul; rp.cooling = cooling;
         rp.hcFrac = hcFrac; rp.bigQProb = bigQProb;
         rp.opMask = (uint32_t)opMask;
         rp.maxIters = maxIters;
+        rp.stayRollout = stayRollout;
         auto st = alns::run(ctx, seconds, rp, seed, auditEvery);
         return {(double)st.iters, (double)st.accepted, (double)st.improved,
                 (double)st.failed, st.best, (double)st.badIter,
@@ -695,7 +696,10 @@ struct Engine {
                 (double)st.exitTwinTests, (double)st.exitTwinPass,
                 (double)st.exitTwinCompared, (double)st.exitTwinDominant,
                 (double)st.exitTwinRescued,
-                (double)st.phase2Calls, (double)st.phase2Success};
+                (double)st.phase2Calls, (double)st.phase2Success,
+                (double)st.stayNeighbourhoods, (double)st.stayTried,
+                (double)st.stayBuilt, (double)st.staySelected,
+                (double)st.stayRescued, st.stayGain};
     }
 
     // the production search: N threads anneal in parallel; per-thread
@@ -1166,7 +1170,7 @@ PYBIND11_MODULE(sscore, m) {
              py::arg("T0mul"), py::arg("cooling"), py::arg("seed"),
              py::arg("auditEvery") = 0, py::arg("hcFrac") = 0.75,
              py::arg("bigQProb") = 0.04, py::arg("opMask") = 255,
-             py::arg("maxIters") = 0)
+             py::arg("maxIters") = 0, py::arg("stayRollout") = false)
         .def("reconstruct_assigned", &Engine::reconstructAssigned)
         .def("reconstruct_ordered_stays", &Engine::reconstructOrderedStays)
         .def("insert_capped", &Engine::insertCapped)

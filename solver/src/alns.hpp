@@ -11,6 +11,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <limits>
 
 namespace alns {
 using core::Problem; using core::Sol;
@@ -25,7 +26,42 @@ struct RunStats { long iters=0, accepted=0, improved=0, failed=0; double best;
                   long exitTwinCompared=0, exitTwinDominant=0,
                        exitTwinRescued=0;
                   long phase2Calls=0, phase2Success=0;
+                  long stayNeighbourhoods=0, stayTried=0, stayBuilt=0,
+                       staySelected=0, stayRescued=0;
+                  double stayGain=0.0;
                   long badIter=-1; int badKind=-1; int badPhase=-1; };
+
+// Restore the derived indexes after a speculative repair branch.  Sol is the
+// authoritative state; occupancy is only a fast rejection cache.
+inline void rebuildOcc(repair::Ctx& c) {
+    c.s->rebuildIdx(c.pb->m);
+    c.oc->clearBits();
+    for (int i = 0; i < c.pb->n; i++)
+        if (c.s->placed[i]) c.oc->stamp(*c.pb, *c.s, i, true);
+}
+
+// Voluntarily lengthen one already-inserted block without making that block
+// tardy.  A longer stay changes the event constraints of every bay mate, so
+// the full current bay is revalidated before the mutation can survive.
+inline bool extendStay(repair::Ctx& c, int A, int target) {
+    const Problem& pb = *c.pb;
+    Sol& s = *c.s;
+    if (!s.placed[A] || target <= s.f[A] || target > pb.D[A] ||
+        target > c.horizon)
+        return false;
+    const int oldF = s.f[A];
+    s.f[A] = target;
+    bool ok = repair::stateFeasible(c, A);
+    if (ok) {
+        for (int k : s.byBay[s.bay[A]]) {
+            if (k == A || !s.placed[k]) continue;
+            if (!repair::stateFeasible(c, k)) { ok = false; break; }
+        }
+    }
+    if (!ok) s.f[A] = oldF;
+    rebuildOcc(c);
+    return ok;
+}
 
 // Full-state audit -- the development assertion tool. Run it (auditEvery) when
 // a new operator misbehaves and it tells you WHERE the state broke:
@@ -364,6 +400,7 @@ struct RunParams {
     uint32_t opMask = 0x3FF;     // destroyer enable bits (10 ops)
     long maxIters = 0;           // 0 = wall-clock only; >0 makes runs exactly
                                  // reproducible (determinism tests, A/B)
+    bool stayRollout = false;    // experiment: paired one-stay suffix repair
 };
 
 inline int spatialCompact(repair::Ctx& c, int passes);
@@ -460,7 +497,8 @@ inline RunStats run(repair::Ctx& c, double seconds, const RunParams& rp,
             kind = ds.pick();
         if (!((em >> kind) & 1)) kind = 0;
         int q;
-        if (U(c.rng) < rp.bigQProb) {                 // rare large jolt
+        const bool bigQ = U(c.rng) < rp.bigQProb;
+        if (bigQ) {                                   // rare large jolt
             q = qlo + (int)(c.rng() % (uint32_t)(qhi - qlo + 1));
         } else {                                      // small fast neighbourhood
             // Destroy size: the small neighbourhood was capped near 8
@@ -671,8 +709,90 @@ no_swap:
                     if (!repair::insertGreedy(c, A, -1)) { ok = false; break; }
                 }
         } else {
-            for (int A : rem) {
-                if (!repair::insertGreedy(c, A, -1)) { ok = false; break; }
+            // Ordinary repair is the immutable control.  The experimental
+            // stay arm starts every branch from the identical destroyed state
+            // and RNG, extends exactly one prefix block at zero own tardiness,
+            // and rebuilds the remaining suffix.  A strict full-objective win
+            // may replace the normal repair; ties retain it byte-for-byte.
+            auto repairPlain = [&](int stayPos, int stayTarget,
+                                   std::vector<uint8_t>* reached,
+                                   std::vector<int>* baseExit) {
+                for (int pos = 0; pos < (int)rem.size(); pos++) {
+                    int A = rem[pos];
+                    if (!repair::insertGreedy(c, A, -1)) return false;
+                    if (reached) (*reached)[pos] = 1;
+                    if (baseExit) (*baseExit)[pos] = s.f[A];
+                    if (pos == stayPos && !extendStay(c, A, stayTarget))
+                        return false;
+                }
+                return true;
+            };
+
+            if (!rp.stayRollout || bigQ) {
+                ok = repairPlain(-1, -1, nullptr, nullptr);
+            } else {
+                st.stayNeighbourhoods++;
+                const Sol destroyed = s;
+                const std::mt19937 rngBefore = c.rng;
+                std::vector<uint8_t> reached(rem.size(), 0);
+                std::vector<int> baseExit(rem.size(), -1);
+
+                const bool normalOK = repairPlain(
+                    -1, -1, &reached, &baseExit);
+                const Sol normalSol = s;
+                const std::mt19937 rngAfterNormal = c.rng;
+                const double normalValue = normalOK
+                    ? core::evaluatePen(pb, s).total
+                    : std::numeric_limits<double>::infinity();
+                bool haveBest = normalOK;
+                bool bestIsStay = false;
+                double bestValue = normalValue;
+                Sol bestRepair = normalSol;
+
+                for (int pos = 0; pos < (int)rem.size(); pos++) {
+                    if (!reached[pos]) continue;
+                    const int A = rem[pos];
+                    const int slack = pb.D[A] - baseExit[pos];
+                    if (slack <= 0) continue;
+                    const int targets[2] = {
+                        baseExit[pos] + std::max(1, slack / 2), pb.D[A]};
+                    for (int which = 0; which < 2; which++) {
+                        if (which == 1 && targets[1] == targets[0]) continue;
+                        s = destroyed;
+                        rebuildOcc(c);
+                        c.rng = rngBefore;
+                        c.exitFallback.valid = false;
+                        st.stayTried++;
+                        if (!repairPlain(pos, targets[which], nullptr, nullptr))
+                            continue;
+                        st.stayBuilt++;
+                        const double value = core::evaluatePen(pb, s).total;
+                        if (!haveBest || value < bestValue - 1e-9) {
+                            haveBest = true;
+                            bestIsStay = true;
+                            bestValue = value;
+                            bestRepair = s;
+                        }
+                    }
+                }
+
+                // Speculation never owns the future RNG stream.  Thus a
+                // neighbourhood with no selected stay is a semantic null, and
+                // a selected stay differs only through its repaired state.
+                c.rng = rngAfterNormal;
+                if (haveBest) {
+                    s = bestIsStay ? bestRepair : normalSol;
+                    if (bestIsStay) {
+                        st.staySelected++;
+                        if (!normalOK) st.stayRescued++;
+                        else st.stayGain += normalValue - bestValue;
+                    }
+                    ok = true;
+                } else {
+                    s = normalSol;
+                    ok = false;
+                }
+                rebuildOcc(c);
             }
         }
         if (auditEvery > 0 && ok) {

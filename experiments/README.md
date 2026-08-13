@@ -9,6 +9,8 @@
   same-bay RNG null.
 - `voluntary-stay-rollout.md`: 공식 `exit-entry>=processing` 자유도를 구성
   중 무비용 체류 연장으로 쓰는 인과적 suffix-rollout 검정.
+- `voluntary-stay-repair.md`: 같은 체류 결정을 ALNS의 한 repair suffix 안에서
+  normal 후보와 짝지어 비교하는 default-off 국소 전이 검정.
 - `phase2-orientation-order.md`: 채택된 orientation 순서를 phase 2만
   버리는 data-flow 결함과 사전 등록한 강건성 게이트.
 
