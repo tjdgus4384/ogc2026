@@ -27,6 +27,7 @@ import time
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
 MODES = ("baseline", "start", "lock")
+RUN_MODES = ("baseline", "start", "guide60", "lock")
 
 
 def digest(value) -> str:
@@ -113,6 +114,9 @@ def run(args) -> None:
         raise RuntimeError(
             "lock arm requires OGC_KEEP_ASSIGNMENT_LOCK=1; shipped ALNS "
             "releases assignment guidance after 60% of the budget")
+    if (args.mode == "guide60" and
+            os.environ.get("OGC_KEEP_ASSIGNMENT_LOCK") == "1"):
+        raise RuntimeError("guide60 arm must retain the shipped 60% release")
     solver = args.solver.resolve()
     sys.path.insert(0, str(solver))
     import myalgorithm as ma
@@ -160,7 +164,8 @@ def run(args) -> None:
     start_flat = base_flat if args.mode == "baseline" else causal_flat
     eng.set_solution(start_flat)
     eng.build_occ(eng.horizon())
-    eng.set_assignment_lock(locks if args.mode == "lock" else [])
+    eng.set_assignment_lock(
+        locks if args.mode in ("guide60", "lock") else [])
     before_bay = int(eng.get_solution()[7 * block])
     if args.mode != "baseline" and before_bay != bay:
         raise RuntimeError("causal start lost the selected bay before search")
@@ -176,8 +181,9 @@ def run(args) -> None:
         raise RuntimeError(f"invalid engine state after ALNS: {audit}")
     search_flat = list(eng.get_solution())
     after_bay = int(search_flat[7 * block])
-    lock_held = args.mode != "lock" or after_bay == bay
-    if not lock_held:
+    selected_action_retained = after_bay == bay
+    lock_held = args.mode != "lock" or selected_action_retained
+    if args.mode == "lock" and not lock_held:
         raise RuntimeError(
             f"persistent lock leaked: block {block} bay {after_bay} != {bay}")
     search_objective = list(eng.objective())
@@ -202,6 +208,7 @@ def run(args) -> None:
         "search_flat_sha256": flat_digest(search_flat),
         "selected_bay_before": before_bay,
         "selected_bay_after": after_bay,
+        "selected_action_retained": selected_action_retained,
         "lock_held": lock_held,
         "checker": checked,
         "audit": audit,
@@ -436,6 +443,79 @@ def collect_persistent(args) -> None:
     print(json.dumps(output["summary"], sort_keys=True), flush=True)
 
 
+def collect_guidance(args) -> None:
+    """Join shipped 60%-guidance rows to the original A/start results."""
+    rows = []
+    for guide_path in sorted(args.directory.glob("p*-s*-guide60.json")):
+        stem = guide_path.name[:-len("-guide60.json")]
+        guide = json.loads(guide_path.read_text())
+        base = json.loads(
+            (args.reference / f"{stem}-baseline.json").read_text())
+        start = json.loads((args.reference / f"{stem}-start.json").read_text())
+        identity = (base["instance"], base["seed"], base["iters"])
+        if any((r["instance"], r["seed"], r["iters"]) != identity
+               for r in (start, guide)):
+            raise RuntimeError(f"joined arm identity mismatch at {stem}")
+        if start["start_flat_sha256"] != guide["start_flat_sha256"]:
+            raise RuntimeError(f"start/guidance initial bytes differ at {stem}")
+        a = base["checker"]
+        row = {
+            "instance": int(base["instance"]),
+            "seed": int(base["seed"]),
+            "baseline_feasible": bool(a["feasible"]),
+            "baseline": a["objective"],
+            "guide60_action_retained": bool(
+                guide["selected_action_retained"]),
+        }
+        for arm, report in (("start", start), ("guide60", guide)):
+            b = report["checker"]
+            row[f"{arm}_feasible"] = bool(b["feasible"])
+            row[arm] = b["objective"]
+            row[f"{arm}_delta_pct"] = (
+                100.0 * (float(b["objective"]) - float(a["objective"])) /
+                float(a["objective"])
+                if a["feasible"] and b["feasible"] else None
+            )
+        rows.append(row)
+    if len(rows) != 16:
+        raise RuntimeError(f"expected 16 guidance rows, found {len(rows)}")
+    all_start_feasible = all(
+        r["baseline_feasible"] and r["start_feasible"] for r in rows)
+    all_guide_feasible = all(
+        r["baseline_feasible"] and r["guide60_feasible"] for r in rows)
+    start_summary = arm_summary(rows, "start")
+    guide_summary = arm_summary(rows, "guide60")
+    start_pass = arm_pass(start_summary, all_start_feasible)
+    guide_pass = arm_pass(guide_summary, all_guide_feasible)
+    if guide_pass:
+        verdict = "guide60_survives"
+    elif start_pass:
+        verdict = "start_only_survives"
+    elif not all_start_feasible or not all_guide_feasible:
+        verdict = "reject_infeasible"
+    else:
+        verdict = "reject_plateau_transfer"
+    output = {
+        "schema_version": 1,
+        "reference": str(args.reference.resolve()),
+        "rows": rows,
+        "summary": {
+            "all_start_arms_checker_feasible": all_start_feasible,
+            "all_guide60_arms_checker_feasible": all_guide_feasible,
+            "guide60_action_retained": sum(
+                r["guide60_action_retained"] for r in rows),
+            "start": start_summary,
+            "guide60": guide_summary,
+            "start_pass": start_pass,
+            "guide60_pass": guide_pass,
+            "verdict": verdict,
+        },
+    }
+    (args.directory / "summary.json").write_text(
+        json.dumps(output, indent=2, sort_keys=True) + "\n")
+    print(json.dumps(output["summary"], sort_keys=True), flush=True)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     sub = parser.add_subparsers(dest="command", required=True)
@@ -445,7 +525,7 @@ def main() -> None:
     p_run.add_argument("instance", type=int, choices=(3, 4, 5, 6))
     p_run.add_argument("seed", type=int)
     p_run.add_argument("iters", type=int)
-    p_run.add_argument("mode", choices=MODES)
+    p_run.add_argument("mode", choices=RUN_MODES)
     p_run.add_argument("output", type=pathlib.Path)
     p_run.set_defaults(func=run)
     p_collect = sub.add_parser("collect")
@@ -455,6 +535,10 @@ def main() -> None:
     p_persistent.add_argument("directory", type=pathlib.Path)
     p_persistent.add_argument("reference", type=pathlib.Path)
     p_persistent.set_defaults(func=collect_persistent)
+    p_guidance = sub.add_parser("collect-guidance")
+    p_guidance.add_argument("directory", type=pathlib.Path)
+    p_guidance.add_argument("reference", type=pathlib.Path)
+    p_guidance.set_defaults(func=collect_guidance)
     args = parser.parse_args()
     args.func(args)
 

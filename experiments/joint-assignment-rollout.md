@@ -160,6 +160,15 @@ hash, final hash, objective, ALNS statistics, audit, and checker result must be
 exactly equal to the original baseline before old `start` and new `lock` rows
 may be joined.  Timing is deliberately excluded from this A/A identity test.
 
+The discovered 60% release is also a distinct, production-relevant treatment,
+not merely a failed instrument.  A fourth `guide60` arm starts from the same
+causal bytes, holds the single decision for the shipped first 60% of ALNS, and
+then releases it.  It is rerun from the original frozen causal build and joined
+to the original baseline/start rows by exact initial hash.  Retaining the bay
+at the end is recorded but not required.  `guide60` uses the same effect-size
+and checker thresholds as `start` and persistent `lock`; it cannot borrow a
+win from either arm.
+
 The `start` and `lock` states must have the same byte hash before search, every
 run must execute exactly 20,000 iterations, and the lock arm must finish with
 the selected block in the selected bay.  The official checker and production
