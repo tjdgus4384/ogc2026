@@ -2,7 +2,7 @@
 #SBATCH -p titan
 #SBATCH --exclusive
 #SBATCH -c 32
-#SBATCH -t 00:10:00
+#SBATCH -t 00:15:00
 #SBATCH -J jasg-roll
 #SBATCH -o runs/joint-assignment-rollout-%j.log
 set -uo pipefail
