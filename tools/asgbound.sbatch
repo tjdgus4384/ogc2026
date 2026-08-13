@@ -1,16 +1,9 @@
-#!/bin/bash
-#SBATCH -J asgb
+#!/usr/bin/env bash
+#SBATCH -J asgbound
 #SBATCH -N 1
-#SBATCH --exclusive
-#SBATCH -o slurm-%j.out
-export PYTHONNOUSERSITE=1
-PY="$PWD/.miniforge/envs/ogc2026/bin/python"
-mkdir -p runs/asgbound
-i=0
-for p in prob_3 prob_4 prob_5 prob_6; do
-  c=$((i*8)); taskset -c $c-$((c+7)) \
-    $PY -u tools/asgbound.py $p 120 > runs/asgbound/$p.txt 2>&1 &
-  i=$((i+1))
-done
-wait
-for p in prob_3 prob_4 prob_5 prob_6; do echo "##### $p"; cat runs/asgbound/$p.txt; done
+#SBATCH -c 12
+#SBATCH --mem=32G
+#SBATCH -t 00:40:00
+set -euo pipefail
+REPO="${SLURM_SUBMIT_DIR:-$(pwd)}"
+OGC_SEED=7 "$REPO/.miniforge/envs/ogc2026/bin/python" -u "$REPO/tools/asgbound.py"

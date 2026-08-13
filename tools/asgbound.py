@@ -1,46 +1,46 @@
 #!/usr/bin/env python3
-"""The geometry-free assignment optimum: a real lower bound, and P3's whole story.
+"""How much of the objective is reachable by re-assigning bays alone?
 
-Two facts make this exact rather than approximate:
+zsplit found the campaign has been aiming at the wrong term on P3: its z1 is
+EXACTLY 0 (0 of 200 tardy), so 100% of its objective is bay imbalance (19.1%)
+plus preference regret (80.9%) -- the two terms no lever this campaign ever
+targeted. P4 carries 19.4% in regret too. And P3 is our closest board to the
+target (+11.0%).
 
-    Z2 = floor(max_a u_a*L_a - min_a u_a*L_a)     L_a = workload assigned to bay a
-    Z3 = sum_i (Smax_i - pref_i[bay_i])
+Both terms depend on the bay assignment ALONE, with no geometry and no time. So
+their joint optimum over all assignments is computable exactly, and since
+w1*z1 >= 0 it is a genuine LOWER BOUND on the whole objective:
 
-Both depend on the BAY ASSIGNMENT ALONE -- geometry enters the problem only as
-feasibility. So dropping geometry entirely leaves a well-posed problem over the
-true objective, and its optimum is a valid lower bound on the true optimum.
+    total >= min_assignment ( w2 * spread + w3 * regret )
 
-On P3 that is not just a bound, it is the whole objective: Z1 = 0 on every draw
-we have ever recorded (48/48 stable), so P3 = w2*Z2 + w3*Z3 exactly, and the
-geometry-free optimum is the best any solver could do if packing were free.
+That turns "are we close on P3?" from a guess into a number. If our board is
+near the bound, P3 is finished and the remaining gap is elsewhere. If the bound
+is far below, the gap is an assignment problem -- a far easier object than the
+packing the wall is made of.
 
-    bound far below the all-team minimum   assignment slack exists and the
-                                           question becomes which assignments
-                                           are packable;
-    bound near the all-team minimum        the assignment is nearly forced, and
-                                           our 82,610 against 64,695 is a
-                                           search failure, not a packing one.
+The bound ignores packing feasibility, so it is optimistic; that is what makes
+it a bound. Every formula is verified against the kernel's own z2/z3 on the
+shipped board before the bound is trusted.
 
-A day of probes asked "can this board improve"; not one asked where the floor
-is. This asks. It also traces the Z2/Z3 frontier, because the two terms trade
-against each other at a fixed exchange rate (on P3, 150 per preference point
-against 5 per unit of imbalance = 30:1) and the trade is the whole design.
-
-    python3 tools/asgbound.py prob_3 [seconds]
+    python3 tools/asgbound.py
 """
 import json
 import pathlib
 import sys
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
-SC = 1000              # fixed-point scale for the fractional bay weights u_j
+sys.path.insert(0, str(REPO / "tools"))
+from board import get_board
+from ortools.sat.python import cp_model as cp
 
+SC = 1000
 
-def main():
-    prob_id = sys.argv[1]
-    secs = float(sys.argv[2]) if len(sys.argv) > 2 else 120.0
-    from ortools.sat.python import cp_model as cp
-    prob = json.load(open(REPO / "data" / "preliminary_test" / f"{prob_id}.json"))
+for pid, tl in (("prob_3", 240), ("prob_4", 480), ("prob_5", 600),
+                ("prob_6", 900)):
+    base, D, P, eng, hz, prob = get_board(pid, tl, 7)
+    eng.set_solution(base)
+    eng.build_occ(hz)
+    z1, z2, z3, tot = eng.objective()
     B, bays, W = prob["blocks"], prob["bays"], prob["weights"]
     n, m = len(B), len(bays)
     areas = [b["width"] * b["height"] for b in bays]
@@ -48,59 +48,55 @@ def main():
     wl = [b["workload"] for b in B]
     PREF = [[float(v) for v in b["bay_preferences"]] for b in B]
     SMAX = [max(p) for p in PREF]
-    # regret is integral on these instances; assert rather than silently round
-    REG = [[int(round(SMAX[i] - PREF[i][j])) for j in range(m)] for i in range(n)]
-    uw = [int(round(SC * u[j])) for j in range(m)]
-    print(f"{prob_id}: n={n} m={m}  w2={W['w2']} w3={W['w3']}"
-          f"   u={[round(x,3) for x in u]}")
+    asg = [base[i * 7] for i in range(n)]
+    placed = [bool(base[i * 7 + 6]) for i in range(n)]
 
-    def solve(z2cap=None):
-        mdl = cp.CpModel()
-        x = [[mdl.NewBoolVar(f"x{i}_{j}") for j in range(m)] for i in range(n)]
-        for i in range(n):
-            mdl.AddExactlyOne(x[i])
-        tot = sum(wl)
-        V = []
-        for j in range(m):
-            v = mdl.NewIntVar(0, uw[j] * tot, f"v{j}")
-            mdl.Add(v == sum(uw[j] * wl[i] * x[i][j] for i in range(n)))
-            V.append(v)
-        hi = mdl.NewIntVar(0, max(uw) * tot, "hi")
-        lo = mdl.NewIntVar(0, max(uw) * tot, "lo")
-        mdl.AddMaxEquality(hi, V)
-        mdl.AddMinEquality(lo, V)
-        spread = mdl.NewIntVar(0, max(uw) * tot, "spread")   # = SC * Z2
-        mdl.Add(spread == hi - lo)
-        z3 = mdl.NewIntVar(0, sum(max(r) for r in REG), "z3")
-        mdl.Add(z3 == sum(REG[i][j] * x[i][j] for i in range(n) for j in range(m)))
-        if z2cap is not None:
-            mdl.Add(spread <= int(z2cap * SC))
-        mdl.Minimize(W["w2"] * spread + W["w3"] * SC * z3)
-        sv = cp.CpSolver()
-        sv.parameters.max_time_in_seconds = secs
-        sv.parameters.num_search_workers = 8
-        st = sv.Solve(mdl)
-        if st not in (cp.OPTIMAL, cp.FEASIBLE):
-            return None
-        return (sv.StatusName(st), sv.Value(spread) / SC, sv.Value(z3),
-                sv.ObjectiveValue() / SC, sv.BestObjectiveBound() / SC)
+    load = [sum(u[j] * wl[i] for i in range(n) if placed[i] and asg[i] == j)
+            for j in range(m)]
+    myz2 = max(load) - min(load)
+    myz3 = sum(SMAX[i] - PREF[i][asg[i]] for i in range(n) if placed[i])
+    ok2 = abs(myz2 - z2) < max(1.0, 0.01 * abs(z2))
+    ok3 = abs(myz3 - z3) < max(1.0, 0.01 * abs(z3))
+    print(f"{pid}: total {tot:,.0f}   z2 {z2:,.1f} (mine {myz2:,.1f}"
+          f" {'ok' if ok2 else 'MISMATCH'})   z3 {z3:,.0f} (mine {myz3:,.0f}"
+          f" {'ok' if ok3 else 'MISMATCH'})", flush=True)
+    if not (ok2 and ok3):
+        print("   formula does not reproduce the kernel -- bound not trusted",
+              flush=True)
+        continue
 
-    r = solve()
-    if r is None:
-        print("   no solution")
-        return
-    name, z2, z3, obj, bnd = r
-    print(f"   geometry-free optimum: {obj:,.0f}   ({name}, proven bound {bnd:,.0f})")
-    print(f"      Z2={z2:,.0f} (w2*Z2={W['w2']*z2:,.0f})   "
-          f"Z3={z3:,.0f} (w3*Z3={W['w3']*z3:,.0f})")
-    print(f"   frontier (min Z3 at a capped Z2):")
-    for cap in (0, 200, 500, 1000, 2000, 3262):
-        rr = solve(cap)
-        if rr:
-            _, a, b, c, _ = rr
-            print(f"      Z2 <= {cap:>5}   ->  Z2={a:>7,.0f}  Z3={b:>5,.0f}"
-                  f"   objective {c:>10,.0f}")
-
-
-if __name__ == "__main__":
-    main()
+    uw = [int(round(SC * x)) for x in u]
+    mdl = cp.CpModel()
+    V = [[mdl.NewBoolVar(f"x{i}_{j}") for j in range(m)] for i in range(n)]
+    for i in range(n):
+        mdl.AddExactlyOne(V[i])
+        mdl.AddHint(V[i][asg[i]], 1)
+    cap = sum(uw) * int(sum(wl)) + 1
+    lv = []
+    for j in range(m):
+        v = mdl.NewIntVar(0, cap, f"L{j}")
+        mdl.Add(v == sum(uw[j] * int(wl[i]) * V[i][j] for i in range(n)))
+        lv.append(v)
+    hi, lo = mdl.NewIntVar(0, cap, "hi"), mdl.NewIntVar(0, cap, "lo")
+    mdl.AddMaxEquality(hi, lv)
+    mdl.AddMinEquality(lo, lv)
+    reg = sum(int(round(SC * (SMAX[i] - PREF[i][j]))) * V[i][j]
+              for i in range(n) for j in range(m))
+    mdl.Minimize(int(W["w2"]) * (hi - lo) + int(W["w3"]) * reg)
+    sv = cp.CpSolver()
+    sv.parameters.max_time_in_seconds = 300.0
+    sv.parameters.num_search_workers = 8
+    st = sv.Solve(mdl)
+    nm = sv.StatusName(st)
+    if st not in (cp.OPTIMAL, cp.FEASIBLE):
+        print(f"   assignment bound: {nm}", flush=True)
+        continue
+    lb = sv.BestObjectiveBound() / SC
+    val = sv.ObjectiveValue() / SC
+    cur = W["w2"] * z2 + W["w3"] * z3
+    print(f"   assignment-only optimum {val:,.0f} ({nm}, proven >= {lb:,.0f})"
+          f"   vs ours {cur:,.0f}   headroom {(val-cur)/tot*100:+.1f}% of total",
+          flush=True)
+    print(f"   => lower bound on {pid} total: {lb:,.0f}"
+          f"  (we are {tot:,.0f}, i.e. {(tot-lb)/max(1,lb)*100:+.1f}%)",
+          flush=True)
