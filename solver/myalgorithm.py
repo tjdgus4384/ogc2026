@@ -807,8 +807,18 @@ def _arm_free(p, deadline, seed=7, tl=None):
     # right here, before the slice spends the tail budget -- gate a snapshot
     # of it once (~1-2s against a 480-900s budget) and promote the floor from
     # seed level (~20M) to annealed level (~10.6M). `_gate` legalizes IN
-    # PLACE, so the engine state is saved and restored around it; the run's
-    # trajectory afterward is byte-identical to v6.2's.
+    # PLACE, so the board is saved and restored around it.
+    # Trajectory scope (audited 08-13, exact): on a checker-FEASIBLE incumbent
+    # -- the ~96% path -- `_gate` returns before touching the engine at all, so
+    # the run continues byte-identical to v6.2. Rescue stages 1-2 (nudge,
+    # retime) use no RNG, so those are identical too. Stage 3 alone diverges:
+    # `move_block` reseeds `ctx.rng` from its seed argument and `insertGreedy`
+    # then draws from it (api.cpp:693), and set_solution restores the board but
+    # NOT the RNG -- so the slice afterward sees a different stream. That is
+    # confined to runs whose annealed board is infeasible AND unfixable by
+    # nudge+retime, i.e. a strict subset of the loss class this whole mechanism
+    # exists to rescue (pre-v6.3 they returned ~20M or `_trivial`). Perturbing
+    # a trajectory that was already a catastrophe costs nothing.
     global _FLOOR, _FLOOR_OBJ
     if sec > 150.0 and deadline - time.time() > 30.0:
         try:

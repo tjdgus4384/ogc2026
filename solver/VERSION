@@ -5,9 +5,16 @@ the run that returns its bare seed rescue (P5: 20,111,373, 4+ recorded of 228
 draws) because the FINAL checker gate fails on the annealed board with seconds
 left, discarding a ~10.6M incumbent. The annealed board exists right after the
 portfolio, before the slice spends the tail budget: v6.3 gates a snapshot of
-it once (~2-15s of a 480-900s budget, engine state saved and restored so the
-trajectory is unchanged) and promotes the floor from seed level to annealed
-level.
+it once (~2-15s of a 480-900s budget, board saved and restored around the
+call) and promotes the floor from seed level to annealed level.
+
+Trajectory scope, audited exactly on 08-13: on a checker-feasible incumbent
+(~96% of runs) `_gate` returns before touching the engine, and rescue stages
+1-2 use no RNG, so the run continues byte-identical to v6.2. Only stage 3
+diverges -- `move_block` reseeds `ctx.rng` and `insertGreedy` draws from it
+(api.cpp:693), and the board is restored but the RNG is not. That is confined
+to runs whose annealed board is infeasible AND unfixable by nudge+retime,
+a strict subset of the loss class this mechanism exists to rescue.
 
 Verified deterministically by staging the same recorded catastrophe (final
 gate fails): v6.2 returns 20,111,373 (P5) / 45,448,526 (P6); v6.3 returns
