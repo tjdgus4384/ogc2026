@@ -29,6 +29,14 @@ Operators 8/9 retain their existing forced-bay semantics and big-Q repairs are
 not branched in this first screen.  The shipped portfolio never enables this
 instrument; it is exposed only as a default-off `run_alns` argument.
 
+This exhaustive implementation is a mechanism ceiling, not the intended
+delivery form.  It owns a second full solution/occupancy cache and rebuilds up
+to two suffixes per eligible prefix, so any survivor must report peak RSS and
+must later replace exhaustive firing with an endogenous structural trigger
+(for example, normal-repair failure or an observed one-way obstruction whose
+interval nesting can be closed).  Random frequency fitting is not sufficient
+evidence for hidden robustness.
+
 ## Frozen short screen
 
 Start every arm from the same free construction and order frozen by job 74969.
@@ -54,7 +62,22 @@ This mechanism screen advances only if:
 - the combined P4/P5 paired median is at most -1%; and
 - no board median exceeds +2%.
 
-Passing authorizes a sparse-frequency wall-cost gate on disjoint seeds.  It
-does not authorize production or Train yet.  Failure closes this exhaustive
-one-stay local suffix transition; it does not revive construction starts,
-public action tables, or persistent exit locks.
+This first screen starts from the deliberately weak job-74969 free
+construction (P4 8.04M and P5 20.11M).  Passing therefore establishes only
+that the action is live and can accelerate an early trajectory; it must not be
+read as evidence that the final search plateau moves.  Before any wall-cost
+or sparse-frequency gate, replay the 16 checker-feasible 20,000-iteration
+baseline plateaus frozen by job 75041, require their hashes to match, and run
+the same paired 1,000-iteration reference/control/stay continuation from each
+plateau.  Use the same selection-habitat, win/loss, pooled -1%, combined P4/P5
+-1%, and per-board +2% veto above.  Only a second pass there authorizes design
+of a structural trigger and an equal-wall, disjoint-seed cost gate.
+
+Neither screen authorizes production or Train.  Failure of either closes this
+exhaustive, zero-own-cost half/due one-stay transition; it does not revive
+construction starts, public action tables, or persistent exit locks.  It also
+does not close the full exit-time variable: a rule-driven successor may extend
+an obstructing interval exactly to another block's exit boundary, including
+past its own due date only when the completed repair's net weighted objective
+strictly improves.  Such an exit-closure repair must be triggered by an
+observed one-way obstruction, not by a fitted day or frequency sweep.

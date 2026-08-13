@@ -18,6 +18,29 @@ using core::Problem; using core::Sol;
 
 struct Backup { int A, bay, ori, x, y, e, f; };
 
+// Only the dynamic part of OccIndex participates in a search trajectory.
+// Masks and dimensions are immutable after build(); bits and floating
+// areaUsed must be restored byte-for-byte because areaRoom uses the latter at
+// a decision boundary.
+struct OccState {
+    std::vector<std::vector<uint64_t>> bits;
+    std::vector<std::vector<double>> areaUsed;
+};
+
+inline OccState saveOcc(const occ::OccIndex& oc) {
+    OccState out;
+    out.bits.reserve(oc.bay.size());
+    for (const auto& bay : oc.bay) out.bits.push_back(bay.bits);
+    out.areaUsed = oc.areaUsed;
+    return out;
+}
+
+inline void loadOcc(occ::OccIndex& oc, const OccState& state) {
+    for (size_t j = 0; j < oc.bay.size(); j++)
+        oc.bay[j].bits = state.bits[j];
+    oc.areaUsed = state.areaUsed;
+}
+
 struct RunStats { long iters=0, accepted=0, improved=0, failed=0; double best;
     // sampled phase timing (every 32nd iteration), nanoseconds
     long tRemove=0, tInsert=0, tEval=0, tSamples=0;
@@ -31,15 +54,6 @@ struct RunStats { long iters=0, accepted=0, improved=0, failed=0; double best;
                   double stayGain=0.0;
                   long badIter=-1; int badKind=-1; int badPhase=-1; };
 
-// Restore the derived indexes after a speculative repair branch.  Sol is the
-// authoritative state; occupancy is only a fast rejection cache.
-inline void rebuildOcc(repair::Ctx& c) {
-    c.s->rebuildIdx(c.pb->m);
-    c.oc->clearBits();
-    for (int i = 0; i < c.pb->n; i++)
-        if (c.s->placed[i]) c.oc->stamp(*c.pb, *c.s, i, true);
-}
-
 // Voluntarily lengthen one already-inserted block without making that block
 // tardy.  A longer stay changes the event constraints of every bay mate, so
 // the full current bay is revalidated before the mutation can survive.
@@ -50,6 +64,7 @@ inline bool extendStay(repair::Ctx& c, int A, int target) {
         target > c.horizon)
         return false;
     const int oldF = s.f[A];
+    c.oc->stamp(pb, s, A, false);
     s.f[A] = target;
     bool ok = repair::stateFeasible(c, A);
     if (ok) {
@@ -59,7 +74,7 @@ inline bool extendStay(repair::Ctx& c, int A, int target) {
         }
     }
     if (!ok) s.f[A] = oldF;
-    rebuildOcc(c);
+    c.oc->stamp(pb, s, A, true);
     return ok;
 }
 
@@ -459,6 +474,9 @@ inline RunStats run(repair::Ctx& c, double seconds, const RunParams& rp,
     std::uniform_real_distribution<double> U(0, 1);
     int sinceUpdate = 0;
     long sinceBest = 0;
+    occ::OccIndex stayOcc;
+    Sol staySol;
+    bool stayOccReady = false;
 
     // mid-anneal lock release: with partial preference locks the deep
     // anneal can trap transiently-accepted tardiness (SA uphill moves
@@ -714,40 +732,54 @@ no_swap:
             // and RNG, extends exactly one prefix block at zero own tardiness,
             // and rebuilds the remaining suffix.  A strict full-objective win
             // may replace the normal repair; ties retain it byte-for-byte.
-            auto repairPlain = [&](int stayPos, int stayTarget,
+            auto repairPlain = [&](repair::Ctx& rc,
+                                   int stayPos, int stayTarget,
                                    std::vector<uint8_t>* reached,
                                    std::vector<int>* baseExit) {
+                Sol& rs = *rc.s;
                 for (int pos = 0; pos < (int)rem.size(); pos++) {
                     int A = rem[pos];
-                    if (!repair::insertGreedy(c, A, -1)) return false;
+                    if (!repair::insertGreedy(rc, A, -1)) return false;
                     if (reached) (*reached)[pos] = 1;
-                    if (baseExit) (*baseExit)[pos] = s.f[A];
-                    if (pos == stayPos && !extendStay(c, A, stayTarget))
+                    if (baseExit) (*baseExit)[pos] = rs.f[A];
+                    if (pos == stayPos && !extendStay(rc, A, stayTarget))
                         return false;
                 }
                 return true;
             };
 
             if (!rp.stayRollout || bigQ) {
-                ok = repairPlain(-1, -1, nullptr, nullptr);
+                ok = repairPlain(c, -1, -1, nullptr, nullptr);
             } else {
                 st.stayNeighbourhoods++;
                 const Sol destroyed = s;
                 const std::mt19937 rngBefore = c.rng;
+                const OccState occBefore = saveOcc(*c.oc);
                 std::vector<uint8_t> reached(rem.size(), 0);
                 std::vector<int> baseExit(rem.size(), -1);
 
                 const bool normalOK = repairPlain(
-                    -1, -1, &reached, &baseExit);
-                const Sol normalSol = s;
+                    c, -1, -1, &reached, &baseExit);
                 const std::mt19937 rngAfterNormal = c.rng;
+                const auto exitFallbackAfterNormal = c.exitFallback;
                 const double normalValue = normalOK
                     ? core::evaluatePen(pb, s).total
                     : std::numeric_limits<double>::infinity();
                 bool haveBest = normalOK;
                 bool bestIsStay = false;
                 double bestValue = normalValue;
-                Sol bestRepair = normalSol;
+                Sol bestRepair;
+                OccState bestRepairOcc;
+                repair::Ctx::ExitFallback bestRepairFallback;
+
+                // Speculation uses a disjoint solution and occupancy cache.
+                // Therefore the normal solution, its byBay order, its exact
+                // floating area cache, and every other control-path field
+                // remain untouched when no stay branch wins.
+                if (!stayOccReady) {
+                    stayOcc = *c.oc;
+                    stayOccReady = true;
+                }
 
                 for (int pos = 0; pos < (int)rem.size(); pos++) {
                     if (!reached[pos]) continue;
@@ -758,20 +790,27 @@ no_swap:
                         baseExit[pos] + std::max(1, slack / 2), pb.D[A]};
                     for (int which = 0; which < 2; which++) {
                         if (which == 1 && targets[1] == targets[0]) continue;
-                        s = destroyed;
-                        rebuildOcc(c);
-                        c.rng = rngBefore;
-                        c.exitFallback.valid = false;
+                        staySol = destroyed;
+                        repair::Ctx branch = c;
+                        branch.s = &staySol;
+                        branch.oc = &stayOcc;
+                        branch.rng = rngBefore;
+                        branch.exitFallback.valid = false;
+                        loadOcc(stayOcc, occBefore);
                         st.stayTried++;
-                        if (!repairPlain(pos, targets[which], nullptr, nullptr))
+                        if (!repairPlain(branch, pos, targets[which],
+                                         nullptr, nullptr))
                             continue;
                         st.stayBuilt++;
-                        const double value = core::evaluatePen(pb, s).total;
+                        const double value = core::evaluatePen(
+                            pb, staySol).total;
                         if (!haveBest || value < bestValue - 1e-9) {
                             haveBest = true;
                             bestIsStay = true;
                             bestValue = value;
-                            bestRepair = s;
+                            bestRepair = staySol;
+                            bestRepairOcc = saveOcc(stayOcc);
+                            bestRepairFallback = branch.exitFallback;
                         }
                     }
                 }
@@ -780,19 +819,20 @@ no_swap:
                 // neighbourhood with no selected stay is a semantic null, and
                 // a selected stay differs only through its repaired state.
                 c.rng = rngAfterNormal;
+                c.exitFallback = exitFallbackAfterNormal;
                 if (haveBest) {
-                    s = bestIsStay ? bestRepair : normalSol;
                     if (bestIsStay) {
+                        s = bestRepair;
+                        loadOcc(*c.oc, bestRepairOcc);
+                        c.exitFallback = bestRepairFallback;
                         st.staySelected++;
                         if (!normalOK) st.stayRescued++;
                         else st.stayGain += normalValue - bestValue;
                     }
                     ok = true;
                 } else {
-                    s = normalSol;
                     ok = false;
                 }
-                rebuildOcc(c);
             }
         }
         if (auditEvery > 0 && ok) {
