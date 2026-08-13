@@ -295,3 +295,33 @@ paired test at fixed-iteration seed 113.  It retains 40/40 feasibility,
 `<=+1.5%` for each predeclared `m<=3`, `m>=4`, saturation `<1`, and saturation
 `>=1` split.  Any code or rule change consumes the remaining held-out seeds
 and requires a new candidate and new data split.
+
+### Archive result (source `1dcdef0`, jobs 75644/75642/75731/75785)
+
+The synthetic run-level unit forced a real archive return and proved exact
+OFF/ON equality of the live solution, occupancy, checkpoint, common counters,
+and full serialized RNG state.  The held-out gate then completed all 48 raw
+arms.  The fail-closed collector accepted every pinned source, binary,
+problem, plateau, checker, emitter, telemetry, and dominance contract with
+zero mismatch.  This separates efficacy failure from implementation failure.
+
+The returned archive produced **3 wins, 0 losses, and 13 ties**.  The pooled
+median delta was `0.000%` and the mean was `-0.0116269%`.  Board medians were
+P3 `0.000%`, P4 `0.000%`, P5 `0.000%`, and P6 `-0.0296221%`.  The three strict
+wins were only `-0.0665818%` on P5 and `-0.0602044%`/`-0.0592442%` on P6.
+Although 81 intermediate archive updates occurred across P4--P6, P3 had none
+and only three final archives beat the exact control incumbent.  Median
+slowdown was `1.11836x`.
+
+The preregistered `W>L` and non-regression conditions pass, but pooled median
+`<=-2%` and P4-or-P5 median `<=-3%` fail decisively.  The frozen verdict is
+`reject_closure_archive`.  No equal-wall, Train, production wiring, threshold
+relaxation, or frequency/board selector is authorized.  Flexible exit remains
+a sound auxiliary timing primitive, but a single repaired suffix is not a
+large enough neighbourhood to address the target gap.  The next mechanism
+must jointly change a multi-block assignment/timing/geometry shell rather than
+repeat this one-witness delivery more often.
+
+All 16 plateau states, 48 raw reports, the pinned aggregate summary, and the
+run/collector provenance are frozen under
+`results/obstruction-exit-archive-d77d188/`.
