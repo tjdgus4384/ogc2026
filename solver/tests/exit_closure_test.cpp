@@ -539,6 +539,14 @@ int main() {
     assert(core::entryBlocked(cyclePb, cyclic, 1, 0));
     assert(core::entryBlocked(cyclePb, cyclic, 2, 1));
     assert(core::entryBlocked(cyclePb, cyclic, 0, 2));
+    assert(!core::entryBlocked(cyclePb, cyclic, 0, 1));
+    assert(!core::entryBlocked(cyclePb, cyclic, 1, 2));
+    assert(!core::entryBlocked(cyclePb, cyclic, 2, 0));
+    assert(!core::restOverlap(cyclePb, cyclic, 0, 1));
+    assert(!core::restOverlap(cyclePb, cyclic, 1, 2));
+    assert(!core::restOverlap(cyclePb, cyclic, 0, 2));
+    std::vector<int> cycleOrder;
+    assert(!core::entryOrderAt(cyclePb, cyclic, 0, 0, cycleOrder));
     extensions.clear();
     cycle = hard = false;
     assert(!repair::minimumExitClosure(

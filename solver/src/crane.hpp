@@ -10,13 +10,25 @@
 // (x,y) translation applied on the fly.
 #pragma once
 #include "geometry.hpp"
+#include <atomic>
 #include <cstdint>
 #include <vector>
 
 namespace crane {
 using geom::Pt; using geom::Poly; using geom::BBox;
 
+inline uint64_t nextGeometryMemoId() {
+    static std::atomic<uint64_t> next{1};
+    return next.fetch_add(1, std::memory_order_relaxed);
+}
+
 struct OrientGeom {
+    // Raw addresses are not stable identities: short-lived Engine/Problem
+    // objects can free an orientation and later allocate unrelated geometry at
+    // the same address while the thread-local memo still lives.  A process-
+    // unique id follows immutable geometry through moves/copies and prevents
+    // those stale hits across sequential engines.
+    uint64_t memoId = nextGeometryMemoId();
     std::vector<Poly> layers;   // local coords (ref vertex of layer0 at origin)
     BBox bb;                    // union bbox over all layers (local)
     double parea = 0.0;         // true polygon footprint (max over layers):
@@ -34,8 +46,8 @@ struct BlockGeom {
 
 // A speculative observer must not perturb the direct-mapped geometry caches
 // used by the control trajectory.  Besides changing wall cost through cache
-// eviction, the historical slots retain only a 64-bit fingerprint rather than
-// the complete geometry tuple, so a hash collision could otherwise turn cache
+// eviction, the slots retain only a 64-bit fingerprint rather than the
+// complete geometry tuple, so a hash collision could otherwise turn cache
 // history into a semantic dependency.  Archive probes enter this scope and do
 // the exact polygon work without reading or writing either memo.
 inline bool& memoEnabled() {
@@ -81,8 +93,8 @@ inline bool overlapsLay(const OrientGeom& ga, int la, double ax, double ay,
                   std::abs((by - ay) - (double)dy) < 1e-9);
     uint64_t h = 0;
     if (exact && memoEnabled()) {
-        h = (uint64_t)(uintptr_t)&ga * 0x9E3779B97F4A7C15ull;
-        h ^= (uint64_t)(uintptr_t)&gb * 0xC2B2AE3D27D4EB4Full;
+        h = ga.memoId * 0x9E3779B97F4A7C15ull;
+        h ^= gb.memoId * 0xC2B2AE3D27D4EB4Full;
         h ^= ((uint64_t)(uint32_t)la << 48) ^ ((uint64_t)(uint32_t)lb << 40);
         h ^= (uint64_t)(uint32_t)(int32_t)dx * 0x165667B19E3779F9ull;
         h ^= (uint64_t)(uint32_t)(int32_t)dy * 0x27D4EB2F165667C5ull;
@@ -118,8 +130,8 @@ inline bool pairMemo(const OrientGeom& a, double ax, double ay,
     if (std::abs((bx - ax) - (double)dx) > 1e-9 ||
         std::abs((by - ay) - (double)dy) > 1e-9) return false;
     static thread_local std::vector<OvSlot> tb(1u << 21);
-    uint64_t h = (uint64_t)(uintptr_t)&a * 0x9E3779B97F4A7C15ull
-               ^ (uint64_t)(uintptr_t)&b * 0xC2B2AE3D27D4EB4Full
+    uint64_t h = a.memoId * 0x9E3779B97F4A7C15ull
+               ^ b.memoId * 0xC2B2AE3D27D4EB4Full
                ^ ((uint64_t)(uint32_t)mode << 56)
                ^ (uint64_t)(uint32_t)(int32_t)dx * 0x165667B19E3779F9ull
                ^ (uint64_t)(uint32_t)(int32_t)dy * 0x27D4EB2F165667C5ull;

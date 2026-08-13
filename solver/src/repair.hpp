@@ -166,6 +166,11 @@ inline bool minimumExitClosure(const Problem& pb, Sol& trial, int bay,
                                int horizon,
                                std::vector<Ctx::ExitExtension>& extensions,
                                bool& cycleReject, bool& hardReject) {
+    // Closure is bounded speculation at a causal/official audit boundary.  Use
+    // the exact predicates here so even a 64-bit memo fingerprint collision
+    // cannot turn a pure directed relation into a false mutual obstruction,
+    // and do not warm/evict the live trajectory's process-lifetime cache.
+    crane::ScopedMemoBypass memoBypass(true);
     const std::vector<int>& ids = trial.byBay[bay];
     std::vector<int> before = trial.f;
     extensions.clear();
