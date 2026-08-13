@@ -395,7 +395,7 @@ def _identity(report: dict[str, Any], mode: str, instance: int,
         report.get("iters") == FIXED_ITERS and
         report.get("checkpoint_iteration") == FIXED_CHECKPOINT and
         isinstance(report.get("run_stats"), list) and
-        len(report["run_stats"]) == (15 if mode == "reference" else 50) and
+        len(report["run_stats"]) == (44 if mode == "reference" else 50) and
         int(round(float(report["run_stats"][0]))) == FIXED_ITERS and
         (mode == "reference") == (report.get("telemetry") is None) and
         (mode == "reference") == (report.get("final_rng_state") is None)
