@@ -61,10 +61,16 @@ def _run(args: argparse.Namespace) -> None:
     start_check = checked_record(ma, problem, engine, n)
     expected_check = (expected_base["checker"] if args.mode == "baseline"
                       else final["checker"])
-    if (not start_check["feasible"] or start_check["rescued"] or
+    if (not start_check["feasible"] or
+            bool(start_check["rescued"]) !=
+                bool(expected_check.get("rescued", False)) or
+            start_check.get("solution_sha256") !=
+                expected_check.get("solution_sha256") or
             abs(float(start_check["objective"]) -
                 float(expected_check["objective"])) > 1e-9):
-        raise RuntimeError("start checker replay mismatch")
+        raise RuntimeError(
+            "start checker replay mismatch: "
+            f"actual={start_check!r} expected={expected_check!r}")
 
     # checked_record is allowed to exercise the rescue ladder.  Search always
     # starts from the exact frozen raw bytes, with no persistent exit lock.
