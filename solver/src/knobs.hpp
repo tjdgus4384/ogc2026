@@ -52,6 +52,16 @@ inline bool causalBayRng() {
     }();
     return v;
 }
+// Diagnostic wiring audit.  insertGreedy draws one orientation order, but
+// the ordinary phase-2 revival scan historically rebuilt ascending indices
+// and discarded that order.  Default OFF preserves the shipped path.
+inline bool phase2Oris() {
+    static const bool v = [] {
+        const char* q = std::getenv("OGC_PHASE2_ORIS");
+        return q && q[0] == '1' && q[1] == '\0';
+    }();
+    return v;
+}
 // Diagnostic-only shadow: after the shipped oracle rejects an insertion
 // candidate that shares both event days with a resident, remember the first
 // official-semantic fallback but keep the shipped verdict.  Max-iteration

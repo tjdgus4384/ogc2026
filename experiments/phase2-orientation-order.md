@@ -31,8 +31,12 @@ when disabled it preserves ascending orientation indices.  The switch must:
 - add or remove no position, bay, day, or orientation candidate;
 - change no collision, crane, area, acceptance, or objective predicate;
 - use no problem identity, size threshold, or board classifier; and
-- expose counters for phase-2 calls, successes, and successes whose selected
-  orientation differs from the disabled ordering.
+- expose non-invasive counters for phase-2 calls and successes.
+
+Whether a selected orientation differs from OFF is determined by the paired
+construction's byte hash, not by replaying an OFF shadow inside the hot path.
+Such a shadow would add candidate scans and risk changing cost or state; a
+nonzero orientation index is not a valid substitute for that comparison.
 
 OFF and ON are run in separate processes from the same binary because knob
 values are cached on first use.  A repeated OFF run and a repeated ON run must

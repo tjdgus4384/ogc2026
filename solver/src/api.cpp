@@ -253,10 +253,15 @@ struct Engine {
     double totExitTwinTests_ = 0, totExitTwinPass_ = 0;
     double totExitTwinCompared_ = 0, totExitTwinDominant_ = 0;
     double totExitTwinRescued_ = 0;
+    double totPhase2Calls_ = 0, totPhase2Success_ = 0;
+    long reconstructPhase2Calls_ = 0, reconstructPhase2Success_ = 0;
     std::vector<double> lastStats() const {
         return {totIters_, totFailed_, totExitTwinTests_, totExitTwinPass_,
                 totExitTwinCompared_, totExitTwinDominant_,
-                totExitTwinRescued_};
+                totExitTwinRescued_, totPhase2Calls_, totPhase2Success_};
+    }
+    std::vector<long> reconstructStats() const {
+        return {reconstructPhase2Calls_, reconstructPhase2Success_};
     }
     std::vector<double> lastOps() const {
         std::vector<double> v;
@@ -683,7 +688,8 @@ struct Engine {
                 (double)st.badKind, (double)st.badPhase,
                 (double)st.exitTwinTests, (double)st.exitTwinPass,
                 (double)st.exitTwinCompared, (double)st.exitTwinDominant,
-                (double)st.exitTwinRescued};
+                (double)st.exitTwinRescued,
+                (double)st.phase2Calls, (double)st.phase2Success};
     }
 
     // the production search: N threads anneal in parallel; per-thread
@@ -808,6 +814,8 @@ struct Engine {
                     totExitTwinCompared_ += (double)st.exitTwinCompared;
                     totExitTwinDominant_ += (double)st.exitTwinDominant;
                     totExitTwinRescued_ += (double)st.exitTwinRescued;
+                    totPhase2Calls_ += (double)st.phase2Calls;
+                    totPhase2Success_ += (double)st.phase2Success;
                     for (int k = 0; k < 10; k++) {
                         opUsed_[k] += (double)st.opUsed[k];
                         opImp_[k]  += (double)st.opImp[k];
@@ -877,6 +885,8 @@ struct Engine {
             if (tight && eCap < pb.R[A]) { bad = A; break; }
             if (!repair::insertGreedy(c2, A, eCap)) { bad = A; break; }
         }
+        reconstructPhase2Calls_ = c2.phase2Calls;
+        reconstructPhase2Success_ = c2.phase2Success;
         if (bad >= 0) sol = backup;
         oc.build(pb, horizon_);
         for (int i = 0; i < pb.n; i++)
@@ -1106,6 +1116,7 @@ PYBIND11_MODULE(sscore, m) {
         .def("last_phase", &Engine::lastPhase)
         .def("last_ops", &Engine::lastOps)
         .def("last_stats", &Engine::lastStats)
+        .def("reconstruct_stats", &Engine::reconstructStats)
         .def("horizon", [](Engine& e){ return e.horizonValue(); })
         .def("pair_conflicts", &Engine::pairConflicts)
         .def("set_assignment_lock", &Engine::setAssignmentLock)

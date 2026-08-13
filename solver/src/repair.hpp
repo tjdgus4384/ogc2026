@@ -71,6 +71,8 @@ struct Ctx {
     long exitTwinCompared = 0;
     long exitTwinDominant = 0;
     long exitTwinRescued = 0;
+    long phase2Calls = 0;              // diagnostic orientation wiring audit
+    long phase2Success = 0;
     struct ExitFallback {
         bool valid = false;
         int bay = -1, ori = 0, x = 0, y = 0, e = 0, f = 0;
@@ -285,12 +287,14 @@ inline bool scanBayAt(Ctx& c, int A, int j, int e, const std::vector<int>& oris,
 // is footprint-overlap based, so a position's blockers all intersect it, and
 // the last one to leave is trig -- sec 48). Scans the anchor window around
 // trig only.
-inline bool scanLocal(Ctx& c, int A, int trig, int e, double areaA) {
+inline bool scanLocal(Ctx& c, int A, int trig, int e, double areaA,
+                      const std::vector<int>& oris) {
     const Problem& pb = *c.pb; Sol& s = *c.s;
     int f = e + pb.P[A];
     int j = s.bay[trig];
     if (c.forcedBay && c.forcedBay[A] >= 0 && c.forcedBay[A] != j) return false;
     if (!areaRoom(c, j, areaA, e, f)) return false;
+    c.phase2Calls++;
     thread_local occ::OccIndex::Snap sn;
     c.oc->buildSnap(j, e, f, sn);
     const auto& gt = pb.geo[trig].orients[s.ori[trig]];
@@ -302,8 +306,9 @@ inline bool scanLocal(Ctx& c, int A, int trig, int e, double areaA) {
     // (the ori loop only shifts them by its own wA/hA offsets).
     thread_local std::vector<RB> rbs;
     rbCollect(c, j, e, f, rbs);
+    const bool wiredOrder = knobs::phase2Oris();
     for (size_t oo = 0; oo < pb.geo[A].orients.size(); oo++) {
-        int oi = (int)oo;
+        int oi = wiredOrder ? oris[oo] : (int)oo;
         const auto& g = pb.geo[A].orients[oi];
         double W = pb.bayW[j], H = pb.bayH[j];
         int x0 = (int)std::ceil(-g.bb.x0), x1 = (int)std::floor(W - g.bb.x1);
@@ -340,6 +345,7 @@ inline bool scanLocal(Ctx& c, int A, int trig, int e, double areaA) {
             if (insertionCandidate(c, A)) {
                 s.addIdx(A);
                 c.oc->stamp(pb, s, A, true);
+                c.phase2Success++;
                 return true;
             }
             s.placed[A]=0;
@@ -469,7 +475,7 @@ inline bool insertGreedy(Ctx& c, int A, int eCap = -1) {
             if (scanBayAt(c, A, jt, e, oris, xs, ys)) return true;
             continue;
         }
-        if (scanLocal(c, A, pr.second, e, areaA)) return true;
+        if (scanLocal(c, A, pr.second, e, areaA, oris)) return true;
     }
     // phase 3: sparse dense sweep -- the completeness net. Unconditional by
     // design: the area screen is a heuristic (see areaRoom) and must not gate
