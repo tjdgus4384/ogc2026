@@ -90,12 +90,6 @@ inline bool restOverlap(const Problem& pb, const Sol& s, int a, int b) {
 // is only valid while every placement passes through this function; an
 // operator writing placements directly must re-verify them (sec 176).
 
-// Largest same-day, same-bay ENTRY batch this kernel will reason about. The
-// biggest batch measured on shipped boards is 7; beyond the cap the old
-// all-orders-must-work test still applies, so behaviour degrades to strict,
-// never to unsound.
-constexpr int kBatchCap = 16;
-
 // Does `r`, resting in the bay, obstruct newcomer `nu`'s descent? (crane rule:
 // nu's layer k is blocked by r's layer j >= k). Bay-boundary failures of `nu`
 // are caught by rule 2a, so a single-resident call here only reports the
@@ -109,6 +103,77 @@ inline bool entryBlocked(const Problem& pb, const Sol& s, int r, int nu) {
     return !crane::entryOK(pb.bayW[bay], pb.bayH[bay], one,
                            pb.geo[nu].orients[s.ori[nu]],
                            (double)s.x[nu], (double)s.y[nu]);
+}
+
+// Topologically order a same-day ENTRY batch.  If resident v blocks newcomer
+// u, u has to be emitted before v.  Real batches stay on the allocation-free
+// bit-mask path; the dynamic path removes the old hidden-instance limit.
+inline bool entryTopoOrder(const Problem& pb, const Sol& s,
+                           const std::vector<int>& ids,
+                           std::vector<int>* order = nullptr) {
+    const int n = (int)ids.size();
+    if (order) { order->clear(); order->reserve(n); }
+    if (n <= 64) {
+        uint64_t before[64] = {0};
+        for (int u = 0; u < n; u++)
+            for (int v = 0; v < n; v++)
+                if (u != v && entryBlocked(pb, s, ids[v], ids[u]))
+                    before[v] |= 1ULL << u;
+        uint64_t done = 0;
+        for (int step = 0; step < n; step++) {
+            int pick = -1;
+            for (int v = 0; v < n; v++)
+                if (!(done & (1ULL << v)) && (before[v] & ~done) == 0) {
+                    pick = v; break;
+                }
+            if (pick < 0) return false;
+            done |= 1ULL << pick;
+            if (order) order->push_back(ids[pick]);
+        }
+        return true;
+    }
+
+    std::vector<std::vector<int>> after(n);
+    std::vector<int> indeg(n, 0);
+    for (int u = 0; u < n; u++) {
+        for (int v = 0; v < n; v++) {
+            if (u == v || !entryBlocked(pb, s, ids[v], ids[u])) continue;
+            after[u].push_back(v);
+            indeg[v]++;
+        }
+    }
+    std::vector<uint8_t> done(n, 0);
+    for (int step = 0; step < n; step++) {
+        int pick = -1;
+        for (int v = 0; v < n; v++)
+            if (!done[v] && indeg[v] == 0) { pick = v; break; }
+        if (pick < 0) return false;
+        done[pick] = 1;
+        if (order) order->push_back(ids[pick]);
+        for (int v : after[pick]) indeg[v]--;
+    }
+    return true;
+}
+
+// Find one legal ENTRY order for (bay,t).  This used to stop reasoning at a
+// batch of 16 and silently emitted id order beyond it.  Hidden boards have no
+// such batch-size promise, so the same deterministic smallest-id tie break is
+// now defined for every size.
+//
+// `extra` is an insertion candidate that is placed but not yet indexed in
+// byBay.  Omitting it here was the soundness bug in the old m15 experiment.
+inline bool entryOrderAt(const Problem& pb, const Sol& s, int bay, int t,
+                         std::vector<int>& order, int extra = -1) {
+    std::vector<int> ids;
+    for (int i : s.byBay[bay])
+        if (s.placed[i] && s.e[i] == t) ids.push_back(i);
+    if (extra >= 0 && s.placed[extra] && s.bay[extra] == bay &&
+        s.e[extra] == t &&
+        std::find(ids.begin(), ids.end(), extra) == ids.end())
+        ids.push_back(extra);
+    std::sort(ids.begin(), ids.end());
+
+    return entryTopoOrder(pb, s, ids, &order);
 }
 
 // Find one checker-legal order for every EXIT in (bay,t).  The checker replays
@@ -216,26 +281,14 @@ inline bool vpExitPolicy(const Problem& pb, const Sol& s, int A,
         }
         if (!batch.empty()) {
             batch.push_back(A);
-            const int nb2 = (int)batch.size();
-            if (nb2 > kBatchCap) return false;       // out of scope: stay strict
-            uint32_t before[kBatchCap] = {0};        // before[v] = must precede v
-            for (int u = 0; u < nb2; u++)
-                for (int v = 0; v < nb2; v++)
-                    if (u != v && entryBlocked(pb, s, batch[v], batch[u]))
-                        before[v] |= 1u << u;        // v blocks u => u goes first
-            uint32_t done = 0;
-            for (int step = 0; step < nb2; step++) {
-                int pick = -1;
-                for (int v = 0; v < nb2 && pick < 0; v++)
-                    if (!(done & (1u << v)) && (before[v] & ~done) == 0)
-                        pick = v;
-                if (pick < 0) return false;          // cycle: no legal order
-                done |= 1u << pick;
-            }
+            if (!entryTopoOrder(pb, s, batch)) return false;
         }
     }
-    // rule 3: A's exit at fN under the legacy fixed emitter order.  The
-    // flexible path validates the whole affected EXIT batch below instead.
+    // rule 3: A's exit at fN.  The legacy path mirrors its fixed id tie-break.
+    // Under official semantics, only blocks leaving strictly later remain:
+    // among exits at fN, later entrants leave first and equal-entry peers leave
+    // in reverse ENTRY order.  This is always legal because entry and exit use
+    // identical crane geometry.  No EXIT-order search is needed.
     if (!flexibleExits) {
         pres.clear();
         pres.push_back({&gA, (double)s.x[A], (double)s.y[A]});  // target at [0]
@@ -256,6 +309,12 @@ inline bool vpExitPolicy(const Problem& pb, const Sol& s, int A,
                                 (double)s.x[k], (double)s.y[k]});
         }
         if (!crane::exitOK(pres, 0)) return false;
+    } else {
+        for (int k : nb) {
+            if (k == A || !s.placed[k]) continue;
+            if (s.e[k] < fN && fN < s.f[k] && entryBlocked(pb, s, k, A))
+                return false;
+        }
     }
     // rule 4: A rests through (eN, fN), so it joins the Stage-2 set of every
     // block entering in that window -- re-verify those entries with A present.
@@ -304,19 +363,16 @@ inline bool vpExitPolicy(const Problem& pb, const Sol& s, int A,
             if (pres.size() > 1 && !crane::exitOK(pres, 0)) return false;
         }
     } else {
-        // Only EXIT days touched by A can change.  Strict stayers remain in
-        // `present`; same-day exits are removed in one feasible order.
-        thread_local std::vector<int> times, order;
-        times.clear();
-        times.push_back(fN);
+        // At t<fN, A is the only newly-added strict stayer.  Existing blockers
+        // were already checked when k was placed, so the exact incremental
+        // test is just whether A blocks k's ascent.  At t==fN, A belongs to the
+        // same EXIT batch and the reverse-entry construction above is a proof;
+        // checking the batch again was pure hot-path overhead.
         for (int k : nb) {
             if (k == A || !s.placed[k]) continue;
-            if (eN < s.f[k] && s.f[k] <= fN) times.push_back(s.f[k]);
+            if (eN < s.f[k] && s.f[k] < fN && entryBlocked(pb, s, A, k))
+                return false;
         }
-        std::sort(times.begin(), times.end());
-        times.erase(std::unique(times.begin(), times.end()), times.end());
-        for (int t : times)
-            if (!exitOrderAt(pb, s, jT, t, order, A)) return false;
     }
     return true;
 }

@@ -4,8 +4,8 @@ Run BEFORE any submission or after any myalgorithm.py change:
     python tools/test_driver.py
 Executable form of the checks this campaign kept re-deriving by hand:
 spec-rule gate and invariant 7's driver half (same-day EXITs emit
-later-entry-first -- vp rules 3/5 assume exactly this order; see
-docs/PIPELINE.md).
+later-entry-first, and equal-entry peers reverse their actual ENTRY order;
+see docs/PIPELINE.md).
 """
 import json
 import os
@@ -29,6 +29,16 @@ recs = {1: [0, 0, 0, 0, 2, 9], 2: [0, 1, 0, 0, 5, 9], 3: [0, 2, 0, 0, 4, 9]}
 ops = M._recs_to_sol(recs)["operations"]["9"]
 exits = [op["block_id"] for op in ops if op["type"] == "EXIT"]
 assert exits == [2, 3, 1], f"EXIT order broke invariant 7: {exits}"
+
+# Equal-entry peers are the subtle case: later-entry-first alone is a tie.
+# If ENTRY 1 precedes ENTRY 2, EXIT 2 must precede EXIT 1.  Explicit ranks are
+# what the kernel hands the driver when official EXIT semantics are enabled.
+same = {1: [0, 0, 0, 0, 5, 9], 2: [0, 1, 0, 0, 5, 9]}
+ops = M._recs_to_sol(same, [-1, 0, 1], [-1, 1, 0])["operations"]
+entries = [op["block_id"] for op in ops["5"] if op["type"] == "ENTRY"]
+exits = [op["block_id"] for op in ops["9"] if op["type"] == "EXIT"]
+assert entries == [1, 2] and exits == [2, 1], \
+    f"equal-entry LIFO broke: entries={entries} exits={exits}"
 
 # 3. The terminal serial fallback must be complete and checker-authorized.
 for idx, prob in enumerate(probs, 1):
@@ -56,4 +66,4 @@ assert not U.check_feasibility(probs[0], bad_id)["feasible"]
 assert not U.check_feasibility(probs[0], bad_time)["feasible"]
 
 print("DRIVER GATE PASS: spec", specs,
-      "exit-order, cached fallback, checker-input OK")
+      "exit-order (including equal-entry LIFO), cached fallback, checker-input OK")

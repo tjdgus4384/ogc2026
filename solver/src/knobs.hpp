@@ -41,16 +41,22 @@ inline double prefP() {
     return v;
 }
 // Diagnostic-only shadow: after the shipped oracle rejects an insertion
-// candidate that shares both event days with a resident, price the official
-// flexible EXIT order too but keep the shipped verdict.  Max-iteration probes
-// therefore follow the identical stochastic trajectory while measuring how
-// often this semantic gap is actually reached inside ALNS.
+// candidate that shares both event days with a resident, remember the first
+// official-semantic fallback but keep the shipped verdict.  Max-iteration
+// probes therefore follow the identical stochastic trajectory while measuring
+// how many otherwise-failed insertions can be rescued.
 inline bool exitTwinShadow() {
-    static const bool v = std::getenv("OGC_EXIT_TWIN_SHADOW") != nullptr;
+    static const bool v = [] {
+        const char* q = std::getenv("OGC_EXIT_TWIN_SHADOW");
+        return q && q[0] == '1' && q[1] == '\0';
+    }();
     return v;
 }
 inline bool exitTwin() {
-    static const bool v = std::getenv("OGC_EXIT_TWIN") != nullptr;
+    static const bool v = [] {
+        const char* q = std::getenv("OGC_EXIT_TWIN");
+        return q && q[0] == '1' && q[1] == '\0';
+    }();
     return v;
 }
 } // namespace knobs

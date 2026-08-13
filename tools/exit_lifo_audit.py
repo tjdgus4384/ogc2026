@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
+import os
 import pathlib
 import sys
 
@@ -84,11 +85,14 @@ def square(x0: int, y0: int, x1: int, y1: int) -> list[list[int]]:
 
 def synthetic_problem() -> dict:
     common = {
-        "release_time": 0, "due_date": 2, "processing_time": 2,
+        "release_time": 1, "due_date": 3, "processing_time": 2,
         "workload": 1, "bay_preferences": [1],
     }
     return {
-        "bays": [{"width": 4, "height": 2}],
+        # Width 3 leaves exactly one corner for block 1.  This makes the same
+        # witness also prove fixed-first fallback semantics: the fixed scan
+        # cannot escape to a different normal placement.
+        "bays": [{"width": 3, "height": 2}],
         "weights": {"w1": 1, "w2": 1, "w3": 1},
         "blocks": [
             dict(common, shape=[{"orientation": 0,
@@ -104,12 +108,12 @@ def audit_synthetic(ma) -> dict:
     prob = synthetic_problem()
     eng = ma._build_engine(prob)
     eng.build_occ(16)
-    if not eng.place_at(0, 0, 0, 2, 0, 0):
+    if not eng.place_at(0, 0, 0, 2, 0, 1):
         raise AssertionError("synthetic first placement failed")
-    verdict = list(eng.placement_verdicts(1, 0, 0, 0, 0, 0))
+    verdict = list(eng.placement_verdicts(1, 0, 0, 0, 0, 1))
     if verdict != [0, 1]:
         raise AssertionError(f"expected legacy=0 official=1, got {verdict}")
-    if not eng.place_at_flexible(1, 0, 0, 0, 0, 0):
+    if not eng.place_at_flexible(1, 0, 0, 0, 0, 1):
         raise AssertionError("synthetic official placement failed")
     recs = ma._extract(eng, 2)
     entry = list(eng.entry_ranks())
@@ -117,9 +121,23 @@ def audit_synthetic(ma) -> dict:
     checked = ma._check(prob, ma._recs_to_sol(recs, entry, lifo))
     if not checked or not checked.get("feasible"):
         raise AssertionError(f"checker rejected LIFO witness: {checked}")
+    # A fresh engine asks the real insertion scan, not the explicit probe.
+    # OFF must exhaust the scan and fail; ON must commit the remembered exact
+    # candidate only after that same scan is exhausted.
+    eng2 = ma._build_engine(prob)
+    eng2.build_occ(16)
+    if not eng2.place_at(0, 0, 0, 2, 0, 1):
+        raise AssertionError("synthetic fallback setup failed")
+    inserted = bool(eng2.insert_capped(1, 1, -1))
+    treatment = os.environ.get("OGC_EXIT_TWIN") == "1"
+    if inserted != treatment:
+        raise AssertionError(
+            f"fallback mismatch: treatment={treatment} inserted={inserted}")
+
     return {"legacy_verdict": verdict[0], "official_verdict": verdict[1],
             "entry_ranks": entry, "lifo_exit_ranks": lifo,
-            "checker_feasible": True}
+            "checker_feasible": True, "treatment": treatment,
+            "fallback_inserted": inserted}
 
 
 def discover_boards(source_repo: pathlib.Path) -> list[tuple[pathlib.Path, pathlib.Path]]:
@@ -161,7 +179,8 @@ def audit_board(ma, checker, problem_path: pathlib.Path,
     checked = checker.check_feasibility(prob, candidate)
     if not checked.get("feasible"):
         raise AssertionError(f"LIFO failed: {solution_path}: {checked}")
-    greedy = list(eng.exit_ranks())
+    greedy_fn = getattr(eng, "greedy_exit_ranks", eng.exit_ranks)
+    greedy = list(greedy_fn())
     if len(greedy) != n:
         raise AssertionError(f"greedy EXIT oracle found no order: {solution_path}")
     greedy_sol = ma._recs_to_sol(recs, entry, greedy)

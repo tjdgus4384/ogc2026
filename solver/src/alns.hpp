@@ -39,10 +39,13 @@ inline int audit(const core::Problem& pb, core::Sol& s, int* badBlock = nullptr)
         if (s.placed[i] && cnt[i] != 1) { if (badBlock) *badBlock = i; return 3; }
         if (!s.placed[i] && cnt[i] != 0) { if (badBlock) *badBlock = i; return 3; }
     }
-    for (int i = 0; i < pb.n; i++)
-        if (s.placed[i] && !core::vpConservative(pb, s, i)) {
-            if (badBlock) *badBlock = i; return 4;
-        }
+    for (int i = 0; i < pb.n; i++) {
+        if (!s.placed[i]) continue;
+        bool ok = core::vpConservative(pb, s, i);
+        if (!ok && knobs::exitTwin())
+            ok = core::vpFlexibleExits(pb, s, i);
+        if (!ok) { if (badBlock) *badBlock = i; return 4; }
+    }
     return 0;
 }
 
@@ -493,12 +496,12 @@ inline RunStats run(repair::Ctx& c, double seconds, const RunParams& rp,
                     if (nX != oX || nY != oY) {
                         c.oc->stamp(pb, s, A3, false);
                         s.x[A3] = nX; s.y[A3] = nY;
-                        bool ok4 = core::vpConservative(pb, s, A3);
+                        bool ok4 = repair::stateFeasible(c, A3);
                         if (ok4) {
                             c.oc->stamp(pb, s, A3, true);
                             for (int k3 : s.byBay[j3]) {
                                 if (k3 == A3 || !s.placed[k3]) continue;
-                                if (!core::vpConservative(pb, s, k3)) {
+                                if (!repair::stateFeasible(c, k3)) {
                                     ok4 = false; break; }
                             }
                             if (!ok4) c.oc->stamp(pb, s, A3, false);
@@ -562,14 +565,14 @@ inline RunStats run(repair::Ctx& c, double seconds, const RunParams& rp,
                     s.rebuildIdx(pb.m);
                     c.oc->stamp(pb, s, A, true);
                     c.oc->stamp(pb, s, B, true);
-                    bool ok2 = core::vpConservative(pb, s, A)
-                            && core::vpConservative(pb, s, B);
+                    bool ok2 = repair::stateFeasible(c, A)
+                            && repair::stateFeasible(c, B);
                     if (ok2)
                         for (int j2 : {aB, bB}) {
                             for (int k2 : s.byBay[j2]) {
                                 if (k2 == A || k2 == B || !s.placed[k2])
                                     continue;
-                                if (!core::vpConservative(pb, s, k2)) {
+                                if (!repair::stateFeasible(c, k2)) {
                                     ok2 = false; break; }
                             }
                             if (!ok2) break;
@@ -773,12 +776,12 @@ inline int spatialCompact(repair::Ctx& c, int passes) {
             int oldx = s.x[i], oldy = s.y[i];
             if (nx != INT_MIN && nx < s.x[i]) s.x[i] = nx;
             s.y[i] = ny;
-            bool ok = core::vpConservative(pb, s, i);
+            bool ok = repair::stateFeasible(c, i);
             if (ok)                       // neighbours' crane paths
                 for (int k : s.byBay[j]) {
                     if (k == i || !s.placed[k]) continue;
                     if (s.f[k] <= s.e[i] || s.e[k] >= s.f[i]) continue;
-                    if (!core::vpConservative(pb, s, k)) { ok = false;
+                    if (!repair::stateFeasible(c, k)) { ok = false;
                                                            break; }
                 }
             if (!ok) { s.x[i] = oldx; s.y[i] = oldy; }
@@ -815,7 +818,7 @@ inline int compactLeft(repair::Ctx& c, int maxPasses) {
                 if (e2 >= oldE) break;
                 c.oc->stamp(pb, s, i, false);
                 s.e[i] = e2; s.f[i] = e2 + pb.P[i];
-                if (core::vpConservative(pb, s, i)) {
+                if (repair::stateFeasible(c, i)) {
                     c.oc->stamp(pb, s, i, true);
                     moved++; break;
                 }

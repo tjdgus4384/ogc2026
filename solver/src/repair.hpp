@@ -68,18 +68,56 @@ struct Ctx {
     bool z1live = false;              // some block is tardy
     long exitTwinTests = 0;           // diagnostic shadow counters
     long exitTwinPass = 0;
+    struct ExitFallback {
+        bool valid = false;
+        int bay = -1, ori = 0, x = 0, y = 0, e = 0, f = 0;
+    } exitFallback;
 };
 
-inline bool placementFeasible(Ctx& c, int A) {
+// Official-feasible state predicate for operators that move an already
+// constructed board.  The fixed oracle remains the cheap first path.
+inline bool stateFeasible(Ctx& c, int A) {
     if (core::vpConservative(*c.pb, *c.s, A)) return true;
-    if ((knobs::exitTwinShadow() || knobs::exitTwin()) &&
-            core::hasExitTwin(*c.s, A)) {
+    return knobs::exitTwin() &&
+           core::vpFlexibleExits(*c.pb, *c.s, A);
+}
+
+// Preserve the legacy first-fit path exactly: a checker-only candidate is
+// remembered, never committed immediately.  The caller continues the entire
+// original scan and a later fixed-oracle placement still wins.  Only an
+// insertion that would otherwise fail can consume this fallback.
+inline bool insertionCandidate(Ctx& c, int A) {
+    if (core::vpConservative(*c.pb, *c.s, A)) return true;
+    if (!c.exitFallback.valid &&
+        (knobs::exitTwinShadow() || knobs::exitTwin()) &&
+        core::hasExitTwin(*c.s, A)) {
         c.exitTwinTests++;
         const bool flexible = core::vpFlexibleExits(*c.pb, *c.s, A);
         c.exitTwinPass += flexible;
-        if (knobs::exitTwin()) return flexible;
+        if (flexible) {
+            const Sol& s = *c.s;
+            c.exitFallback = {true, s.bay[A], s.ori[A], s.x[A], s.y[A],
+                              s.e[A], s.f[A]};
+        }
     }
     return false;
+}
+
+inline bool commitExitFallback(Ctx& c, int A) {
+    if (!knobs::exitTwin() || !c.exitFallback.valid) return false;
+    Sol& s = *c.s;
+    const Problem& pb = *c.pb;
+    const auto q = c.exitFallback;
+    s.bay[A]=q.bay; s.ori[A]=q.ori; s.x[A]=q.x; s.y[A]=q.y;
+    s.e[A]=q.e; s.f[A]=q.f; s.placed[A]=1;
+    if (!core::vpFlexibleExits(pb, s, A)) {
+        s.placed[A]=0;
+        c.exitFallback.valid=false;
+        return false;
+    }
+    s.addIdx(A);
+    c.oc->stamp(pb, s, A, true);
+    return true;
 }
 
 // Area screen for bay j over [e,f) -- a SPEED HEURISTIC, never a verdict.
@@ -190,7 +228,7 @@ inline bool scanBayAt(Ctx& c, int A, int j, int e, const std::vector<int>& oris,
                 if (c.oc->hitsSnap(sn, A, oi, x, y)) continue;
                 s.bay[A]=j; s.ori[A]=oi; s.x[A]=x; s.y[A]=y;
                 s.e[A]=e; s.f[A]=f; s.placed[A]=1;
-                if (placementFeasible(c, A)) {
+                if (insertionCandidate(c, A)) {
                     s.addIdx(A);
                     c.oc->stamp(pb, s, A, true);
                     return true;
@@ -259,7 +297,7 @@ inline bool scanLocal(Ctx& c, int A, int trig, int e, double areaA) {
             if (c.oc->hitsSnap(sn, A, oi, xv, yv)) continue;
             s.bay[A]=j; s.ori[A]=oi; s.x[A]=xv; s.y[A]=yv;
             s.e[A]=e; s.f[A]=f; s.placed[A]=1;
-            if (placementFeasible(c, A)) {
+            if (insertionCandidate(c, A)) {
                 s.addIdx(A);
                 c.oc->stamp(pb, s, A, true);
                 return true;
@@ -275,6 +313,7 @@ inline void removeBlock(Ctx& c, int A);
 
 inline bool insertGreedy(Ctx& c, int A, int eCap = -1) {
     const Problem& pb = *c.pb; Sol& s = *c.s;
+    c.exitFallback.valid = false;
     if (c.entryCap && c.entryCap[A] >= 0 &&
         (eCap < 0 || c.entryCap[A] < eCap))
         eCap = c.entryCap[A];
@@ -399,7 +438,7 @@ inline bool insertGreedy(Ctx& c, int A, int eCap = -1) {
                     if (c.oc->hits(A, oi, j, x, y, e, f)) continue;
                     s.bay[A]=j; s.ori[A]=oi; s.x[A]=x; s.y[A]=y;
                     s.e[A]=e; s.f[A]=f; s.placed[A]=1;
-                    if (placementFeasible(c, A)) {
+                    if (insertionCandidate(c, A)) {
                         s.addIdx(A);
                         c.oc->stamp(pb, s, A, true);
                         return true;
@@ -409,7 +448,7 @@ inline bool insertGreedy(Ctx& c, int A, int eCap = -1) {
             }
         }
     }
-    return false;
+    return commitExitFallback(c, A);
 }
 
 inline void removeBlock(Ctx& c, int A) {

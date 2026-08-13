@@ -176,36 +176,42 @@ struct Engine {
             std::sort(g.begin(), g.end());
             const int m = (int)g.size();
             if (m == 1) { rank[g[0]] = 0; continue; }
-            if (m > core::kBatchCap) {            // rule 2b never admits these
-                for (int r = 0; r < m; r++) rank[g[r]] = r;
-                continue;
+            std::vector<int> order;
+            if (!core::entryOrderAt(pb, sol, kv.first.first,
+                                    kv.first.second, order)) {
+                // A legal engine state cannot reach this branch.  Preserve a
+                // total output order so the checker gate, not a driver crash,
+                // remains the final authority if a future operator regresses.
+                order = g;
             }
-            uint32_t before[core::kBatchCap] = {0};
-            for (int u = 0; u < m; u++)
-                for (int v = 0; v < m; v++)
-                    if (u != v && core::entryBlocked(pb, sol, g[v], g[u]))
-                        before[v] |= 1u << u;
-            uint32_t done = 0;
-            for (int r = 0; r < m; r++) {
-                int pick = -1;
-                for (int v = 0; v < m && pick < 0; v++)
-                    if (!(done & (1u << v)) && (before[v] & ~done) == 0)
-                        pick = v;
-                if (pick < 0) {                   // unreachable if 2b held
-                    for (int q = 0; q < m; q++)
-                        if (!(done & (1u << q))) { pick = q; break; }
-                }
-                rank[g[pick]] = r;
-                done |= 1u << pick;
-            }
+            for (int r = 0; r < m; r++) rank[order[r]] = r;
         }
         return rank;
     }
-    // Same-day EXIT rank chosen under the official checker's replay rule.
-    // Unlike the legacy emitter's descending-entry/id tie-break, this returns
-    // an actually feasible order for each bay/day batch.  Empty means that no
-    // order exists (and therefore the state is infeasible under the checker).
+    // Canonical checker-legal EXIT order.  Later entry leaves first; blocks
+    // sharing an entry day leave in reverse of the actual ENTRY topological
+    // order.  The latter is the missing half of the LIFO rule: the later ENTRY
+    // cleared every earlier peer on descent, and exit uses identical geometry.
     std::vector<int> exitRanks() {
+        std::vector<int> rank(pb.n, -1);
+        const std::vector<int> erank = entryRanks();
+        std::map<std::pair<int, int>, std::vector<int>> groups;
+        for (int i = 0; i < pb.n; i++)
+            if (sol.placed[i]) groups[{sol.bay[i], sol.f[i]}].push_back(i);
+        for (auto& kv : groups) {
+            std::vector<int>& g = kv.second;
+            std::sort(g.begin(), g.end(), [&](int a, int b) {
+                if (sol.e[a] != sol.e[b]) return sol.e[a] > sol.e[b];
+                if (erank[a] != erank[b]) return erank[a] > erank[b];
+                return a < b;
+            });
+            for (size_t r = 0; r < g.size(); r++) rank[g[r]] = (int)r;
+        }
+        return rank;
+    }
+    // Development differential only: independently search an EXIT order and
+    // compare it with the closed-form LIFO construction above.
+    std::vector<int> greedyExitRanks() {
         std::vector<int> rank(pb.n, -1), order, times;
         for (int bay = 0; bay < pb.m; bay++) {
             times.clear();
@@ -226,7 +232,7 @@ struct Engine {
     }
     bool vpOK(int A) {
         if (core::vpConservative(pb, sol, A)) return true;
-        return knobs::exitTwin() && core::hasExitTwin(sol, A) &&
+        return knobs::exitTwin() &&
                core::vpFlexibleExits(pb, sol, A);
     }
     std::vector<int> auditState() {
@@ -902,12 +908,12 @@ struct Engine {
         int ox = sol.x[i], oy = sol.y[i];
         oc.stamp(pb, sol, i, false);
         sol.x[i] = ox + dx; sol.y[i] = oy + dy;
-        bool ok = core::vpConservative(pb, sol, i);
+        bool ok = repair::stateFeasible(ctx, i);
         if (ok) {
             for (int k : sol.byBay[sol.bay[i]]) {
                 if (k == i || !sol.placed[k]) continue;
                 if (!(sol.e[k] < sol.f[i] && sol.e[i] < sol.f[k])) continue;
-                if (!core::vpConservative(pb, sol, k)) { ok = false; break; }
+                if (!repair::stateFeasible(ctx, k)) { ok = false; break; }
             }
         }
         if (ok) { oc.stamp(pb, sol, i, true); return true; }
@@ -930,13 +936,13 @@ struct Engine {
         if (ne < pb.R[i] || nf - ne < pb.P[i] || nf > horizon_) return false;
         oc.stamp(pb, sol, i, false);
         sol.e[i] = ne; sol.f[i] = nf;
-        bool ok = core::vpConservative(pb, sol, i);
+        bool ok = repair::stateFeasible(ctx, i);
         if (ok) {
             int lo = std::min(oe, ne), hi = std::max(of, nf);
             for (int k : sol.byBay[sol.bay[i]]) {
                 if (k == i || !sol.placed[k]) continue;
                 if (!(sol.e[k] < hi && lo < sol.f[k])) continue;
-                if (!core::vpConservative(pb, sol, k)) { ok = false; break; }
+                if (!repair::stateFeasible(ctx, k)) { ok = false; break; }
             }
         }
         if (ok) { oc.stamp(pb, sol, i, true); return true; }
@@ -990,13 +996,13 @@ struct Engine {
         sol.rebuildIdx(pb.m);
         oc.stamp(pb, sol, i, true);
         oc.stamp(pb, sol, j, true);
-        bool ok = core::vpConservative(pb, sol, i)
-               && core::vpConservative(pb, sol, j);
+        bool ok = repair::stateFeasible(ctx, i)
+               && repair::stateFeasible(ctx, j);
         if (ok)
             for (int b2 : {aB, bB}) {
                 for (int k : sol.byBay[b2]) {
                     if (k == i || k == j || !sol.placed[k]) continue;
-                    if (!core::vpConservative(pb, sol, k)) { ok=false; break; }
+                    if (!repair::stateFeasible(ctx, k)) { ok=false; break; }
                 }
                 if (!ok) break;
             }
@@ -1102,6 +1108,7 @@ PYBIND11_MODULE(sscore, m) {
         .def("get_solution", &Engine::getSolution)
         .def("entry_ranks", &Engine::entryRanks)
         .def("exit_ranks", &Engine::exitRanks)
+        .def("greedy_exit_ranks", &Engine::greedyExitRanks)
         .def("vp_ok", &Engine::vpOK)
         .def("audit_state", &Engine::auditState);
 }

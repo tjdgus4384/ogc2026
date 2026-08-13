@@ -126,9 +126,9 @@ def _recs_to_sol(recs, ranks=None, exit_ranks=None):
     what a kernel without rule 2b assumes. Emitting an order the kernel never
     checked is exactly how a board passes the engine and fails checker Stage 5.
 
-    exit_ranks is probe-only for now.  None preserves the shipped descending
-    entry-day/id order byte-for-byte; a vector emits the flexible order that
-    exit_ranks() verified under the official checker.
+    None preserves the shipped descending-entry/id order byte-for-byte.  When
+    the exact EXIT treatment is active, exit_ranks is the canonical LIFO order:
+    later entry first, with equal-entry peers reversing their ENTRY ranks.
     """
     order = (lambda i: i) if ranks is None else (lambda i: (ranks[i], i))
     exit_order = ((lambda i: (-recs[i][4], i)) if exit_ranks is None else
