@@ -60,3 +60,27 @@ assumed that a linked worktree duplicated the canonical checkout's
 `.miniforge` environment.  It produced no measurement.  The harness now
 resolves that environment through Git's common directory while keeping all
 source and output artifacts in the persistent worktree.
+
+## Causal-null verdict: job 74923
+
+The corrected audit completed, and the existing `builds/pc2` instrument fails
+the same-bay null on every board:
+
+| board | byte-identical / tested | same-bay raw delta range |
+|---|---:|---:|
+| P3 | 155 / 200 | -7.11% .. +59.27% |
+| P4 | 120 / 150 | -8.48% .. +13.68% |
+| P5 | 167 / 200 | -6.42% .. +21.04% |
+| P6 | 207 / 250 | -1.39% .. +5.85% |
+
+All four reports have `interpretation_valid=false`; the harness consequently
+ran no checker comparison for an alternative action.  The apparent best raw
+deltas (-7.11%, -16.98%, -8.92%, and -2.59%) are explicitly invalid and must
+not appear in an advance or adoption claim.
+
+The direct cause is in `insertGreedy`: a forced block constructs a one-element
+bay vector *before* the normal sort/shuffle.  `std::shuffle` then consumes a
+different RNG stream from the free baseline, changing orientation order and
+every later insertion.  The next instrument must always construct and
+sort/shuffle the complete bay vector, then filter it to the forced bay.  Job
+74923 is a diagnosis of the old instrument, not a candidate score.
