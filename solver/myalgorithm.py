@@ -1000,8 +1000,13 @@ def _trivial(p):
             # bbox merely fits can still overhang by nearly a unit. The old
             # code hid that by always taking the largest margin; choosing the
             # emptiest bay does not, so test the ACTUAL placed extent.
-            px = int(math.ceil(-min(xs) + 1e-9))
-            py = int(math.ceil(-min(ys) + 1e-9))
+            # `ceil(integer + eps)` moves an exactly aligned footprint one
+            # whole cell inward.  On a tight bay that turns a legal boundary
+            # placement into an overhang (and used to poison this last-resort
+            # safety net).  Match the release/duration integer conversion:
+            # tolerate numerical fuzz just below the required lower bound.
+            px = int(math.ceil(-min(xs) - 1e-9))
+            py = int(math.ceil(-min(ys) - 1e-9))
             for j in range(len(bays)):
                 if (px + max(xs) > bays[j]["width"] + 1e-9
                         or py + max(ys) > bays[j]["height"] + 1e-9):
@@ -1018,8 +1023,8 @@ def _trivial(p):
                 for j in range(len(bays)):
                     m = min(bays[j]["width"] - w_i, bays[j]["height"] - h_i)
                     k = (0, -m, j, oi,
-                         int(math.ceil(-min(xs) + 1e-9)),
-                         int(math.ceil(-min(ys) + 1e-9)))
+                         int(math.ceil(-min(xs) - 1e-9)),
+                         int(math.ceil(-min(ys) - 1e-9)))
                     if best is None or k < best:
                         best = k
         _, _, j, oi, x, y = best

@@ -122,6 +122,28 @@ for pid in ("1", "6"):
     except Exception as exc:
         A(f"trivial-feasible-P{pid}", False, repr(exc))
 
+# Exact-boundary regression: the only legal integer anchor of this footprint
+# is (0, 0).  Using ceil(-min + eps) incorrectly chose (1, 1), rejected it in
+# the fit scan, then repeated the same invalid anchor in the fallback.
+try:
+    boundary = {
+        "bays": [{"width": 1, "height": 1}],
+        "blocks": [{
+            "release_time": 0, "due_date": 1, "processing_time": 1,
+            "shape": [{"orientation": 0, "layers": [[
+                [0, 0], [1, 0], [1, 1], [0, 1]
+            ]]}]
+        }]
+    }
+    sol = myalgorithm._trivial(boundary)
+    entry = sol["operations"]["0"][0]
+    A("trivial-exact-boundary-anchor",
+      entry.get("type") == "ENTRY" and entry.get("x") == 0
+      and entry.get("y") == 0 and entry.get("bay_id") == 0,
+      repr(entry))
+except Exception as exc:
+    A("trivial-exact-boundary-anchor", False, repr(exc))
+
 print(json.dumps(out))
 '''
 
