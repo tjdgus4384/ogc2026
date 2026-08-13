@@ -190,6 +190,31 @@ This is another direct F4 result.  A strong construction effect and even a
 favorable pooled median do not authorize using the causal board as just one
 more unlocked seed.
 
+## Frozen sequential construction gate
+
+The failed start-only form does not erase the construction mechanism: P4/P5
+still show a plateau signal, and a single forced decision changes 47/64 later
+bay assignments respectively.  The next construction-only question is whether
+more causal decisions accumulate without accepting assignment debt.
+
+Start from each immutable job-74933 one-action manifest.  Run a beam of width 2
+for at most two additional decisions.  For every beam parent, exhaustively set
+one previously-free block to each bay and rebuild the full board with the same
+order and RNG-preserving causal instrument.  Setting that block to its current
+parent bay is a semantic null; every such null must reproduce the parent bytes
+and components exactly.  Across all parents, the official gate screens the
+fixed 20 lowest-raw children.  A child enters the beam only when its checker
+objective strictly improves its own parent; parents are carried, so the best
+board can never regress.  Duplicate lock vectors are removed.
+
+This is the same board-independent action rule on P3-P6.  The construction
+axis advances only if all nulls and final boards are checker-valid, no board
+regresses from its one-action parent, and P4 or P5 gains at least another 5%.
+A survivor is still only a constructor: its final action sequence must face a
+new fixed-iteration plateau test, then a native 4-core/budget-capped
+implementation and all declared Train splits.  Per-board action sequences are
+never production constants.
+
 The `start` and `lock` states must have the same byte hash before search, every
 run must execute exactly 20,000 iterations, and the lock arm must finish with
 the selected block in the selected bay.  The official checker and production
