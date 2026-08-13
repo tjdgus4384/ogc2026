@@ -67,9 +67,12 @@ each be byte-identical.  Every emitted board goes through the official checker.
    dispatch rules.
 5. **Official wall gate.**  Only a Train survivor is rebuilt with the switch
    removed and the corrected order unconditional.  Recheck P3-P6 at official
-   limits, all checker and packaging invariants, runtime/RSS, and the eight
-   unrelated hidden-final instances.  Adoption still requires a single
-   universal solver; no instance-specific fallback is introduced.
+   limits plus all checker, fallback, packaging, runtime, and RSS invariants.
+   The eight unrelated hidden-final inputs are not in the repository; their
+   actual result can only be measured by a later user-authorized submission.
+   Until then `generalization-protocol.md` governs the honest proxy claim.
+   Adoption still requires one universal solver with no instance-specific
+   fallback.
 
 The screen is deliberately effect-size gated.  A trajectory-only change below
 this scale cannot plausibly close the current all-time-minimum gaps and should

@@ -2,6 +2,8 @@
 
 ## 2026-08-13 현재 구조 감사
 
+- `generalization-protocol.md`: 독립 `train_final` 40개와 로컬에 없는
+  hidden 8개를 구분하는 공통 강건성 규약.
 - `exit-lifo-v1.md`: 같은 날 EXIT의 정확 의미와 격리 검증.
 - `joint-assignment-rollout.md`: partial assignment의 인과적 rollout 및
   same-bay RNG null.
