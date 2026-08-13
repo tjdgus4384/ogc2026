@@ -85,3 +85,30 @@ verdict is `advance_voluntary_stay_rollout`.  This is a causal construction
 result, not a solver score: the action came from an exhaustive public-board
 scan and has not yet faced the ALNS plateau, disjoint seeds, or Train.  Full
 reports are frozen under `results/voluntary-stay-rollout-74969/`.
+
+## Frozen sequential stay construction
+
+Start from each job-74969 action and add at most two more voluntary stay
+decisions with beam width 2.  For every not-yet-targeted block in each fresh
+beam parent, first require an explicit target equal to its current exit to
+replay the parent bytes and components exactly.  Then test the same half-slack
+and due-date targets used at depth one.  Targets remain absolute and consume no
+RNG.
+
+Across all fresh parents at a depth, send the fixed 20 lowest-raw children to
+the production checker.  A child can enter the beam only when it is
+checker-feasible without rescue, strictly improves its own parent's official
+objective, and exactly replays from its target vector.  Rescued children are
+reported but cannot parent a later decision because the rescue mutation is not
+encoded by that vector.  Previously expanded parents are not scanned again.
+Parents are carried, duplicate target vectors are removed, and the two lowest
+official objectives form the next beam, so no board can regress from its
+one-action root.
+
+All nulls and all final boards must be valid.  If they are, the carried final
+construction advances to the fixed-iteration plateau test even when no second
+action helps: job 74969 already passed the causal mechanism gate, and the
+sequential scan is an optimizer rather than a new significance test.  An
+additional 5% P4/P5 edge is recorded separately.  The plateau test, not this
+public exhaustive scan, decides whether the construction changes a reachable
+basin.
