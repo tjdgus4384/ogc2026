@@ -2,6 +2,7 @@
 // rules, evaluated for one block against its bay), objective.
 #pragma once
 #include "crane.hpp"
+#include <algorithm>
 #include <vector>
 #include <cmath>
 #include <cstdint>
@@ -110,7 +111,52 @@ inline bool entryBlocked(const Problem& pb, const Sol& s, int r, int nu) {
                            (double)s.x[nu], (double)s.y[nu]);
 }
 
-inline bool vpConservative(const Problem& pb, const Sol& s, int A) {
+// Find one checker-legal order for every EXIT in (bay,t).  The checker replays
+// the order written by the solution, so a same-day batch is feasible when ANY
+// order works.  Greedy removal is exact here: lifting a block only removes an
+// obstruction and can never make a later lift harder.  `extra` lets insertion
+// probes test A before it has been added to byBay.
+inline bool exitOrderAt(const Problem& pb, const Sol& s, int bay, int t,
+                        std::vector<int>& order, int extra = -1) {
+    std::vector<int> ids = s.byBay[bay];
+    if (extra >= 0 && s.placed[extra] && s.bay[extra] == bay &&
+        std::find(ids.begin(), ids.end(), extra) == ids.end())
+        ids.push_back(extra);
+
+    std::vector<int> present, exits;
+    for (int i : ids) {
+        if (!s.placed[i]) continue;
+        if (s.e[i] < t && t <= s.f[i]) present.push_back(i);
+        if (s.f[i] == t) exits.push_back(i);
+    }
+    std::sort(exits.begin(), exits.end());
+    order.clear();
+    order.reserve(exits.size());
+    while (!exits.empty()) {
+        bool progressed = false;
+        for (size_t q = 0; q < exits.size(); q++) {
+            const int id = exits[q];
+            auto it = std::find(present.begin(), present.end(), id);
+            if (it == present.end()) return false;
+            std::vector<Placement> ps;
+            ps.reserve(present.size());
+            for (int k : present)
+                ps.push_back({&pb.geo[k].orients[s.ori[k]],
+                              (double)s.x[k], (double)s.y[k]});
+            if (!crane::exitOK(ps, (int)(it - present.begin()))) continue;
+            order.push_back(id);
+            present.erase(it);
+            exits.erase(exits.begin() + (long)q);
+            progressed = true;
+            break;
+        }
+        if (!progressed) return false;
+    }
+    return true;
+}
+
+inline bool vpExitPolicy(const Problem& pb, const Sol& s, int A,
+                         bool flexibleExits) {
     int jT = s.bay[A], eN = s.e[A], fN = s.f[A];
     const OrientGeom& gA = pb.geo[A].orients[s.ori[A]];
     double W = pb.bayW[jT], H = pb.bayH[jT];
@@ -188,8 +234,9 @@ inline bool vpConservative(const Problem& pb, const Sol& s, int A) {
             }
         }
     }
-    // rule 3: A's exit at fN
-    {
+    // rule 3: A's exit at fN under the legacy fixed emitter order.  The
+    // flexible path validates the whole affected EXIT batch below instead.
+    if (!flexibleExits) {
         pres.clear();
         pres.push_back({&gA, (double)s.x[A], (double)s.y[A]});  // target at [0]
         for (int k : nb) {
@@ -232,30 +279,62 @@ inline bool vpConservative(const Problem& pb, const Sol& s, int A) {
         const OrientGeom& gk = pb.geo[k].orients[s.ori[k]];
         if (!crane::entryOK(W, H, pres, gk, s.x[k], s.y[k])) return false;
     }
-    // rule 5: A must not block exit of any k exiting during (eN, fN]
-    for (int k : nb) {
-        if (k == A || !s.placed[k]) continue;
-        int t = s.f[k], ek = s.e[k];
-        if (!(eN < t && t <= fN)) continue;
-        if (!crane::bboxOverlapOff(gA.bb, s.x[A], s.y[A],
-                                   pb.geo[k].orients[s.ori[k]].bb,
-                                   s.x[k], s.y[k])) continue;
-        pres.clear();
-        pres.push_back({&pb.geo[k].orients[s.ori[k]],
-                        (double)s.x[k], (double)s.y[k]});   // target k at [0]
-        if (fN > t || (fN == t && (eN < ek || (eN == ek && A > k))))
-            pres.push_back({&gA, (double)s.x[A], (double)s.y[A]});
-        for (int k2 : nb) {
-            if (k2 == A || k2 == k || !s.placed[k2]) continue;
-            if (s.e[k2] < t && (s.f[k2] > t ||
-                                (s.f[k2] == t && (s.e[k2] < ek ||
-                                                  (s.e[k2] == ek && k2 > k)))))
-                pres.push_back({&pb.geo[k2].orients[s.ori[k2]],
-                                (double)s.x[k2], (double)s.y[k2]});
+    // rule 5: A must not block exit of any k exiting during (eN, fN].
+    if (!flexibleExits) {
+        for (int k : nb) {
+            if (k == A || !s.placed[k]) continue;
+            int t = s.f[k], ek = s.e[k];
+            if (!(eN < t && t <= fN)) continue;
+            if (!crane::bboxOverlapOff(gA.bb, s.x[A], s.y[A],
+                                       pb.geo[k].orients[s.ori[k]].bb,
+                                       s.x[k], s.y[k])) continue;
+            pres.clear();
+            pres.push_back({&pb.geo[k].orients[s.ori[k]],
+                            (double)s.x[k], (double)s.y[k]}); // target k at [0]
+            if (fN > t || (fN == t && (eN < ek || (eN == ek && A > k))))
+                pres.push_back({&gA, (double)s.x[A], (double)s.y[A]});
+            for (int k2 : nb) {
+                if (k2 == A || k2 == k || !s.placed[k2]) continue;
+                if (s.e[k2] < t && (s.f[k2] > t ||
+                                    (s.f[k2] == t && (s.e[k2] < ek ||
+                                                      (s.e[k2] == ek && k2 > k)))))
+                    pres.push_back({&pb.geo[k2].orients[s.ori[k2]],
+                                    (double)s.x[k2], (double)s.y[k2]});
+            }
+            if (pres.size() > 1 && !crane::exitOK(pres, 0)) return false;
         }
-        if (pres.size() > 1 && !crane::exitOK(pres, 0)) return false;
+    } else {
+        // Only EXIT days touched by A can change.  Strict stayers remain in
+        // `present`; same-day exits are removed in one feasible order.
+        thread_local std::vector<int> times, order;
+        times.clear();
+        times.push_back(fN);
+        for (int k : nb) {
+            if (k == A || !s.placed[k]) continue;
+            if (eN < s.f[k] && s.f[k] <= fN) times.push_back(s.f[k]);
+        }
+        std::sort(times.begin(), times.end());
+        times.erase(std::unique(times.begin(), times.end()), times.end());
+        for (int t : times)
+            if (!exitOrderAt(pb, s, jT, t, order, A)) return false;
     }
     return true;
+}
+
+// The shipped oracle and the official-checker oracle differ only in how a
+// same-day EXIT batch is ordered.  Keep both names explicit so probes can
+// measure the semantic gap without changing the control path.
+inline bool vpConservative(const Problem& pb, const Sol& s, int A) {
+    return vpExitPolicy(pb, s, A, false);
+}
+inline bool vpFlexibleExits(const Problem& pb, const Sol& s, int A) {
+    return vpExitPolicy(pb, s, A, true);
+}
+inline bool hasExitTwin(const Sol& s, int A) {
+    for (int k : s.byBay[s.bay[A]])
+        if (k != A && s.placed[k] && s.e[k] == s.e[A] && s.f[k] == s.f[A])
+            return true;
+    return false;
 }
 
 struct Objective { double z1, z2, z3, total; };

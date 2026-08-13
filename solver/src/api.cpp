@@ -201,11 +201,34 @@ struct Engine {
         }
         return rank;
     }
+    // Same-day EXIT rank chosen under the official checker's replay rule.
+    // Unlike the legacy emitter's descending-entry/id tie-break, this returns
+    // an actually feasible order for each bay/day batch.  Empty means that no
+    // order exists (and therefore the state is infeasible under the checker).
+    std::vector<int> exitRanks() {
+        std::vector<int> rank(pb.n, -1), order, times;
+        for (int bay = 0; bay < pb.m; bay++) {
+            times.clear();
+            for (int i : sol.byBay[bay])
+                if (sol.placed[i]) times.push_back(sol.f[i]);
+            std::sort(times.begin(), times.end());
+            times.erase(std::unique(times.begin(), times.end()), times.end());
+            for (int t : times) {
+                if (!core::exitOrderAt(pb, sol, bay, t, order)) return {};
+                for (size_t r = 0; r < order.size(); r++) rank[order[r]] = (int)r;
+            }
+        }
+        return rank;
+    }
     std::vector<double> objective() {
         auto o = core::evaluate(pb, sol);
         return {o.z1, o.z2, o.z3, o.total};
     }
-    bool vpOK(int A) { return core::vpConservative(pb, sol, A); }
+    bool vpOK(int A) {
+        if (core::vpConservative(pb, sol, A)) return true;
+        return knobs::exitTwin() && core::hasExitTwin(sol, A) &&
+               core::vpFlexibleExits(pb, sol, A);
+    }
     std::vector<int> auditState() {
         int bb = -1; int code = alns::audit(pb, sol, &bb);
         return {code, bb};
@@ -221,8 +244,9 @@ struct Engine {
     double phaseNs_[4] = {0, 0, 0, 0};   // remove/insert/eval/samples
     double opUsed_[10] = {0}, opImp_[10] = {0};
     double totIters_ = 0, totFailed_ = 0;
+    double totExitTwinTests_ = 0, totExitTwinPass_ = 0;
     std::vector<double> lastStats() const {
-        return {totIters_, totFailed_};
+        return {totIters_, totFailed_, totExitTwinTests_, totExitTwinPass_};
     }
     std::vector<double> lastOps() const {
         std::vector<double> v;
@@ -292,6 +316,244 @@ struct Engine {
         sol.addIdx(A);
         oc.stamp(pb, sol, A, true);
         return true;
+    }
+    // Compare the shipped fixed-EXIT oracle with the official-checker oracle
+    // at one explicit, uncommitted placement.  [fixed, flexible].
+    std::vector<int> placementVerdicts(int A, int bay, int ori,
+                                       int x, int y, int e) {
+        if (A < 0 || A >= pb.n || sol.placed[A] || bay < 0 || bay >= pb.m ||
+            ori < 0 || ori >= (int)pb.geo[A].orients.size()) return {};
+        sol.bay[A]=bay; sol.ori[A]=ori; sol.x[A]=x; sol.y[A]=y;
+        sol.e[A]=e; sol.f[A]=e + pb.P[A]; sol.placed[A]=1;
+        const bool fixed = core::vpConservative(pb, sol, A);
+        const bool flexible = core::vpFlexibleExits(pb, sol, A);
+        sol.placed[A]=0;
+        return {(int)fixed, (int)flexible};
+    }
+    // Commit an explicit placement under flexible same-day EXIT semantics.
+    bool placeAtFlexible(int A, int bay, int ori, int x, int y, int e) {
+        if (sol.placed[A]) return false;
+        sol.bay[A]=bay; sol.ori[A]=ori; sol.x[A]=x; sol.y[A]=y;
+        sol.e[A]=e; sol.f[A]=e + pb.P[A]; sol.placed[A]=1;
+        if (!core::vpFlexibleExits(pb, sol, A)) {
+            sol.placed[A]=0;
+            return false;
+        }
+        sol.addIdx(A);
+        oc.stamp(pb, sol, A, true);
+        return true;
+    }
+    // Exhaust the CURRENT corner vocabulary on [eLo,eHi] and classify every
+    // raster-free candidate by the two oracles.  Header:
+    // [tested,fixed_ok,flexible_ok,flexible_only,fixed_only,truncated], then
+    // flexible-only witnesses [bay,ori,x,y,e].  This isolates semantics from
+    // vocabulary: no new coordinates are introduced by the probe.
+    std::vector<int> cornerOracleGap(int A, int eLo, int eHi,
+                                     int maxWitnesses = 8) {
+        std::vector<int> out(6, 0);
+        if (A < 0 || A >= pb.n || sol.placed[A]) return out;
+        eLo = std::max(eLo, pb.R[A]);
+        eHi = std::min(eHi, horizon_ - pb.P[A] - 1);
+        if (eHi < eLo) return out;
+        std::vector<int> xs, ys;
+        thread_local std::vector<repair::RB> rbs;
+        thread_local occ::OccIndex::Snap sn;
+        int witnesses = 0;
+        for (int e = eLo; e <= eHi; e++) {
+            const int f = e + pb.P[A];
+            for (int bay = 0; bay < pb.m; bay++) {
+                oc.buildSnap(bay, e, f, sn);
+                repair::rbCollect(ctx, bay, e, f, rbs);
+                for (int ori = 0; ori < (int)pb.geo[A].orients.size(); ori++) {
+                    repair::cornerSetsRB(ctx, A, ori, bay, rbs, xs, ys);
+                    for (int y : ys) for (int x : xs) {
+                        if (oc.hitsSnap(sn, A, ori, x, y)) continue;
+                        sol.bay[A]=bay; sol.ori[A]=ori; sol.x[A]=x; sol.y[A]=y;
+                        sol.e[A]=e; sol.f[A]=f; sol.placed[A]=1;
+                        const bool fixed = core::vpConservative(pb, sol, A);
+                        const bool flexible = core::vpFlexibleExits(pb, sol, A);
+                        sol.placed[A]=0;
+                        out[0]++;
+                        out[1] += fixed;
+                        out[2] += flexible;
+                        out[3] += flexible && !fixed;
+                        out[4] += fixed && !flexible;
+                        if (flexible && !fixed) {
+                            out.insert(out.end(), {bay, ori, x, y, e});
+                            witnesses++;
+                            if (maxWitnesses > 0 && witnesses >= maxWitnesses) {
+                                out[5] = 1;
+                                return out;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return out;
+    }
+    // Exact habitat of the EXIT-order relaxation.  Descending entry time is a
+    // legal unwind for unequal entry times, so fixed and flexible can differ
+    // only when another block shares BOTH entry and exit with A.  Equivalently,
+    // candidate A shares (bay,entry,processing time) with a resident.  Scan
+    // only those event cells; this is the production-priced version of the
+    // exhaustive diagnostic above.
+    std::vector<int> twinOracleGap(int A, int eLo, int eHi,
+                                   int maxWitnesses = 32) {
+        std::vector<int> out(6, 0);
+        if (A < 0 || A >= pb.n || sol.placed[A]) return out;
+        eLo = std::max(eLo, pb.R[A]);
+        eHi = std::min(eHi, horizon_ - pb.P[A] - 1);
+        if (eHi < eLo) return out;
+
+        std::vector<std::pair<int,int>> cells;       // (entry,bay)
+        for (int bay = 0; bay < pb.m; bay++)
+            for (int k : sol.byBay[bay]) {
+                if (!sol.placed[k] || pb.P[k] != pb.P[A]) continue;
+                if (eLo <= sol.e[k] && sol.e[k] <= eHi)
+                    cells.push_back({sol.e[k], bay});
+            }
+        std::sort(cells.begin(), cells.end());
+        cells.erase(std::unique(cells.begin(), cells.end()), cells.end());
+
+        std::vector<int> xs, ys;
+        thread_local std::vector<repair::RB> rbs;
+        thread_local occ::OccIndex::Snap sn;
+        int witnesses = 0;
+        for (auto [e, bay] : cells) {
+            const int f = e + pb.P[A];
+            oc.buildSnap(bay, e, f, sn);
+            repair::rbCollect(ctx, bay, e, f, rbs);
+            for (int ori = 0; ori < (int)pb.geo[A].orients.size(); ori++) {
+                repair::cornerSetsRB(ctx, A, ori, bay, rbs, xs, ys);
+                for (int y : ys) for (int x : xs) {
+                    if (oc.hitsSnap(sn, A, ori, x, y)) continue;
+                    sol.bay[A]=bay; sol.ori[A]=ori; sol.x[A]=x; sol.y[A]=y;
+                    sol.e[A]=e; sol.f[A]=f; sol.placed[A]=1;
+                    const bool fixed = core::vpConservative(pb, sol, A);
+                    const bool flexible = core::vpFlexibleExits(pb, sol, A);
+                    sol.placed[A]=0;
+                    out[0]++;
+                    out[1] += fixed;
+                    out[2] += flexible;
+                    out[3] += flexible && !fixed;
+                    out[4] += fixed && !flexible;
+                    if (flexible && !fixed) {
+                        out.insert(out.end(), {bay, ori, x, y, e});
+                        witnesses++;
+                        if (maxWitnesses > 0 && witnesses >= maxWitnesses) {
+                            out[5] = 1;
+                            return out;
+                        }
+                    }
+                }
+            }
+        }
+        return out;
+    }
+    // One monotone completed-board polish in the exact habitat above.  The
+    // state changes only when an official-semantic, fixed-oracle-rejected move
+    // strictly lowers the true objective.  Running after the stochastic search
+    // therefore cannot degrade its incumbent; `seconds` bounds the only cost.
+    std::vector<double> pullTwinFlexible(double seconds, int maxMoves = 1) {
+        using Clock = std::chrono::steady_clock;
+        const auto started = Clock::now();
+        const auto deadline = started + std::chrono::duration_cast<Clock::duration>(
+            std::chrono::duration<double>(std::max(0.0, seconds)));
+        const double startObj = core::evaluate(pb, sol).total;
+        double currentObj = startObj;
+        long tested = 0, fixedOk = 0, flexibleOk = 0, flexibleOnly = 0;
+        long improving = 0, accepted = 0;
+
+        for (int pass = 0; pass < maxMoves && Clock::now() < deadline; pass++) {
+            std::vector<int> blocks;
+            for (int i = 0; i < pb.n; i++)
+                if (sol.placed[i] && sol.e[i] > pb.R[i]) blocks.push_back(i);
+            std::sort(blocks.begin(), blocks.end(), [&](int a, int b) {
+                const int la = std::max(0, sol.f[a] - pb.D[a]);
+                const int lb = std::max(0, sol.f[b] - pb.D[b]);
+                if (la != lb) return la > lb;
+                return a < b;
+            });
+
+            bool moved = false;
+            for (int A : blocks) {
+                if (Clock::now() >= deadline) break;
+                const int oldBay=sol.bay[A], oldOri=sol.ori[A];
+                const int oldX=sol.x[A], oldY=sol.y[A];
+                const int oldE=sol.e[A], oldF=sol.f[A];
+                repair::removeBlock(ctx, A);
+
+                std::vector<std::pair<int,int>> cells;
+                for (int bay = 0; bay < pb.m; bay++)
+                    for (int k : sol.byBay[bay]) {
+                        if (!sol.placed[k] || pb.P[k] != pb.P[A]) continue;
+                        if (pb.R[A] <= sol.e[k] && sol.e[k] < oldE)
+                            cells.push_back({sol.e[k], bay});
+                    }
+                std::sort(cells.begin(), cells.end());
+                cells.erase(std::unique(cells.begin(), cells.end()), cells.end());
+
+                bool haveBest = false;
+                int bestBay=oldBay, bestOri=oldOri, bestX=oldX, bestY=oldY, bestE=oldE;
+                double bestObj = currentObj;
+                std::vector<int> xs, ys;
+                thread_local std::vector<repair::RB> rbs;
+                thread_local occ::OccIndex::Snap sn;
+                for (auto [e, bay] : cells) {
+                    if (Clock::now() >= deadline) break;
+                    const int f = e + pb.P[A];
+                    oc.buildSnap(bay, e, f, sn);
+                    repair::rbCollect(ctx, bay, e, f, rbs);
+                    for (int ori = 0; ori < (int)pb.geo[A].orients.size(); ori++) {
+                        repair::cornerSetsRB(ctx, A, ori, bay, rbs, xs, ys);
+                        for (int y : ys) for (int x : xs) {
+                            if (oc.hitsSnap(sn, A, ori, x, y)) continue;
+                            sol.bay[A]=bay; sol.ori[A]=ori; sol.x[A]=x; sol.y[A]=y;
+                            sol.e[A]=e; sol.f[A]=f; sol.placed[A]=1;
+                            const bool fixed = core::vpConservative(pb, sol, A);
+                            const bool flexible = core::vpFlexibleExits(pb, sol, A);
+                            tested++;
+                            fixedOk += fixed;
+                            flexibleOk += flexible;
+                            flexibleOnly += flexible && !fixed;
+                            if (flexible && !fixed) {
+                                const double obj = core::evaluate(pb, sol).total;
+                                if (obj + 1e-9 < bestObj) {
+                                    bestObj=obj; bestBay=bay; bestOri=ori;
+                                    bestX=x; bestY=y; bestE=e;
+                                    haveBest=true;
+                                }
+                            }
+                            sol.placed[A]=0;
+                        }
+                    }
+                }
+
+                if (haveBest) {
+                    sol.bay[A]=bestBay; sol.ori[A]=bestOri;
+                    sol.x[A]=bestX; sol.y[A]=bestY;
+                    sol.e[A]=bestE; sol.f[A]=bestE + pb.P[A]; sol.placed[A]=1;
+                    sol.addIdx(A);
+                    oc.stamp(pb, sol, A, true);
+                    currentObj = bestObj;
+                    improving++;
+                    accepted++;
+                    moved = true;
+                    break;                         // rebuild priority after move
+                }
+
+                sol.bay[A]=oldBay; sol.ori[A]=oldOri; sol.x[A]=oldX; sol.y[A]=oldY;
+                sol.e[A]=oldE; sol.f[A]=oldF; sol.placed[A]=1;
+                sol.addIdx(A);
+                oc.stamp(pb, sol, A, true);
+            }
+            if (!moved) break;
+        }
+        const double elapsed = std::chrono::duration<double>(Clock::now() - started).count();
+        return {(double)tested, (double)fixedOk, (double)flexibleOk,
+                (double)flexibleOnly, (double)improving, (double)accepted,
+                startObj, currentObj, elapsed};
     }
     // EXACT PAIRWISE CONFLICTS between candidate placements.
     // The CP-SAT sub-solve (tools/cpsat_loop.py) is the one mechanism
@@ -408,7 +670,8 @@ struct Engine {
         auto st = alns::run(ctx, seconds, rp, seed, auditEvery);
         return {(double)st.iters, (double)st.accepted, (double)st.improved,
                 (double)st.failed, st.best, (double)st.badIter,
-                (double)st.badKind, (double)st.badPhase};
+                (double)st.badKind, (double)st.badPhase,
+                (double)st.exitTwinTests, (double)st.exitTwinPass};
     }
 
     // the production search: N threads anneal in parallel; per-thread
@@ -528,6 +791,8 @@ struct Engine {
                     totIters += st.iters;
                     totIters_ += (double)st.iters;
                     totFailed_ += (double)st.failed;
+                    totExitTwinTests_ += (double)st.exitTwinTests;
+                    totExitTwinPass_ += (double)st.exitTwinPass;
                     for (int k = 0; k < 10; k++) {
                         opUsed_[k] += (double)st.opUsed[k];
                         opImp_[k]  += (double)st.opImp[k];
@@ -812,6 +1077,16 @@ PYBIND11_MODULE(sscore, m) {
         .def("feasible_positions", &Engine::feasiblePositions,
              py::arg("A"), py::arg("k"), py::arg("eMin") = 0)
         .def("place_at", &Engine::placeAt)
+        .def("placement_verdicts", &Engine::placementVerdicts)
+        .def("place_at_flexible", &Engine::placeAtFlexible)
+        .def("corner_oracle_gap", &Engine::cornerOracleGap,
+             py::arg("A"), py::arg("eLo"), py::arg("eHi"),
+             py::arg("maxWitnesses") = 8)
+        .def("twin_oracle_gap", &Engine::twinOracleGap,
+             py::arg("A"), py::arg("eLo"), py::arg("eHi"),
+             py::arg("maxWitnesses") = 32)
+        .def("pull_twin_flexible", &Engine::pullTwinFlexible,
+             py::arg("seconds"), py::arg("maxMoves") = 1)
         .def("last_chunks", &Engine::lastChunks)
         .def("last_phase", &Engine::lastPhase)
         .def("last_ops", &Engine::lastOps)
@@ -826,6 +1101,7 @@ PYBIND11_MODULE(sscore, m) {
         .def("set_solution", &Engine::setSolution)
         .def("get_solution", &Engine::getSolution)
         .def("entry_ranks", &Engine::entryRanks)
+        .def("exit_ranks", &Engine::exitRanks)
         .def("vp_ok", &Engine::vpOK)
         .def("audit_state", &Engine::auditState);
 }

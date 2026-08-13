@@ -117,16 +117,22 @@ def _extract(eng, n):
     return out
 
 
-def _recs_to_sol(recs, ranks=None):
-    """ranks = eng.entry_ranks(): the kernel's intra-day ENTRY order.
+def _recs_to_sol(recs, ranks=None, exit_ranks=None):
+    """ranks/exit_ranks are the kernel's intra-day event orders.
 
     vpConservative rule 2b only proves that SOME order of a same-day, same-bay
     batch is legal, so the emitted solution has to list the one the kernel
     verified -- ranks carries it. ranks=None keeps ascending block id, which is
     what a kernel without rule 2b assumes. Emitting an order the kernel never
     checked is exactly how a board passes the engine and fails checker Stage 5.
+
+    exit_ranks is probe-only for now.  None preserves the shipped descending
+    entry-day/id order byte-for-byte; a vector emits the flexible order that
+    exit_ranks() verified under the official checker.
     """
     order = (lambda i: i) if ranks is None else (lambda i: (ranks[i], i))
+    exit_order = ((lambda i: (-recs[i][4], i)) if exit_ranks is None else
+                  (lambda i: (exit_ranks[i], i)))
     ent, ext = {}, {}
     for i, v in recs.items():
         ext.setdefault(int(v[5]), []).append(i)
@@ -134,7 +140,7 @@ def _recs_to_sol(recs, ranks=None):
     ops = {}
     for tt in sorted(set(ent) | set(ext)):
         L = []
-        for i in sorted(ext.get(tt, []), key=lambda i: -recs[i][4]):
+        for i in sorted(ext.get(tt, []), key=exit_order):
             L.append({"type": "EXIT", "block_id": i,
                       "bay_id": recs[i][0]})
         for i in sorted(ent.get(tt, []), key=order):
@@ -276,13 +282,51 @@ def _gate(p, eng, n, deadline=None):
     (the server kills overruns; a rescue that misses the deadline is worth
     negative points).
     """
-    sol = _recs_to_sol(_extract(eng, n), eng.entry_ranks())
+    _xr = eng.exit_ranks() if os.environ.get("OGC_EXIT_TWIN") == "1" else None
+    sol = _recs_to_sol(_extract(eng, n), eng.entry_ranks(), _xr)
     t0 = time.time()
     res = _check(p, sol)
     ck = max(0.3, time.time() - t0)          # measured checker cost (max seen)
     if res is None:
         return sol, None                     # checker unusable -> trust kernel
     if res.get("feasible"):
+        # Same-day EXIT free option.  The fixed emitter orders equal-entry,
+        # equal-exit ties by block id, although the checker accepts any listed
+        # order.  Only after the ORIGINAL board is checker-certified, scan the
+        # exact tie habitat for one strict true-objective improvement.  No hit
+        # costs ~25ms on the 44-board corpus.  A hit is rechecked with the exact
+        # emitted EXIT order; any error, deadline risk, or rejection restores
+        # the already-verified original byte-for-byte.
+        room2 = (deadline is None or
+                 time.time() + 1.3 * ck + 0.8 < deadline)
+        pull = getattr(eng, "pull_twin_flexible", None)
+        exit_ranks = getattr(eng, "exit_ranks", None)
+        if pull is not None and exit_ranks is not None and room2:
+            snap = eng.get_solution()
+            try:
+                st = pull(0.20, 1)
+                if st and int(st[5]) > 0:
+                    xr = exit_ranks()
+                    if len(xr) == n and (deadline is None or
+                                         time.time() + 1.3 * ck + 0.5 < deadline):
+                        sol2 = _recs_to_sol(_extract(eng, n),
+                                            eng.entry_ranks(), xr)
+                        t1 = time.time()
+                        res2 = _check(p, sol2)
+                        ck = max(ck, time.time() - t1)
+                        if (res2 is not None and res2.get("feasible") and
+                                res2.get("objective", float("inf")) <
+                                res.get("objective", float("inf"))):
+                            _diag("exit_twin", accepted=1,
+                                  saved=round(res["objective"]-
+                                              res2["objective"]),
+                                  tested=int(st[0]), elapsed=round(st[8], 4))
+                            return sol2, res2
+                eng.set_solution(snap)
+                eng.build_occ(eng.horizon())
+            except Exception:
+                eng.set_solution(snap)
+                eng.build_occ(eng.horizon())
         return sol, res
 
     def room():
@@ -294,7 +338,9 @@ def _gate(p, eng, n, deadline=None):
 
     def recheck(stage):
         nonlocal sol, res, ck
-        sol = _recs_to_sol(_extract(eng, n), eng.entry_ranks())
+        _xr = (eng.exit_ranks()
+               if os.environ.get("OGC_EXIT_TWIN") == "1" else None)
+        sol = _recs_to_sol(_extract(eng, n), eng.entry_ranks(), _xr)
         t1 = time.time()
         res = _check(p, sol)
         ck = max(ck, time.time() - t1)       # keep the worst-case estimate

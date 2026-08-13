@@ -40,4 +40,17 @@ inline double prefP() {
     }();
     return v;
 }
+// Diagnostic-only shadow: after the shipped oracle rejects an insertion
+// candidate that shares both event days with a resident, price the official
+// flexible EXIT order too but keep the shipped verdict.  Max-iteration probes
+// therefore follow the identical stochastic trajectory while measuring how
+// often this semantic gap is actually reached inside ALNS.
+inline bool exitTwinShadow() {
+    static const bool v = std::getenv("OGC_EXIT_TWIN_SHADOW") != nullptr;
+    return v;
+}
+inline bool exitTwin() {
+    static const bool v = std::getenv("OGC_EXIT_TWIN") != nullptr;
+    return v;
+}
 } // namespace knobs

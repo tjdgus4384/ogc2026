@@ -66,7 +66,21 @@ struct Ctx {
     bool z3dom = false;
     bool z3live = false;              // some block prefers another bay
     bool z1live = false;              // some block is tardy
+    long exitTwinTests = 0;           // diagnostic shadow counters
+    long exitTwinPass = 0;
 };
+
+inline bool placementFeasible(Ctx& c, int A) {
+    if (core::vpConservative(*c.pb, *c.s, A)) return true;
+    if ((knobs::exitTwinShadow() || knobs::exitTwin()) &&
+            core::hasExitTwin(*c.s, A)) {
+        c.exitTwinTests++;
+        const bool flexible = core::vpFlexibleExits(*c.pb, *c.s, A);
+        c.exitTwinPass += flexible;
+        if (knobs::exitTwin()) return flexible;
+    }
+    return false;
+}
 
 // Area screen for bay j over [e,f) -- a SPEED HEURISTIC, never a verdict.
 // It compares bbox-area sums (areaUsed) against bay area with 2% slack, and
@@ -176,7 +190,7 @@ inline bool scanBayAt(Ctx& c, int A, int j, int e, const std::vector<int>& oris,
                 if (c.oc->hitsSnap(sn, A, oi, x, y)) continue;
                 s.bay[A]=j; s.ori[A]=oi; s.x[A]=x; s.y[A]=y;
                 s.e[A]=e; s.f[A]=f; s.placed[A]=1;
-                if (core::vpConservative(pb, s, A)) {
+                if (placementFeasible(c, A)) {
                     s.addIdx(A);
                     c.oc->stamp(pb, s, A, true);
                     return true;
@@ -245,7 +259,7 @@ inline bool scanLocal(Ctx& c, int A, int trig, int e, double areaA) {
             if (c.oc->hitsSnap(sn, A, oi, xv, yv)) continue;
             s.bay[A]=j; s.ori[A]=oi; s.x[A]=xv; s.y[A]=yv;
             s.e[A]=e; s.f[A]=f; s.placed[A]=1;
-            if (core::vpConservative(pb, s, A)) {
+            if (placementFeasible(c, A)) {
                 s.addIdx(A);
                 c.oc->stamp(pb, s, A, true);
                 return true;
@@ -385,7 +399,7 @@ inline bool insertGreedy(Ctx& c, int A, int eCap = -1) {
                     if (c.oc->hits(A, oi, j, x, y, e, f)) continue;
                     s.bay[A]=j; s.ori[A]=oi; s.x[A]=x; s.y[A]=y;
                     s.e[A]=e; s.f[A]=f; s.placed[A]=1;
-                    if (core::vpConservative(pb, s, A)) {
+                    if (placementFeasible(c, A)) {
                         s.addIdx(A);
                         c.oc->stamp(pb, s, A, true);
                         return true;
