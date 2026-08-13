@@ -53,6 +53,9 @@ objectives, audits, checker results, and common run statistics exactly.  Every
 one of the 48 outputs must pass the production checker; missing outputs are
 failures.  Report rollout neighbourhoods, branches tried/built/selected,
 normal-failure rescues, aggregate local objective gain, and wall slowdown.
+Whenever a stay arm tries at least one branch but selects none over the whole
+run, its final signature and common statistics must also equal its control
+exactly; any such semantic-null mismatch is a hard failure.
 
 This mechanism screen advances only if:
 

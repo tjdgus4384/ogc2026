@@ -153,6 +153,8 @@ def _metrics(deltas: list[float]) -> dict[str, Any]:
 def _collect(args: argparse.Namespace) -> None:
     rows = []
     aa_mismatches = []
+    semantic_null_coverage = []
+    semantic_null_mismatches = []
     all_feasible = True
     by_board: dict[int, list[float]] = {instance: []
                                        for instance in range(3, 7)}
@@ -173,6 +175,12 @@ def _collect(args: argparse.Namespace) -> None:
                 (args.directory / f"{stem}-stay.json").read_text())
             if _signature(reference) != _signature(control):
                 aa_mismatches.append(stem)
+            stay_telemetry = stay["telemetry"] or {}
+            if (int(stay_telemetry.get("tried", 0)) > 0 and
+                    int(stay_telemetry.get("selected", 0)) == 0):
+                semantic_null_coverage.append(stem)
+                if _signature(stay) != _signature(control):
+                    semantic_null_mismatches.append(stem)
             all_feasible = all_feasible and all(
                 bool(report["checker"]["feasible"])
                 for report in (reference, control, stay))
@@ -184,7 +192,7 @@ def _collect(args: argparse.Namespace) -> None:
                      if cobj is not None and sobj is not None else None)
             if delta is not None:
                 by_board[instance].append(delta)
-            for key, value in (stay["telemetry"] or {}).items():
+            for key, value in stay_telemetry.items():
                 telemetry[instance][key] += float(value)
             slowdown = (float(stay["elapsed"]) /
                         max(1e-9, float(control["elapsed"])))
@@ -215,7 +223,8 @@ def _collect(args: argparse.Namespace) -> None:
                      value["median_delta_pct"] <= 2.0
                      for value in boards.values())
     passed = bool(
-        not aa_mismatches and all_feasible and len(deltas) == 16 and
+        not aa_mismatches and not semantic_null_mismatches and
+        all_feasible and len(deltas) == 16 and
         selected_habitat and overall["wins"] > overall["losses"] and
         overall["median_delta_pct"] is not None and
         overall["median_delta_pct"] <= -1.0 and
@@ -226,6 +235,8 @@ def _collect(args: argparse.Namespace) -> None:
         "rows": rows,
         "default_off_aa_exact": not aa_mismatches,
         "aa_mismatches": aa_mismatches,
+        "semantic_null_coverage": semantic_null_coverage,
+        "semantic_null_mismatches": semantic_null_mismatches,
         "all_48_checker_feasible": all_feasible,
         "overall": overall,
         "boards": boards,
