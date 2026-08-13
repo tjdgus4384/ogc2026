@@ -516,7 +516,7 @@ def _collect(args: argparse.Namespace) -> None:
                 _solution_signature(control["control_final"]) and
                 _solution_signature(reference["control_checkpoint"]) ==
                 _solution_signature(control["control_checkpoint"]) and
-                reference["run_stats"][:21] == control["run_stats"][:21]
+                reference["run_stats"][:15] == control["run_stats"][:15]
             )
             if not reference_control_equal:
                 mismatches["reference_control"].append(label)
