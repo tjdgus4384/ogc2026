@@ -92,7 +92,7 @@ def synthetic_problem() -> dict:
         # Width 3 leaves exactly one corner for block 1.  This makes the same
         # witness also prove fixed-first fallback semantics: the fixed scan
         # cannot escape to a different normal placement.
-        "bays": [{"width": 3, "height": 2}],
+        "bays": [{"width": 3, "height": 1}],
         "weights": {"w1": 1, "w2": 1, "w3": 1},
         "blocks": [
             dict(common, shape=[{"orientation": 0,
