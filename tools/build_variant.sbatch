@@ -14,7 +14,17 @@
 # running eval once produced a wall=0.01s _trivial fallback.
 set -euo pipefail
 REPO="${SLURM_SUBMIT_DIR:-$(pwd)}"
-PY="${OGC_PY312:-$REPO/.miniforge/envs/ogc2026/bin/python}"
+if [[ -n "${OGC_PY312:-}" ]]; then
+    PY="$OGC_PY312"
+elif [[ -x "$REPO/.miniforge/envs/ogc2026/bin/python" ]]; then
+    PY="$REPO/.miniforge/envs/ogc2026/bin/python"
+else
+    # Persistent linked worktrees share the canonical checkout's environment.
+    COMMON_DIR="$(git -C "$REPO" rev-parse --path-format=absolute --git-common-dir)"
+    CANONICAL_ROOT="$(dirname "$COMMON_DIR")"
+    PY="$CANONICAL_ROOT/.miniforge/envs/ogc2026/bin/python"
+fi
+[[ -x "$PY" ]] || { echo "Python 3.12 environment not found: $PY" >&2; exit 2; }
 DIR="$REPO/$1"
 cd "$DIR"
 # This env ships no python-config, so read EXT_SUFFIX from sysconfig instead:

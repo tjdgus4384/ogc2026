@@ -25,6 +25,7 @@ if [[ ! -x "$PY" ]]; then
 fi
 SOLVER="${1:-$ROOT/builds/pc2}"
 OUT="${2:-$ROOT/runs/joint-assignment-rollout-${SLURM_JOB_ID}}"
+export OGC_CAUSAL_BAY_RNG="${OGC_CAUSAL_BAY_RNG:-1}"
 mkdir -p "$OUT"
 
 pids=()

@@ -40,6 +40,18 @@ inline double prefP() {
     }();
     return v;
 }
+// Diagnostic assignment-rollout instrument.  A forced bay normally shrinks
+// the bay vector before std::shuffle, which changes the RNG stream and makes a
+// same-bay semantic no-op a different construction draw.  When enabled, the
+// full vector consumes the baseline sort/shuffle first and is filtered only
+// afterwards.  Default OFF preserves every shipped/production trajectory.
+inline bool causalBayRng() {
+    static const bool v = [] {
+        const char* q = std::getenv("OGC_CAUSAL_BAY_RNG");
+        return q && q[0] == '1' && q[1] == '\0';
+    }();
+    return v;
+}
 // Diagnostic-only shadow: after the shipped oracle rejects an insertion
 // candidate that shares both event days with a resident, remember the first
 // official-semantic fallback but keep the shipped verdict.  Max-iteration

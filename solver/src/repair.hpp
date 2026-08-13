@@ -382,8 +382,10 @@ inline bool insertGreedy(Ctx& c, int A, int eCap = -1) {
     }
     if (eTop < eBot) return false;
 
+    const int forced = (c.forcedBay ? c.forcedBay[A] : -1);
+    const bool causalBayRng = forced >= 0 && knobs::causalBayRng();
     std::vector<int> bays;
-    if (c.forcedBay && c.forcedBay[A] >= 0) bays.assign(1, c.forcedBay[A]);
+    if (forced >= 0 && !causalBayRng) bays.assign(1, forced);
     else { bays.resize(pb.m); for (int j = 0; j < pb.m; j++) bays[j] = j; }
     std::vector<int> oris(pb.geo[A].orients.size());
     for (size_t o = 0; o < oris.size(); o++) oris[o] = (int)o;
@@ -394,6 +396,14 @@ inline bool insertGreedy(Ctx& c, int A, int eCap = -1) {
             return pb.pref[A][a] > pb.pref[A][b]; });
     else
         std::shuffle(bays.begin(), bays.end(), c.rng);
+    if (causalBayRng) {
+        // Filter only after the same full-vector operation as the free arm.
+        // Candidate scans draw no RNG, so this also preserves the stream for
+        // orientation choice and every later block.
+        bays.erase(std::remove_if(bays.begin(), bays.end(),
+                                  [&](int j){ return j != forced; }),
+                   bays.end());
+    }
     // COMPACT-ORIENTATION PREFERENCE (env OGC_ORIPREF = percent):
     // orientations of the same block differ in bounding-box area by a
     // median factor of 1.38 (max 3.19), and the boards are bbox-bound

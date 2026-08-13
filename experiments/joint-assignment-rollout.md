@@ -84,3 +84,9 @@ different RNG stream from the free baseline, changing orientation order and
 every later insertion.  The next instrument must always construct and
 sort/shuffle the complete bay vector, then filter it to the forced bay.  Job
 74923 is a diagnosis of the old instrument, not a candidate score.
+
+The repaired path is diagnostic-only and defaults OFF in production.  The
+harness explicitly sets `OGC_CAUSAL_BAY_RNG=1`; with that switch,
+`insertGreedy` performs the full-vector sort/shuffle and only then filters.  A
+new isolated build must still prove all same-bay controls byte-identical.  The
+code change alone is not accepted as proof.
