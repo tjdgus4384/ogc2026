@@ -1015,13 +1015,35 @@ def _make_floor(p, n, budget):
         eng, _ = _seed_free(p, diversify=False)
         if eng is None:
             return
-        sol, res = _gate(p, eng, n, t0 + budget)
-        if sol is not None:
-            _FLOOR = sol
-            if isinstance(res, dict) and res.get("feasible"):
-                _FLOOR_OBJ = res.get("objective")
-        _diag("floor", ok=sol is not None, obj=_FLOOR_OBJ,
-              sec=round(time.time() - t0, 2))
+        # ONE construction is not enough. v6.2 measured the floor available
+        # 32/32, but that was v6.1's seed; v6.4's reservation moves entry days
+        # and on P5 the resulting seed carries violations the gate ladder
+        # cannot clear -- floor=False on all four seeds tested, which puts P5
+        # back on the `_trivial` path (1,321,314,754, 124x) that v6.2 exists to
+        # remove, on the very board where that catastrophe was measured.
+        # The floor only has to be CHECKER-CLEAN, not good, so try a few
+        # distinct constructions and keep the first that gates. Each rebuild is
+        # ~0.15s against a 20s budget.
+        _D = [int(round(b["due_date"])) for b in p["blocks"]]
+        _P = [max(1, int(-(-b["processing_time"] // 1))) for b in p["blocks"]]
+        tries = [None,
+                 sorted(range(n), key=lambda i: (_D[i] - _P[i], -_P[i])),
+                 sorted(range(n), key=lambda i: (-_P[i], _D[i])),
+                 sorted(range(n), key=lambda i: (_D[i], _P[i]))]
+        for k, order in enumerate(tries):
+            if k and time.time() - t0 > 0.7 * budget:
+                break
+            if order is not None and eng.reconstruct_ordered(
+                    [-1] * n, order, False, 7) >= 0:
+                continue
+            sol, res = _gate(p, eng, n, t0 + budget)
+            if sol is not None:
+                _FLOOR = sol
+                if isinstance(res, dict) and res.get("feasible"):
+                    _FLOOR_OBJ = res.get("objective")
+                break
+        _diag("floor", ok=_FLOOR is not None, obj=_FLOOR_OBJ,
+              tries=k + 1, sec=round(time.time() - t0, 2))
     except Exception:
         pass
 
