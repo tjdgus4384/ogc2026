@@ -34,6 +34,24 @@
     "P8": 16803611.0
    },
    "total": 77045926.0
+  },
+  {
+   "zip": "[OGC2026_AlgorithmCode]_MSGA.zip (v6.4.1)",
+   "engine": "v6.4.1 (energetic reservation + floor availability repair)",
+   "submitted": "2026-08-14",
+   "status": "8/8 Feasible solution found",
+   "objectives": {
+    "P1": 2700421.0,
+    "P2": 20305982.0,
+    "P3": 5304153.0,
+    "P4": 4849328.0,
+    "P5": 6854810.0,
+    "P6": 1013188.0,
+    "P7": 17771604.0,
+    "P8": 17632849.0
+   },
+   "total": 76432335.0,
+   "note": "vs v5.1 -0.80% for five adoptions. 4 of 8 worse (P1 +4.04, P5 +0.77, P6 +0.54, P8 +4.93). Not in the top 20."
   }
  ],
  "_hold_note": "v5.5 (submissions/2026-08-05_v55-finals.zip) was NOT submitted: HOLD. The all-team minima were not reached (p36 ~2,367 vs rank-1 2,440) and v5.5 is a quality-neutral correctness repair (train_final 40 pairs 25W/13L median -0.22% p=0.073, below the adoption bar; p36 3 seeds +1.18/-1.68/+0.84%), so no server row exists for it and none should. The live submission remains v5.3, whose row is above."
