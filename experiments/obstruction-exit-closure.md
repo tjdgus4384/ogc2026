@@ -91,33 +91,59 @@ receipts are under `results/flexible-time-closure-75171/`.
 ## Frozen ALNS delivery gate
 
 The treatment is default-off and the existing normal repair remains an
-immutable candidate.  Only after a normal insertion fails, examine candidates
-that passed containment and same-layer collision checks but failed because of
-a one-way EXIT obstruction.  Keep the first scan-order certificate, calculate
-its minimal transitive exit closure, then replay the remaining suffix once in
-a disjoint solution, occupancy cache, and RNG state.  There is no due-date cap:
-a paid closure is selectable only when the completed repaired suffix has a
-strictly smaller full penalized objective.  Every tie belongs to normal.
+immutable candidate.  During that normal scan, observe a candidate rejected
+because of a one-way EXIT obstruction even if `insertGreedy` later finds a
+legacy placement and the whole normal repair succeeds.  Requiring whole-repair
+failure would make the mechanism effectively dormant: job 75161 had no normal
+failure rescue, and the older failure-rate audit found ordinary insertion
+failure near zero.  The estimand is the earlier rejected geometry versus the
+later normal first fit.
 
-The normal branch owns future randomness.  A rejected, failed, tied, or
-regressing closure restores the post-normal RNG and must be a semantic null in
-solution, `byBay`, occupancy bits, floating area cache, anneal state, and
-common statistics.  No speculative call may mutate live objective flags.
-The first experiment permits at most one closure suffix per neighbourhood;
-failure closes only that bounded delivery, not the whole exit variable.
+In scan order, inspect at most eight bbox-overlap rejected candidates in a
+neighbourhood.  The first pure one-way raw witness owns the single closure
+certification attempt whether certification succeeds or fails; do not search
+for a later successful witness.  Phase 3 may build at most four treatment-only
+same-layer snapshots before that raw witness.  These are computational bounds,
+not random firing rates or fitted instance thresholds.  A certified witness
+must strictly increase at least one outer exit to an actual inner exit.
+
+Calculate its minimal transitive exit closure, then replay the suffix once in
+a disjoint solution, occupancy cache, and RNG state.  Thus hard invariants are
+`closure_attempts <= eligible_neighbourhoods` and
+`extra_suffixes <= eligible_neighbourhoods`.  There is no due-date cap: a paid
+closure is selectable only when the completed repaired suffix has a strictly
+smaller true weighted objective as well as a smaller search objective.  Every
+tie belongs to normal.
+
+The normal branch owns future randomness.  Couple treatment acceptance to the
+same uniform draw the completed normal repair would consume.  If closure turns
+a non-improving normal candidate into an improving one, consume the normal
+dummy draw before the forced acceptance.  A rejected, failed, tied, or
+regressing closure must therefore be a semantic null in solution, `byBay`,
+occupancy bits, floating area cache, RNG, anneal state, and common statistics.
+No speculative call may mutate live objective flags.  Because closure can
+extend a resident outside the destroy set, its Sol and occupancy cache stay
+branch-local through the acceptance decision; copying it live and relying on
+the ordinary removed-block rollback is forbidden.  Failure closes only this
+bounded first-witness delivery, not the whole exit variable.
 
 Phase 3 needs a treatment-only observation path for candidates rejected by
 the crane-aware `occ::hits` policy but not by the same-layer snapshot.  The
 default-off path must retain the existing `continue` byte-for-byte.  A closure
 is official-order feasible only when the whole bay passes the flexible EXIT
 oracle and the emitter uses the corresponding entry and LIFO exit ranks.
-Track unrelated flexible-only suffix placements separately; any such event
-invalidates causal attribution to exit closure.
+Ordinary suffix insertions retain the conservative production oracle; only
+the simultaneous closure state uses the flexible oracle.  This makes unrelated
+flexible-only suffix placements structurally impossible.  The experimental
+emitter uses exact ranks only when the returned incumbent still contains a
+strict overlong stay; OFF and semantic-null outputs retain legacy ordering and
+hashes.
 
-Telemetry is aggregate and bounded: normal insertion failures, one-way
-certificates, closure attempts/built, same-entry cycles, two-way/rest rejects,
-phase-3 policy witnesses, suffix tried/built, selected, extended blocks/days,
-paid tardy days, true local gain, wall time, and peak RSS.
+Telemetry is aggregate and bounded: candidates inspected, one-way raw
+witnesses, closure attempts/built, same-entry cycles, two-way/rest rejects,
+phase-3 windows/policy witnesses, budget hits, suffix tried/built, repair
+selected, SA accepted, new-best retained, extended blocks/days, paid tardy
+days, true local gain, detector/suffix time, wall time, and peak RSS.
 
 ### Fixed-iteration plateau test
 
