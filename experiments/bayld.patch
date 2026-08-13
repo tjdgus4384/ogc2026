@@ -1,0 +1,48 @@
+--- solver/src/knobs.hpp	2026-08-13 19:50:58.360803279 +0900
++++ builds/bayld/src/knobs.hpp	2026-08-13 21:09:26.829259429 +0900
+@@ -49,4 +49,14 @@
+ // without finding relief. On the instances it stands down for, the run is
+ // measured neutral (69 pairs, median +0.00%, p=0.80).
+ inline constexpr int    rsvMaxLoad() { return 160; }
++
++// bayld: percent of non-preference draws that order bays by their occupancy
++// during the block's stay (emptiest first) instead of shuffling. 0 = shipped.
++inline int bayLoad() {
++    static const int v = [] {
++        const char* q = std::getenv("OGC_BAYLOAD");
++        return q ? atoi(q) : 0;
++    }();
++    return v;
++}
+ } // namespace knobs
+--- solver/src/repair.hpp	2026-08-13 19:50:58.364803232 +0900
++++ builds/bayld/src/repair.hpp	2026-08-13 21:09:26.825259461 +0900
+@@ -310,6 +310,28 @@
+             < (PREFP >= 0 ? PREFP : (c.prefStrong ? 0.92 : 0.70)))
+         std::sort(bays.begin(), bays.end(), [&](int a, int b){
+             return pb.pref[A][a] > pb.pref[A][b]; });
++    else if (knobs::bayLoad() > 0
++             && (int)(c.rng() % 100) < knobs::bayLoad()) {
++        // bayld: send the block to the bay that is emptiest DURING ITS STAY.
++        // The same shape as v6.4's reservation -- a cheap per-insertion
++        // decision from load the engine already maintains (`areaUsed[bay][t]`,
++        // O(m*P) with m<=5) applied at every repair, not just at the start.
++        // v6.4 cleared F4's ~1% start-point ceiling precisely by acting on
++        // every insertion; jointcon only moved the start and was capped there.
++        // Replaces the shuffle branch only, so the preference branch and its
++        // measured share are untouched.
++        const int lo = eBot, hi = std::min(eBot + pb.P[A], c.oc->T);
++        std::vector<std::pair<double,int>> ld(bays.size());
++        for (size_t q = 0; q < bays.size(); q++) {
++            const auto& au = c.oc->areaUsed[bays[q]];
++            double s = 0.0;
++            for (int t = lo; t < hi; t++) s += au[t];
++            const double cap = pb.bayW[bays[q]] * pb.bayH[bays[q]];
++            ld[q] = {cap > 0 ? s / cap : 0.0, bays[q]};
++        }
++        std::sort(ld.begin(), ld.end());
++        for (size_t q = 0; q < bays.size(); q++) bays[q] = ld[q].second;
++    }
+     else
+         std::shuffle(bays.begin(), bays.end(), c.rng);
+     // COMPACT-ORIENTATION PREFERENCE (env OGC_ORIPREF = percent):
