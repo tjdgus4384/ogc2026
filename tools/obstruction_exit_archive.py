@@ -29,6 +29,52 @@ PROFILE_EVAL_SEEDS = {
 }
 MODES = ("reference", "control", "archive")
 
+# Frozen held-out authority.  These are values, not first-seen baselines: an
+# internally consistent but wrong binary/problem/start/harness must fail.
+EXPECTED_DRIVER_SHA256 = (
+    "f122e6d5e4b2acf94ea7253ca0815c3dbb15c0e3093b238a932112123c9d81a6")
+EXPECTED_HELPER_SHA256 = (
+    "4e36a5e061540da0738a0624b2150023421d71a0af8dc2fb33726065c3f31f83")
+EXPECTED_MYALGORITHM_SHA256 = (
+    "e53de42538f8dec45dcda13864559bd39c2d86b356e7780e661635e935a24a29")
+EXPECTED_CHECKER_SHA256 = (
+    "d45aaeafdce8bf80d59d097f655c43313a4951bed43b6628e3b1cf62d4876a94")
+EXPECTED_SOLVER = {
+    "reference": {
+        "source": "9002c73b5831e3e334f93e9a2c41ba31ed8d54c4",
+        "binary": "177a09acb6da04ad7851e7381d306561f01d198b89e0adf16140676fb7d0d5a9",
+    },
+    "candidate": {
+        "source": "1dcdef092c7813d2ee7229fe466acb2f1303477d",
+        "binary": "a5c384dd1c7d797fbce2c9c7a01e1a30d8abbee0bb26f6fa839f71d919629e9f",
+    },
+}
+INSTANCE_N = {3: 200, 4: 150, 5: 200, 6: 250}
+EXPECTED_PROBLEM_SHA256 = {
+    3: "c4f47c17910cf7c4a8aceaff74e6a5b884f752c389383fdd95f2ae2ce9a708d4",
+    4: "6faa53137e705d44dc469a27e0f090fff07aec6b61712bb0edcaeba983d6d17a",
+    5: "823eb0f8211071ceafa56a275e45b0f7d01c3448fb2548c5e4798dd0e723db00",
+    6: "43b6103cd1f1be2cbcccaad6fb29da30302e6302d01e1e620c2c67cedb7244b2",
+}
+EXPECTED_PLATEAU_SHA256 = {
+    (3, 7): "4190e5a73867bcf1b6702544de0b5c34e095fe53ce0f5bbe3b4493aa6f431eb4",
+    (3, 11): "e5ee6354de980191576679ca2279cbd02e24e7fa9753e329485bab701af78349",
+    (3, 23): "8f84e933e25d0d3369350d4bbe7ee1607c1fe0491db5de6a8485d9d8ded5be56",
+    (3, 41): "28cc587b216f0cc90b50508d5d49d506986696d48ad2410d000fe0142dad32f9",
+    (4, 7): "7b3cee57bee39979fa044fa99b7b3495a919ddda9b9d8423c4222a9dba586e93",
+    (4, 11): "f64c4468b0d739321c664e299ee5453d11c910a75385ebc13c1afcba94f0941d",
+    (4, 23): "9c6cb013e17e1440ef78b258dc2c13c897468f1f31280ac616790a22e7ffd287",
+    (4, 41): "3b9cc827fdc9bf28312a9bedf73deb459b8d9d0c4d8daaa95e29811132dac501",
+    (5, 7): "07fbd253d9b4bddbda5b5989617b88a9ac6ede03d36eb8488c99334157ce0b35",
+    (5, 11): "84285be693ef3182bd3a68204ab3854501c3fbe0f2880a1b48136f89ceefb78f",
+    (5, 23): "654ae86e7a835cdc04f4d70b72b7b5d87520b4be4763317a58adb8580cb893d8",
+    (5, 41): "2e1941b6affc7134b2bb33cfcdae22e1be3d5543c564ad5d57d58686cbcbf175",
+    (6, 7): "43427bbde27aebde8f7565aa46fb8667497bb84b3b9e96014c6b94208de1aa0f",
+    (6, 11): "6e67fde94eb4ff4b10e7806aacbc4b00f04cfac1a004de99ac693d7ff083f305",
+    (6, 23): "a9fc73e10927cf8e52cf0b410cf4fe92817ce9813aabdacde9e1abf1be921ec8",
+    (6, 41): "1138c43bebd92d44b46284a09e45acc8c402d24f8dc8a98244ce87cd121e4874",
+}
+
 CLOSURE_NAMES = (
     "neighbourhoods", "candidates", "seeds", "attempts", "built",
     "hard_rejects", "cycle_rejects", "phase3_seeds", "phase3_windows",
@@ -384,13 +430,14 @@ def _solution_signature(record: dict[str, Any]) -> dict[str, Any]:
     )}
 
 
-def _validate_solution_record(record: dict[str, Any], label: str) -> None:
+def _validate_solution_record(record: dict[str, Any], label: str,
+                              expected_n: int) -> None:
     flat = record.get("flat")
     objective = record.get("objective")
     audit = record.get("audit")
     exact = bool(record.get("overlong"))
     valid = (
-        isinstance(flat, list) and len(flat) > 0 and len(flat) % 7 == 0 and
+        isinstance(flat, list) and len(flat) == 7 * expected_n and
         all(isinstance(value, int) and not isinstance(value, bool)
             for value in flat) and
         isinstance(record.get("flat_sha256"), str) and
@@ -439,7 +486,25 @@ def _identity(report: dict[str, Any], mode: str, instance: int,
         value = report.get(field)
         if not isinstance(value, dict):
             raise RuntimeError(f"report is missing {field}")
-        _validate_solution_record(value, f"P{instance} e{eval_seed} {mode}:{field}")
+        _validate_solution_record(
+            value, f"P{instance} e{eval_seed} {mode}:{field}",
+            INSTANCE_N[instance])
+    authority = EXPECTED_SOLVER[
+        "reference" if mode == "reference" else "candidate"]
+    expected_provenance = (
+        report.get("solver_source_commit") == authority["source"] and
+        report.get("solver_extension_sha256") == authority["binary"] and
+        report.get("driver_sha256") == EXPECTED_DRIVER_SHA256 and
+        report.get("helper_sha256") == EXPECTED_HELPER_SHA256 and
+        report.get("myalgorithm_sha256") == EXPECTED_MYALGORITHM_SHA256 and
+        report.get("checker_sha256") == EXPECTED_CHECKER_SHA256 and
+        report.get("problem_sha256") == EXPECTED_PROBLEM_SHA256[instance] and
+        report.get("plateau_sha256") ==
+            EXPECTED_PLATEAU_SHA256[(instance, plateau_seed)]
+    )
+    if not expected_provenance:
+        raise RuntimeError(
+            f"frozen provenance mismatch: P{instance} e{eval_seed} {mode}")
     if (float(report["returned_final"]["checker_objective"]) >
             float(report["control_final"]["checker_objective"]) + 1e-9 or
             float(report["returned_checkpoint"]["checker_objective"]) >
