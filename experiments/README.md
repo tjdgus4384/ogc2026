@@ -7,6 +7,8 @@
 - `exit-lifo-v1.md`: 같은 날 EXIT의 정확 의미와 격리 검증.
 - `joint-assignment-rollout.md`: partial assignment의 인과적 rollout 및
   same-bay RNG null.
+- `voluntary-stay-rollout.md`: 공식 `exit-entry>=processing` 자유도를 구성
+  중 무비용 체류 연장으로 쓰는 인과적 suffix-rollout 검정.
 - `phase2-orientation-order.md`: 채택된 orientation 순서를 phase 2만
   버리는 data-flow 결함과 사전 등록한 강건성 게이트.
 

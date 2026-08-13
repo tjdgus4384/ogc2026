@@ -900,6 +900,62 @@ struct Engine {
         return bad >= 0 ? bad : -1;
     }
 
+    // Causal construction probe for the official freedom f-e >= P.  A target
+    // of -1 leaves a block at the normal minimum stay; a target equal to the
+    // just-built exit is a semantic no-op; a larger target voluntarily keeps
+    // the block resident before constructing the suffix.  Extending consumes
+    // no RNG, so a no-op vector must replay reconstructOrdered byte-for-byte.
+    // This is deliberately an experiment API: the shipped path never calls it.
+    int reconstructOrderedStays(std::vector<int> asg, std::vector<int> order,
+                                std::vector<int> exitTarget, bool tight,
+                                uint64_t seed) {
+        if ((int)asg.size() != pb.n || (int)order.size() != pb.n ||
+            (int)exitTarget.size() != pb.n) return -2;
+        core::Sol backup = sol;
+        occ::OccIndex oc2; oc2.build(pb, horizon_);
+        repair::Ctx c2; c2.pb=&pb; c2.s=&sol; c2.oc=&oc2;
+        c2.horizon=horizon_; c2.forcedBay=asg.data(); c2.rng.seed(seed);
+        for (int i = 0; i < pb.n; i++) sol.placed[i] = 0;
+        sol.rebuildIdx(pb.m);
+        int bad = -1;
+        for (int A : order) {
+            int eCap = tight ? (pb.D[A] - pb.P[A]) : -1;
+            if (tight && eCap < pb.R[A]) { bad = A; break; }
+            if (!repair::insertGreedy(c2, A, eCap)) { bad = A; break; }
+
+            const int target = exitTarget[A];
+            if (target < 0 || target == sol.f[A]) continue;
+            if (target < sol.f[A] || target > horizon_) { bad = A; break; }
+
+            const int oldF = sol.f[A];
+            c2.oc->stamp(pb, sol, A, false);
+            sol.f[A] = target;
+            bool ok = repair::stateFeasible(c2, A);
+            if (ok) {
+                // A longer stay can change the entry/exit legality of every
+                // existing bay mate, not merely A's own crane path.
+                for (int k : sol.byBay[sol.bay[A]]) {
+                    if (k == A || !sol.placed[k]) continue;
+                    if (!repair::stateFeasible(c2, k)) { ok = false; break; }
+                }
+            }
+            if (!ok) {
+                sol.f[A] = oldF;
+                c2.oc->stamp(pb, sol, A, true);
+                bad = A;
+                break;
+            }
+            c2.oc->stamp(pb, sol, A, true);
+        }
+        reconstructPhase2Calls_ = c2.phase2Calls;
+        reconstructPhase2Success_ = c2.phase2Success;
+        if (bad >= 0) sol = backup;
+        oc.build(pb, horizon_);
+        for (int i = 0; i < pb.n; i++)
+            if (sol.placed[i]) oc.stamp(pb, sol, i, true);
+        return bad >= 0 ? bad : -1;
+    }
+
     // rebuild from empty with a fixed bay assignment, least-slack-first order
     // (big blocks break ties). The realizability probe for assignment
     // experiments: tight=true asks "does this assignment admit a
@@ -1112,6 +1168,7 @@ PYBIND11_MODULE(sscore, m) {
              py::arg("bigQProb") = 0.04, py::arg("opMask") = 255,
              py::arg("maxIters") = 0)
         .def("reconstruct_assigned", &Engine::reconstructAssigned)
+        .def("reconstruct_ordered_stays", &Engine::reconstructOrderedStays)
         .def("insert_capped", &Engine::insertCapped)
         .def("feasible_positions", &Engine::feasiblePositions,
              py::arg("A"), py::arg("k"), py::arg("eMin") = 0)
