@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 from pathlib import Path
 import resource
 import statistics
@@ -13,8 +14,9 @@ import time
 from typing import Any
 
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "tools"))
+HARNESS_ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(os.environ.get("OGC_ROOT", HARNESS_ROOT)).resolve()
+sys.path.insert(0, str(HARNESS_ROOT / "tools"))
 from assignment_transfer_fixed import digest, flat_digest  # noqa: E402
 
 

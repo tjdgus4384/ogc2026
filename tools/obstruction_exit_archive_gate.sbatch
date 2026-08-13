@@ -26,6 +26,7 @@ persistent_path() {
 }
 
 ROOT="$(persistent_path repository "${OGC_ROOT:-${SLURM_SUBMIT_DIR:-$PWD}}")"
+HARNESS_ROOT="$(persistent_path harness "${OGC_ARCHIVE_HARNESS_ROOT:-$ROOT}")"
 CANDIDATE="$(persistent_path candidate "${1:?candidate build required}")"
 REFERENCE="$(persistent_path reference "${2:?reference build required}")"
 PLATEAUS="$(persistent_path plateaus "${3:?frozen plateau directory required}")"
@@ -84,9 +85,9 @@ if [[ ! -x "$PY" ]]; then
 fi
 PY="$(persistent_path Python "$PY")"
 [[ -x "$PY" ]] || die "Python 3.12 environment not found: $PY"
-[[ -f "$ROOT/tools/obstruction_exit_archive.py" ]] ||
+[[ -f "$HARNESS_ROOT/tools/obstruction_exit_archive.py" ]] ||
   die "archive gate driver is missing"
 
-"$PY" "$ROOT/tools/obstruction_exit_archive.py" run \
+"$PY" "$HARNESS_ROOT/tools/obstruction_exit_archive.py" run \
   "$solver" "$plateau" "$instance" "$eval_seed" "$plateau_seed" \
   "$mode" "$result" --iters 20000 --checkpoint 1000

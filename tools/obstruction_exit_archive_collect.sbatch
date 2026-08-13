@@ -25,6 +25,7 @@ persistent_path() {
 }
 
 ROOT="$(persistent_path repository "${OGC_ROOT:-${SLURM_SUBMIT_DIR:-$PWD}}")"
+HARNESS_ROOT="$(persistent_path harness "${OGC_ARCHIVE_HARNESS_ROOT:-$ROOT}")"
 OUT="$(persistent_path output "${1:?result directory required}")"
 PROFILE="${2:?profile required: heldout or dev}"
 case "$PROFILE" in
@@ -53,4 +54,5 @@ fi
 PY="$(persistent_path Python "$PY")"
 [[ -x "$PY" ]] || die "Python 3.12 environment not found: $PY"
 
-"$PY" "$ROOT/tools/obstruction_exit_archive.py" collect "$OUT" "$PROFILE"
+"$PY" "$HARNESS_ROOT/tools/obstruction_exit_archive.py" collect \
+  "$OUT" "$PROFILE"
