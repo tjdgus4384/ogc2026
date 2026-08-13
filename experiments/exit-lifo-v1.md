@@ -97,3 +97,27 @@ if all of the following hold:
 This is still only a causal routing screen.  Passing it leads to a broad
 `train_final` fixed-iteration gate, then paired wall-time validation; it is not
 an adoption decision.
+
+## v2 result: closed (jobs 74846, 74850, 74851, 74852)
+
+The isolated build and semantic audits passed.  Build 74846 reproduced the
+P1/P2 exact canaries and a checker-feasible P3 smoke.  OFF/ON audit jobs 74850
+and 74851 passed the synthetic dominance witness, 20 historical boards, the
+20-block batch, and the dynamic 70-block batch with zero failures.  Thus the
+closed-form EXIT ordering theorem and its unbounded implementation remain
+valid diagnostics.
+
+The fixed-iteration routing policy failed its frozen score gate.  Of the 15
+cells that produced both arms, the result was **5W/7L/3T**.  P3 was 1W/3L with
+deltas -2.40%, +9.83%, +9.64%, and +3.55%, for a **+6.60% median regression**
+against the allowed +2%.  P5 also had two losses and one tie among completed
+cells.  More decisively, P5 seed 11 ON ended at a Stage-2 exact-touch board
+that the production rescue ladder could not legalize, while its byte-identical
+OFF/SHADOW control gated successfully at 13,233,145.  Job 74852 therefore
+failed closed and produced no complete summary.
+
+This is a policy rejection, not a retraction of the EXIT semantics: exact-only
+candidates are real and checker-legal at insertion time, but selecting them
+changes later geometry enough to worsen the distribution and can end in an
+unrecoverable exact-touch board.  v2 fails conditions 1 and 2, does not advance
+to Train, and must not be enabled in the production solver.
