@@ -40,4 +40,13 @@ inline double prefP() {
     }();
     return v;
 }
+
+// Peak-load ceiling for the energetic reservation, in percent. Above 1.60 the
+// guard stands down: measured 08-13 over 35 train_final instances, free
+// deferral is worth -5.09% below it (65W/19L, p=0.0000, 13 of 14 instances,
+// replicated 65W/19L on disjoint seeds) and turns harmful above 2.2, where
+// every insertGreedy phase starts at eBot and the block loses its early days
+// without finding relief. On the instances it stands down for, the run is
+// measured neutral (69 pairs, median +0.00%, p=0.80).
+inline constexpr int    rsvMaxLoad() { return 160; }
 } // namespace knobs

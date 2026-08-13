@@ -1,3 +1,45 @@
+v6.4 (2026-08-13) = v6.3 + the energetic reservation, repaired and load-gated.
+
+Defect: `knobs::reserve()` has been on since v5 and never once fired. Its
+threshold was `fillRatio`, which is `min(1, max(fill, max_t dayLoad))` by
+construction, so `dayLoad[t] > thr` cannot be true; and the demand profile
+counted one area-unit per day of [R, D-P], peaking at 0.19-0.54 of capacity
+against a real occupancy of 58%. The pathology it was written to counter is in
+the kernel's own comment: insertGreedy always takes the earliest legal day, so
+slack-rich blocks occupy prime early space and tight blocks find none -- at 63%
+utilisation, with tardy blocks waiting 13-19 days past release.
+
+Fix: a second, residency-aware demand profile (area * P / span over [R, D], the
+standard energetic profile), thresholded against `packFill`, the density the
+instance can actually pack. `fillRatio` and `dayLoad` are untouched, so the
+density screen at repair.hpp:102 keeps its shipped input.
+
+Gated by peak load. Free deferral is not uniformly good: measured across 35
+train_final instances it is worth -5.09% below peak load 1.60 and turns harmful
+above 2.2, where most days exceed the threshold, the scan walks to D-P without
+finding relief, and -- since every insertGreedy phase starts at eBot -- the
+block loses its early days for nothing. Above 1.60 the guard stands down.
+
+  active band   rsv4-tf   84 pairs  65W/19L  median -5.09%  p=0.0000  12/14 inst
+  replication   rsv4-rep  84 pairs  65W/19L  median -3.97%  p=0.0000  12/14 inst
+  stood down    rsv4-off  69 pairs  median +0.00%  p=0.80  (6 pairs identical)
+  preliminary   P3 +0.00 / P4 -1.49 / P5 -3.60 (p=0.023) / P6 +0.39
+  disjoint set  rsv4-tr   72 pairs  51W/21L  median -5.84%  p=0.0005   8/12 inst
+
+Three independent instance sets, no new failure class (the one +84.8% pair sits
+on a 113k objective, the high-variance small-objective class, not a `_trivial`
+collapse or seed rescue). Expected effect on the preliminary boards: P4 +40.9%
+-> +36.7%, P5 +35.3% -> +28.8%; P3 and P6 unchanged because the guard never
+fires on P3 (load 0.82) and stands down on P6 (2.86).
+
+Residual risk, recorded: 8 of the 40 enabled instances get worse, some by
+8-14%. The pooled medians are -4 to -6% across all three sets and the mechanism
+costs exactly nothing where it is inactive (58 of our 86 instances), so the
+expected value is clearly positive -- but it is not free.
+
+`peakLoad` is computed at runtime from instance data alone and is
+TL-independent, so a hidden finals board decides for itself.
+
 v6.3 (2026-08-13) = v6.2 + mid-run floor promotion.
 
 v6.2's floor covers the paths that returned `_trivial`; the residual tail was

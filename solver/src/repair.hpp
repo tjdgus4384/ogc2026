@@ -282,9 +282,20 @@ inline bool insertGreedy(Ctx& c, int A, int eCap = -1) {
     if (knobs::reserve() && !c.pb->dayLoad.empty()) {
         int punct = pb.D[A] - pb.P[A];
         int lim = std::min(punct, (int)c.pb->dayLoad.size() - 1);
-        double thr = c.pb->fillRatio;
-        while (eBot < lim && eBot < (int)c.pb->dayLoad.size() &&
-               c.pb->dayLoad[eBot] > thr)
+        // rsv: threshold is the ACHIEVABLE density and the profile is
+        // residency-aware; with fillRatio and the entry-window profile this
+        // loop provably never advances (thr >= max_t dayLoad by construction).
+        // rsv4: stand down entirely above the load where the guard stops
+        // paying. Outside the enabled regime the run is byte-identical to
+        // shipped, so the downside is bounded at zero; the boundary is gradual
+        // (-5.48% / -0.43% / +2.76% across the bands) so misclassifying an
+        // instance near it costs about nothing.
+        const int LMAX = knobs::rsvMaxLoad();
+        const bool loadOK = (LMAX <= 0) || (c.pb->peakLoad * 100.0 < LMAX);
+        const bool rs = !c.pb->dayLoadE.empty() && loadOK;
+        const std::vector<double>& dl = rs ? c.pb->dayLoadE : c.pb->dayLoad;
+        double thr = rs ? c.pb->packFill : c.pb->fillRatio;
+        while (eBot < lim && eBot < (int)dl.size() && dl[eBot] > thr)
             eBot++;
     }
     if (eTop < eBot) return false;

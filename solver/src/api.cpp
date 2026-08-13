@@ -120,6 +120,37 @@ struct Engine {
             req = std::max(req, u);
         }
         pb.fillRatio = std::min(1.0, std::max(fill, req));
+        // rsv: a SECOND, residency-aware profile, kept apart from fillRatio so
+        // the density screen at repair.hpp:102 keeps its shipped input. A block
+        // occupies its footprint for P days somewhere inside [R, D], so its
+        // unavoidable demand on a day of that window is area * P / span -- the
+        // standard energetic profile. The entry-window count above under-models
+        // congestion by roughly half.
+        std::vector<double> needE((size_t)Tmax + 2, 0.0);
+        for (int i = 0; i < pb.n; i++) {
+            double a = 1e18;
+            for (const auto& g : pb.geo[i].orients)
+                a = std::min(a, g.parea > 0 ? g.parea :
+                             (g.bb.x1-g.bb.x0)*(g.bb.y1-g.bb.y0));
+            const int lo = pb.R[i], hi = std::max(pb.R[i], pb.D[i]);
+            const double span = std::max(1, pb.D[i] - pb.R[i]);
+            const double share = a * std::min(1.0, (double)pb.P[i] / span);
+            for (int t = lo; t <= hi && t <= Tmax; t++) needE[t] += share;
+        }
+        pb.dayLoadE.assign((size_t)Tmax + 2, 0.0);
+        for (int t = 0; t <= Tmax; t++)
+            pb.dayLoadE[t] = needE[t] / std::max(1e-9, capArea);
+        pb.packFill = fill;
+        // rsv4: the instance's peak energetic load, in units of the density it
+        // can actually pack. Measured 08-13 on 35 train_final instances: the
+        // reservation is worth -5.48% below 1.5, ~0 from 1.5 to 2.2, and turns
+        // harmful above 2.2 (0 of 7 improve). Computed at runtime from the
+        // instance alone, so a hidden board decides for itself.
+        {
+            double pk = 0.0;
+            for (int t = 0; t <= Tmax; t++) pk = std::max(pk, pb.dayLoadE[t]);
+            pb.peakLoad = (fill > 1e-9) ? pk / fill : 0.0;
+        }
     }
 
     // occupancy grid over [0, horizon); stamps whatever is already placed

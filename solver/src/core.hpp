@@ -26,6 +26,9 @@ struct Problem {
     // ratio) -- otherwise it never rejects and every insertion scans
     // every bay (measured: 65% of the iteration budget lost on P4).
     double fillRatio = 1.0;
+    double packFill  = 1.0;   // rsv: achievable packing density
+    double peakLoad  = 0.0;   // rsv4: max_t dayLoadE / packFill
+    std::vector<double> dayLoadE;  // rsv: residency-aware demand profile
     // per-day mandatory demand / total bay area: blocks whose
     // [release, punctual-entry] window covers a day MUST occupy space
     // somewhere that day. Days where this exceeds what polygons can
