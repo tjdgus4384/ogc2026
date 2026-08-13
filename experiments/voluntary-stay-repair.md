@@ -84,3 +84,35 @@ an obstructing interval exactly to another block's exit boundary, including
 past its own due date only when the completed repair's net weighted objective
 strictly improves.  Such an exit-closure repair must be triggered by an
 observed one-way obstruction, not by a fitted day or frequency sweep.
+
+## Verdict: reject exhaustive half/due repair (job 75161)
+
+The corrected experiment build came from source commit `96ccfd1`; binary
+SHA-256 `642019203a8326ae5c3b5b199e98bfa57f239bc46c0a3c90d24b291ea7ff91c7`.
+Build job 75054 reproduced P1 11,280 and P2 31,368 exactly and emitted a
+checker-feasible P3 86,895.  A 100-iteration diagnostic (job 75160) gave exact
+reference/control replay, 48/48 checker feasibility, and 12 complete runs that
+tried stay branches but selected none; every such run matched its control
+signature exactly.  The median treatment slowdown was 1.589x.
+
+The frozen 1,000-iteration screen kept exact default-off replay and four more
+semantic-null matches.  The mechanism was active: P4/P5/P6 selected 11/8/5
+completed stay repairs and accumulated immediate full-repair gains of
+1,020,813 / 2,871,226 / 1,073,992 points.  P3 selected once for 6,310.
+Nevertheless, every one of the 14 checker-comparable final pairs tied.  None
+of those local choices changed the returned incumbent.
+
+The safety gate also failed.  On P5 seed 11 all three arms ended at the same
+checker-invalid exact-touch board.  On seed 23, reference and default-off
+control were invalid while stay reached a feasible 16,339,071 board.  Thus
+43/48 arms were feasible, not the required 48/48, and only 14/16 objective
+pairs existed.  Baseline failure is not blamed on the treatment, but missing
+pairs cannot be discarded or used to relax a frozen gate.
+
+The verdict is `reject_exhaustive_stay_repair`: no plateau continuation,
+frequency fit, wall gate, or Train run.  This closes exhaustive zero-cost
+half/due branching in every ordinary repair.  It does not close exit time as a
+decision variable.  The next distinct hypothesis is an obstruction-triggered
+exit-closure repair that extends an actual obstructer exactly to the inner
+block's required exit boundary and compares the completed suffix, including a
+paid extension only when its net weighted objective wins.

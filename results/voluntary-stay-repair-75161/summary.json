@@ -1,0 +1,395 @@
+{
+  "aa_mismatches": [],
+  "all_48_checker_feasible": false,
+  "boards": {
+    "P3": {
+      "losses": 0,
+      "mean_delta_pct": 0.0,
+      "median_delta_pct": 0.0,
+      "pairs": 4,
+      "ties": 4,
+      "wins": 0,
+      "worst_delta_pct": 0.0
+    },
+    "P4": {
+      "losses": 0,
+      "mean_delta_pct": 0.0,
+      "median_delta_pct": 0.0,
+      "pairs": 4,
+      "ties": 4,
+      "wins": 0,
+      "worst_delta_pct": 0.0
+    },
+    "P5": {
+      "losses": 0,
+      "mean_delta_pct": 0.0,
+      "median_delta_pct": 0.0,
+      "pairs": 2,
+      "ties": 2,
+      "wins": 0,
+      "worst_delta_pct": 0.0
+    },
+    "P6": {
+      "losses": 0,
+      "mean_delta_pct": 0.0,
+      "median_delta_pct": 0.0,
+      "pairs": 4,
+      "ties": 4,
+      "wins": 0,
+      "worst_delta_pct": 0.0
+    }
+  },
+  "default_off_aa_exact": true,
+  "median_slowdown": 1.6139621988832729,
+  "overall": {
+    "losses": 0,
+    "mean_delta_pct": 0.0,
+    "median_delta_pct": 0.0,
+    "pairs": 14,
+    "ties": 14,
+    "wins": 0,
+    "worst_delta_pct": 0.0
+  },
+  "p45": {
+    "losses": 0,
+    "mean_delta_pct": 0.0,
+    "median_delta_pct": 0.0,
+    "pairs": 6,
+    "ties": 6,
+    "wins": 0,
+    "worst_delta_pct": 0.0
+  },
+  "rows": [
+    {
+      "control": 149335.0,
+      "control_feasible": true,
+      "delta_pct": 0.0,
+      "instance": 3,
+      "seed": 7,
+      "slowdown": 1.5873883374209965,
+      "stay": 149335.0,
+      "stay_feasible": true,
+      "telemetry": {
+        "built": 1995,
+        "gain": 0.0,
+        "neighbourhoods": 672,
+        "rescued": 0,
+        "selected": 0,
+        "tried": 2707
+      }
+    },
+    {
+      "control": 160125.0,
+      "control_feasible": true,
+      "delta_pct": 0.0,
+      "instance": 3,
+      "seed": 11,
+      "slowdown": 1.6438817772840613,
+      "stay": 160125.0,
+      "stay_feasible": true,
+      "telemetry": {
+        "built": 2063,
+        "gain": 0.0,
+        "neighbourhoods": 662,
+        "rescued": 0,
+        "selected": 0,
+        "tried": 2749
+      }
+    },
+    {
+      "control": 160980.0,
+      "control_feasible": true,
+      "delta_pct": 0.0,
+      "instance": 3,
+      "seed": 23,
+      "slowdown": 1.6000089242137463,
+      "stay": 160980.0,
+      "stay_feasible": true,
+      "telemetry": {
+        "built": 1957,
+        "gain": 6310.0,
+        "neighbourhoods": 672,
+        "rescued": 0,
+        "selected": 1,
+        "tried": 2605
+      }
+    },
+    {
+      "control": 133645.0,
+      "control_feasible": true,
+      "delta_pct": 0.0,
+      "instance": 3,
+      "seed": 41,
+      "slowdown": 1.6507077569858384,
+      "stay": 133645.0,
+      "stay_feasible": true,
+      "telemetry": {
+        "built": 2112,
+        "gain": 0.0,
+        "neighbourhoods": 689,
+        "rescued": 0,
+        "selected": 0,
+        "tried": 2800
+      }
+    },
+    {
+      "control": 6019145.0,
+      "control_feasible": true,
+      "delta_pct": 0.0,
+      "instance": 4,
+      "seed": 7,
+      "slowdown": 1.5343998311265765,
+      "stay": 6019145.0,
+      "stay_feasible": true,
+      "telemetry": {
+        "built": 853,
+        "gain": 200340.0,
+        "neighbourhoods": 720,
+        "rescued": 0,
+        "selected": 3,
+        "tried": 1832
+      }
+    },
+    {
+      "control": 5510379.0,
+      "control_feasible": true,
+      "delta_pct": 0.0,
+      "instance": 4,
+      "seed": 11,
+      "slowdown": 1.640476245272238,
+      "stay": 5510379.0,
+      "stay_feasible": true,
+      "telemetry": {
+        "built": 1001,
+        "gain": 5372.0,
+        "neighbourhoods": 711,
+        "rescued": 0,
+        "selected": 1,
+        "tried": 2195
+      }
+    },
+    {
+      "control": 5797707.0,
+      "control_feasible": true,
+      "delta_pct": 0.0,
+      "instance": 4,
+      "seed": 23,
+      "slowdown": 1.6529722146554209,
+      "stay": 5797707.0,
+      "stay_feasible": true,
+      "telemetry": {
+        "built": 1070,
+        "gain": 529135.0,
+        "neighbourhoods": 755,
+        "rescued": 0,
+        "selected": 4,
+        "tried": 2127
+      }
+    },
+    {
+      "control": 5937519.0,
+      "control_feasible": true,
+      "delta_pct": 0.0,
+      "instance": 4,
+      "seed": 41,
+      "slowdown": 1.6425016090008675,
+      "stay": 5937519.0,
+      "stay_feasible": true,
+      "telemetry": {
+        "built": 1080,
+        "gain": 285966.0,
+        "neighbourhoods": 745,
+        "rescued": 0,
+        "selected": 3,
+        "tried": 2380
+      }
+    },
+    {
+      "control": 15981285.0,
+      "control_feasible": true,
+      "delta_pct": 0.0,
+      "instance": 5,
+      "seed": 7,
+      "slowdown": 1.6279154735527992,
+      "stay": 15981285.0,
+      "stay_feasible": true,
+      "telemetry": {
+        "built": 803,
+        "gain": 420174.0,
+        "neighbourhoods": 755,
+        "rescued": 0,
+        "selected": 2,
+        "tried": 2272
+      }
+    },
+    {
+      "control": null,
+      "control_feasible": false,
+      "delta_pct": null,
+      "instance": 5,
+      "seed": 11,
+      "slowdown": 1.6485832224516812,
+      "stay": null,
+      "stay_feasible": false,
+      "telemetry": {
+        "built": 857,
+        "gain": 1309560.0,
+        "neighbourhoods": 748,
+        "rescued": 0,
+        "selected": 2,
+        "tried": 2282
+      }
+    },
+    {
+      "control": null,
+      "control_feasible": false,
+      "delta_pct": null,
+      "instance": 5,
+      "seed": 23,
+      "slowdown": 1.5846904162367947,
+      "stay": 16339071.0,
+      "stay_feasible": true,
+      "telemetry": {
+        "built": 968,
+        "gain": 1016203.0,
+        "neighbourhoods": 757,
+        "rescued": 0,
+        "selected": 3,
+        "tried": 2346
+      }
+    },
+    {
+      "control": 16689351.0,
+      "control_feasible": true,
+      "delta_pct": 0.0,
+      "instance": 5,
+      "seed": 41,
+      "slowdown": 1.6399802190061334,
+      "stay": 16689351.0,
+      "stay_feasible": true,
+      "telemetry": {
+        "built": 784,
+        "gain": 125289.0,
+        "neighbourhoods": 746,
+        "rescued": 0,
+        "selected": 1,
+        "tried": 2120
+      }
+    },
+    {
+      "control": 39463167.0,
+      "control_feasible": true,
+      "delta_pct": 0.0,
+      "instance": 6,
+      "seed": 7,
+      "slowdown": 1.3263732615097155,
+      "stay": 39463167.0,
+      "stay_feasible": true,
+      "telemetry": {
+        "built": 650,
+        "gain": 860043.0,
+        "neighbourhoods": 739,
+        "rescued": 0,
+        "selected": 2,
+        "tried": 1627
+      }
+    },
+    {
+      "control": 39321389.0,
+      "control_feasible": true,
+      "delta_pct": 0.0,
+      "instance": 6,
+      "seed": 11,
+      "slowdown": 1.3702728209031876,
+      "stay": 39321389.0,
+      "stay_feasible": true,
+      "telemetry": {
+        "built": 674,
+        "gain": 40002.0,
+        "neighbourhoods": 753,
+        "rescued": 0,
+        "selected": 1,
+        "tried": 1763
+      }
+    },
+    {
+      "control": 38734329.0,
+      "control_feasible": true,
+      "delta_pct": 0.0,
+      "instance": 6,
+      "seed": 23,
+      "slowdown": 1.369284315534597,
+      "stay": 38734329.0,
+      "stay_feasible": true,
+      "telemetry": {
+        "built": 762,
+        "gain": 0.0,
+        "neighbourhoods": 749,
+        "rescued": 0,
+        "selected": 0,
+        "tried": 1771
+      }
+    },
+    {
+      "control": 39667799.0,
+      "control_feasible": true,
+      "delta_pct": 0.0,
+      "instance": 6,
+      "seed": 41,
+      "slowdown": 1.3601122049477743,
+      "stay": 39667799.0,
+      "stay_feasible": true,
+      "telemetry": {
+        "built": 666,
+        "gain": 173947.0,
+        "neighbourhoods": 735,
+        "rescued": 0,
+        "selected": 2,
+        "tried": 1580
+      }
+    }
+  ],
+  "schema_version": 1,
+  "semantic_null_coverage": [
+    "p3-s7",
+    "p3-s11",
+    "p3-s41",
+    "p6-s23"
+  ],
+  "semantic_null_mismatches": [],
+  "telemetry": {
+    "P3": {
+      "built": 8127.0,
+      "gain": 6310.0,
+      "neighbourhoods": 2695.0,
+      "rescued": 0.0,
+      "selected": 1.0,
+      "tried": 10861.0
+    },
+    "P4": {
+      "built": 4004.0,
+      "gain": 1020813.0,
+      "neighbourhoods": 2931.0,
+      "rescued": 0.0,
+      "selected": 11.0,
+      "tried": 8534.0
+    },
+    "P5": {
+      "built": 3412.0,
+      "gain": 2871226.0,
+      "neighbourhoods": 3006.0,
+      "rescued": 0.0,
+      "selected": 8.0,
+      "tried": 9020.0
+    },
+    "P6": {
+      "built": 2752.0,
+      "gain": 1073992.0,
+      "neighbourhoods": 2976.0,
+      "rescued": 0.0,
+      "selected": 5.0,
+      "tried": 6741.0
+    }
+  },
+  "verdict": "reject_exhaustive_stay_repair"
+}

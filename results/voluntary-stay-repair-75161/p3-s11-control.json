@@ -1,0 +1,74 @@
+{
+  "audit": [
+    0,
+    -1
+  ],
+  "checker": {
+    "feasible": true,
+    "flat_sha256": "e9326dd7ec93314d24ebe624bb75b977335ddafb21c3c25556ae7e67543771b9",
+    "objective": 160125.0,
+    "rescued": false,
+    "solution_sha256": "0000beefe1992271f4e457b6f68ca34e20566d5bce8a7ef770813508d8539c48"
+  },
+  "elapsed": 7.456856619101018,
+  "instance": 3,
+  "iters": 1000,
+  "manifest": "/data_fast/home/tjdgus4384/priv/ogc2026-worktrees/codex-fundamental/results/voluntary-stay-rollout-74969/prob_3.json",
+  "mode": "control",
+  "order": "noisy_a",
+  "run_stats": [
+    1000.0,
+    303.0,
+    52.0,
+    65.0,
+    160125.0,
+    -1.0,
+    -1.0,
+    -1.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    1114.0,
+    72.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+  ],
+  "schema_version": 1,
+  "search_flat_sha256": "e9326dd7ec93314d24ebe624bb75b977335ddafb21c3c25556ae7e67543771b9",
+  "search_objective": [
+    0.0,
+    2175.0,
+    995.0,
+    160125.0
+  ],
+  "seed": 11,
+  "solver": "/data_fast/home/tjdgus4384/priv/ogc2026-worktrees/codex-fundamental/builds/jasg-stay-repair-nullfix",
+  "start_checker": {
+    "feasible": true,
+    "flat_sha256": "53361a5937dc64fb18430d4baeb453ff2323fa195e82022b64a111cf1d8bca84",
+    "objective": 539249.0,
+    "rescued": false,
+    "solution_sha256": "f8dd8e8e362a1c052e77ae384da5915237728d5fbf6e18f0688131ae71cea556"
+  },
+  "start_flat_sha256": "53361a5937dc64fb18430d4baeb453ff2323fa195e82022b64a111cf1d8bca84",
+  "start_objective": [
+    3.0,
+    3493.0,
+    3123.0,
+    539249.0
+  ],
+  "telemetry": {
+    "built": 0,
+    "gain": 0.0,
+    "neighbourhoods": 0,
+    "rescued": 0,
+    "selected": 0,
+    "tried": 0
+  }
+}

@@ -1,0 +1,61 @@
+{
+  "audit": [
+    0,
+    -1
+  ],
+  "checker": {
+    "feasible": true,
+    "flat_sha256": "be6feedad69534ea1b9a42fb6ce2869c15204491ebab54a9fd922f683a020b62",
+    "objective": 133645.0,
+    "rescued": false,
+    "solution_sha256": "41aa2936fccd6a692ab084d7f5c2c00a0332ca04ee0d2e90b43b2cc572222f83"
+  },
+  "elapsed": 7.029941521119326,
+  "instance": 3,
+  "iters": 1000,
+  "manifest": "/data_fast/home/tjdgus4384/priv/ogc2026-worktrees/codex-fundamental/results/voluntary-stay-rollout-74969/prob_3.json",
+  "mode": "reference",
+  "order": "noisy_a",
+  "run_stats": [
+    1000.0,
+    337.0,
+    53.0,
+    74.0,
+    133645.0,
+    -1.0,
+    -1.0,
+    -1.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    900.0,
+    58.0
+  ],
+  "schema_version": 1,
+  "search_flat_sha256": "be6feedad69534ea1b9a42fb6ce2869c15204491ebab54a9fd922f683a020b62",
+  "search_objective": [
+    0.0,
+    2009.0,
+    824.0,
+    133645.0
+  ],
+  "seed": 41,
+  "solver": "/data_fast/home/tjdgus4384/priv/ogc2026-worktrees/codex-fundamental/builds/jasg-stay-rollout",
+  "start_checker": {
+    "feasible": true,
+    "flat_sha256": "53361a5937dc64fb18430d4baeb453ff2323fa195e82022b64a111cf1d8bca84",
+    "objective": 539249.0,
+    "rescued": false,
+    "solution_sha256": "f8dd8e8e362a1c052e77ae384da5915237728d5fbf6e18f0688131ae71cea556"
+  },
+  "start_flat_sha256": "53361a5937dc64fb18430d4baeb453ff2323fa195e82022b64a111cf1d8bca84",
+  "start_objective": [
+    3.0,
+    3493.0,
+    3123.0,
+    539249.0
+  ],
+  "telemetry": null
+}
