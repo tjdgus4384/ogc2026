@@ -25,6 +25,10 @@ fi
 SOLVER="${1:-$ROOT/builds/jasg-stay-rollout}"
 MANIFESTS="${2:-$ROOT/runs/joint-assignment-rollout-74933}"
 OUT="${3:-$ROOT/runs/voluntary-stay-rollout-${SLURM_JOB_ID}}"
+# The frozen baseline is the default kernel.  Do not inherit an unrelated
+# diagnostic treatment from the submission shell.
+unset OGC_CAUSAL_BAY_RNG OGC_KEEP_ASSIGNMENT_LOCK OGC_PHASE2_ORIS
+unset OGC_EXIT_TWIN OGC_EXIT_TWIN_SHADOW OGC_PREFP
 mkdir -p "$OUT"
 
 pids=()
