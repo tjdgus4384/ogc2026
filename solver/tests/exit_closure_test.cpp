@@ -141,6 +141,49 @@ void test_pair_relation_contract() {
     assert(pair_relation_code(clearPb, schedule(0, 1, 2, 3), 0, 1) == 0);
 }
 
+void test_event_corner_candidate_range() {
+    const core::Problem pb = problem();
+    // The vocabulary engine starts from a complete incumbent.  Projecting out
+    // only target 0 leaves incumbent peer 1 available to contribute corners.
+    core::Sol source = schedule(0, 2, 1, 4);
+    core::Sol peers = source;
+    peers.placed[0] = 0;
+    peers.rebuildIdx(pb.m);
+
+    repair::Ctx ctx{};
+    ctx.pb = &pb;
+    ctx.s = &peers;
+    std::vector<repair::RB> rbs;
+    repair::rbCollect(ctx, 0, 0, 2, rbs);
+    assert(rbs.size() == 1);  // resident 1 overlaps candidate window [0,2)
+
+    std::vector<int> xs, ys;
+    repair::cornerSetsRB(ctx, 0, 0, 0, rbs, xs, ys);
+    assert(xs == std::vector<int>({0, 2}));
+    assert(ys == std::vector<int>({0}));
+
+    core::Sol pair;
+    pair.init(pb.n, pb.m);
+    pair.bay[0] = pair.bay[1] = 0;
+    pair.ori[0] = pair.ori[1] = 0;
+    pair.x[1] = pair.y[0] = pair.y[1] = 0;
+    crane::ScopedMemoBypass memoBypass(true);
+    pair.x[0] = 0;
+    assert(!core::restOverlap(pb, pair, 0, 1));
+    // This raw corner is obstructed only by resident 1's upper layer.  The
+    // event-corner vocabulary must retain it for the nesting CP.
+    assert(core::entryBlocked(pb, pair, 1, 0));
+    pair.x[0] = 2;
+    assert(core::restOverlap(pb, pair, 0, 1));
+
+    // Endpoint touch is time-disjoint, so the same resident contributes no
+    // bbox corner to a minimum-duration [0,2) candidate window.
+    peers.e[1] = 2;
+    peers.f[1] = 4;
+    repair::rbCollect(ctx, 0, 0, 2, rbs);
+    assert(rbs.empty());
+}
+
 void stamp_all(const core::Problem& pb, const core::Sol& s,
                occ::OccIndex& oc) {
     for (int i = 0; i < pb.n; ++i)
@@ -407,6 +450,7 @@ int main() {
     const core::Problem pb = problem();
 
     test_pair_relation_contract();
+    test_event_corner_candidate_range();
 
     // Memo-neutral speculation must use the exact geometry fallback, restore
     // nested state, and return the same predicate as the normal cached path.

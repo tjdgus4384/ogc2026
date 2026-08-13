@@ -355,6 +355,116 @@ struct Engine {
         }
         return out;
     }
+    // Raw event-corner vocabulary for the flexible-coalition experiment.
+    // Unlike feasiblePositions, this deliberately applies no occupancy mask
+    // and no crane entry/exit oracle: a one-way higher-layer obstruction is a
+    // relation for the joint timing model, not a reason to erase a geometry.
+    // Every placed incumbent peer except A contributes its bbox when its stay
+    // overlaps A's minimum-duration window.  Only exact same-layer collisions
+    // against those peers are rejected.  Returns [bay,ori,x,y,entry] rows in
+    // ori/y/x order.
+    std::vector<int> eventCornerCandidates(int A, int bay, int entry,
+                                           int cap) {
+        const size_t n = (size_t)std::max(0, pb.n);
+        const bool stateShape =
+            pb.n > 0 && pb.m > 0 && pb.geo.size() == n &&
+            pb.R.size() == n && pb.P.size() == n &&
+            pb.bayW.size() == (size_t)pb.m &&
+            pb.bayH.size() == (size_t)pb.m &&
+            sol.placed.size() == n && sol.bay.size() == n &&
+            sol.ori.size() == n && sol.x.size() == n &&
+            sol.y.size() == n && sol.e.size() == n && sol.f.size() == n &&
+            sol.byBay.size() == (size_t)pb.m && ctx.pb == &pb &&
+            ctx.s == &sol && ctx.oc == &oc && ctx.horizon == horizon_ &&
+            horizon_ > 0;
+        if (!stateShape)
+            throw std::logic_error(
+                "event_corner_candidates called on an unbuilt engine");
+        constexpr int maxCandidateCap = 4096;
+        if (A < 0 || A >= pb.n || bay < 0 || bay >= pb.m || cap < 1 ||
+            cap > maxCandidateCap)
+            throw std::invalid_argument(
+                "event_corner_candidates argument is out of range");
+        if (pb.P[A] <= 0 || entry < pb.R[A] || entry > horizon_ - pb.P[A])
+            throw std::invalid_argument(
+                "event_corner_candidates entry is outside release/horizon");
+        if (pb.geo[A].orients.empty())
+            throw std::invalid_argument(
+                "event_corner_candidates block has no orientation");
+
+        const int exit = entry + pb.P[A];
+        std::vector<int> residents;
+        std::vector<repair::RB> rbs;
+        residents.reserve(sol.byBay[bay].size());
+        rbs.reserve(sol.byBay[bay].size());
+        for (int k : sol.byBay[bay]) {
+            if (k == A) continue;
+            if (k < 0 || k >= pb.n || !sol.placed[k] || sol.bay[k] != bay ||
+                pb.P[k] <= 0 ||
+                sol.ori[k] < 0 ||
+                sol.ori[k] >= (int)pb.geo[k].orients.size() ||
+                sol.e[k] < pb.R[k] || sol.f[k] <= sol.e[k] ||
+                (long long)sol.f[k] - sol.e[k] < pb.P[k] ||
+                sol.f[k] > horizon_)
+                throw std::logic_error(
+                    "event_corner_candidates found an invalid resident");
+            const auto& residentGeometry =
+                pb.geo[k].orients[sol.ori[k]];
+            if (residentGeometry.layers.empty() ||
+                residentGeometry.lbb.size() != residentGeometry.layers.size() ||
+                residentGeometry.ip.size() != residentGeometry.layers.size())
+                throw std::logic_error(
+                    "event_corner_candidates found invalid resident geometry");
+            if (!(sol.e[k] < exit && entry < sol.f[k])) continue;
+            residents.push_back(k);
+            rbs.push_back({residentGeometry.bb.x0 + sol.x[k],
+                           residentGeometry.bb.x1 + sol.x[k],
+                           residentGeometry.bb.y0 + sol.y[k],
+                           residentGeometry.bb.y1 + sol.y[k]});
+        }
+
+        crane::ScopedMemoBypass memoBypass(true);
+        core::Sol pair;
+        pair.init(pb.n, pb.m);
+        for (int k : residents) {
+            pair.bay[k] = bay; pair.ori[k] = sol.ori[k];
+            pair.x[k] = sol.x[k]; pair.y[k] = sol.y[k];
+        }
+        pair.bay[A] = bay;
+
+        std::vector<int> out, xs, ys;
+        for (int oi = 0; oi < (int)pb.geo[A].orients.size(); oi++) {
+            const auto& g = pb.geo[A].orients[oi];
+            if (g.layers.empty() || g.lbb.size() != g.layers.size() ||
+                g.ip.size() != g.layers.size())
+                throw std::logic_error(
+                    "event_corner_candidates found an invalid orientation");
+            repair::cornerSetsRB(ctx, A, oi, bay, rbs, xs, ys);
+            pair.ori[A] = oi;
+            for (int y : ys) {
+                pair.y[A] = y;
+                for (int x : xs) {
+                    pair.x[A] = x;
+                    if (g.bb.x0 + x < -geom::EPS ||
+                        g.bb.y0 + y < -geom::EPS ||
+                        g.bb.x1 + x > pb.bayW[bay] + geom::EPS ||
+                        g.bb.y1 + y > pb.bayH[bay] + geom::EPS)
+                        throw std::logic_error(
+                            "event_corner_candidates generated an out-of-bay corner");
+                    bool rest = false;
+                    for (int k : residents)
+                        if (core::restOverlap(pb, pair, A, k)) {
+                            rest = true;
+                            break;
+                        }
+                    if (rest) continue;
+                    out.insert(out.end(), {bay, oi, x, y, entry});
+                    if (out.size() / 5 == (size_t)cap) return out;
+                }
+            }
+        }
+        return out;
+    }
     // vp-verified commit of A at an explicit placement (probe primitive).
     bool placeAt(int A, int bay, int ori, int x, int y, int e) {
         if (sol.placed[A]) return false;
@@ -710,9 +820,14 @@ struct Engine {
             throw std::invalid_argument(
                 "pair_relations expects flat [block,bay,ori,x,y,entry] rows");
         const size_t count = cand.size() / stride;
-        if (count > (size_t)std::numeric_limits<int>::max())
-            throw std::invalid_argument("pair_relations has too many rows");
-        if (pb.n < 0 || pb.m < 0 || pb.geo.size() != (size_t)pb.n ||
+        constexpr size_t maxCandidateRows = 4096;
+        if (count == 0)
+            throw std::invalid_argument(
+                "pair_relations requires at least one candidate row");
+        if (count > maxCandidateRows)
+            throw std::invalid_argument(
+                "pair_relations exceeds its 4096-row hard cap");
+        if (pb.n <= 0 || pb.m <= 0 || pb.geo.size() != (size_t)pb.n ||
             pb.bayW.size() != (size_t)pb.m ||
             pb.bayH.size() != (size_t)pb.m)
             throw std::logic_error("pair_relations called on an invalid problem");
@@ -1386,6 +1501,9 @@ PYBIND11_MODULE(sscore, m) {
         .def("insert_capped", &Engine::insertCapped)
         .def("feasible_positions", &Engine::feasiblePositions,
              py::arg("A"), py::arg("k"), py::arg("eMin") = 0)
+        .def("event_corner_candidates", &Engine::eventCornerCandidates,
+             py::arg("block"), py::arg("bay"), py::arg("entry"),
+             py::arg("cap"))
         .def("place_at", &Engine::placeAt)
         .def("placement_verdicts", &Engine::placementVerdicts)
         .def("place_at_flexible", &Engine::placeAtFlexible)
