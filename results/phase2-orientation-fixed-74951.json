@@ -1,0 +1,189 @@
+{
+  "rows": [
+    {
+      "delta_pct": 17.208311134789557,
+      "instance": 3,
+      "off": 93850.0,
+      "off_feasible": true,
+      "on": 110000.0,
+      "on_feasible": true,
+      "seed": 11
+    },
+    {
+      "delta_pct": 15.88339670468948,
+      "instance": 3,
+      "off": 98625.0,
+      "off_feasible": true,
+      "on": 114290.0,
+      "on_feasible": true,
+      "seed": 23
+    },
+    {
+      "delta_pct": 2.4326366154621004,
+      "instance": 3,
+      "off": 99275.0,
+      "off_feasible": true,
+      "on": 101690.0,
+      "on_feasible": true,
+      "seed": 41
+    },
+    {
+      "delta_pct": 15.100093453347105,
+      "instance": 3,
+      "off": 101655.0,
+      "off_feasible": true,
+      "on": 117005.0,
+      "on_feasible": true,
+      "seed": 7
+    },
+    {
+      "delta_pct": 4.70552902967204,
+      "instance": 4,
+      "off": 4158831.0,
+      "off_feasible": true,
+      "on": 4354526.0,
+      "on_feasible": true,
+      "seed": 11
+    },
+    {
+      "delta_pct": 4.828589538583622,
+      "instance": 4,
+      "off": 4264413.0,
+      "off_feasible": true,
+      "on": 4470324.0,
+      "on_feasible": true,
+      "seed": 23
+    },
+    {
+      "delta_pct": -10.675885789940024,
+      "instance": 4,
+      "off": 4395935.0,
+      "off_feasible": true,
+      "on": 3926630.0,
+      "on_feasible": true,
+      "seed": 41
+    },
+    {
+      "delta_pct": 13.186377886025788,
+      "instance": 4,
+      "off": 3875052.0,
+      "off_feasible": true,
+      "on": 4386031.0,
+      "on_feasible": true,
+      "seed": 7
+    },
+    {
+      "delta_pct": -0.9839837770990947,
+      "instance": 5,
+      "off": 13233145.0,
+      "off_feasible": true,
+      "on": 13102933.0,
+      "on_feasible": true,
+      "seed": 11
+    },
+    {
+      "delta_pct": -0.6378526698749568,
+      "instance": 5,
+      "off": 12780224.0,
+      "off_feasible": true,
+      "on": 12698705.0,
+      "on_feasible": true,
+      "seed": 23
+    },
+    {
+      "delta_pct": -0.2287510359138423,
+      "instance": 5,
+      "off": 12794259.0,
+      "off_feasible": true,
+      "on": 12764992.0,
+      "on_feasible": true,
+      "seed": 41
+    },
+    {
+      "delta_pct": 2.8453259802503874,
+      "instance": 5,
+      "off": 12361255.0,
+      "off_feasible": true,
+      "on": 12712973.0,
+      "on_feasible": true,
+      "seed": 7
+    },
+    {
+      "delta_pct": -0.2207871408541376,
+      "instance": 6,
+      "off": 33605218.0,
+      "off_feasible": true,
+      "on": 33531022.0,
+      "on_feasible": true,
+      "seed": 11
+    },
+    {
+      "delta_pct": 0.33508148292517104,
+      "instance": 6,
+      "off": 33371286.0,
+      "off_feasible": true,
+      "on": 33483107.0,
+      "on_feasible": true,
+      "seed": 23
+    },
+    {
+      "delta_pct": -0.45605637424020357,
+      "instance": 6,
+      "off": 33192607.0,
+      "off_feasible": true,
+      "on": 33041230.0,
+      "on_feasible": true,
+      "seed": 41
+    },
+    {
+      "delta_pct": 0.2850532505647412,
+      "instance": 6,
+      "off": 34322359.0,
+      "off_feasible": true,
+      "on": 34420196.0,
+      "on_feasible": true,
+      "seed": 7
+    }
+  ],
+  "schema_version": 1,
+  "summary": {
+    "all_32_checker_feasible": true,
+    "informative": 16,
+    "instances": {
+      "P3": {
+        "losses": 4,
+        "median_delta_pct": 15.491745079018292,
+        "pairs": 4,
+        "ties": 0,
+        "wins": 0
+      },
+      "P4": {
+        "losses": 3,
+        "median_delta_pct": 4.767059284127831,
+        "pairs": 4,
+        "ties": 0,
+        "wins": 1
+      },
+      "P5": {
+        "losses": 1,
+        "median_delta_pct": -0.43330185289439954,
+        "pairs": 4,
+        "ties": 0,
+        "wins": 3
+      },
+      "P6": {
+        "losses": 2,
+        "median_delta_pct": 0.032133054855301796,
+        "pairs": 4,
+        "ties": 0,
+        "wins": 2
+      }
+    },
+    "losses": 10,
+    "median_delta_pct": 1.3838590491936358,
+    "pairs": 16,
+    "ties": 0,
+    "verdict": "reject_fixed_screen",
+    "wins": 6
+  }
+}

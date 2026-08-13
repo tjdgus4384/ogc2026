@@ -105,3 +105,23 @@ in both processes.  OFF and ON then run seeds 7, 11, 23, and 41 for exactly
 common-start design measures only phase-2 repair ordering, not a second seed
 lottery.  The official checker gates every arm and the original primary-screen
 thresholds above remain unchanged.
+
+## Fixed-iteration verdict: job 74951
+
+All 32 arms were checker-feasible and completed exactly 20,000 iterations, so
+this is a valid efficacy result rather than a reachability or harness failure.
+
+| board | W/L/T | median delta |
+|---|---:|---:|
+| P3 | 0/4/0 | +15.492% |
+| P4 | 1/3/0 | +4.767% |
+| P5 | 3/1/0 | -0.433% |
+| P6 | 2/2/0 | +0.032% |
+
+The pooled result is 6 wins, 10 losses, and median +1.384%.  It violates the
+non-positive pooled requirement and both P3 and P4 exceed the +3% board veto;
+no board improves by the required 3%.  The corrected data flow is live but its
+search effect is adverse and too small on the only favorable board to address
+the target gap.  The route is closed without replication or Train testing and
+must remain disabled in production.  All paired rows are frozen in
+`results/phase2-orientation-fixed-74951.json`.
