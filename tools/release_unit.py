@@ -130,6 +130,7 @@ try:
         "bays": [{"width": 1, "height": 1}],
         "blocks": [{
             "release_time": 0, "due_date": 1, "processing_time": 1,
+            "workload": 1, "bay_preferences": [0],
             "shape": [{"orientation": 0, "layers": [[
                 [0, 0], [1, 0], [1, 1], [0, 1]
             ]]}]
@@ -141,8 +142,12 @@ try:
       entry.get("type") == "ENTRY" and entry.get("x") == 0
       and entry.get("y") == 0 and entry.get("bay_id") == 0,
       repr(entry))
+    boundary_result = checker.check_feasibility(boundary, sol)
+    A("trivial-exact-boundary-feasible",
+      bool(boundary_result.get("feasible")), repr(boundary_result)[:240])
 except Exception as exc:
     A("trivial-exact-boundary-anchor", False, repr(exc))
+    A("trivial-exact-boundary-feasible", False, repr(exc))
 
 print(json.dumps(out))
 '''
