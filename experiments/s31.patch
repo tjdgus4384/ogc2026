@@ -1,0 +1,67 @@
+--- solver/myalgorithm.py	2026-08-13 06:17:45.653335618 +0900
++++ builds/s31/myalgorithm.py	2026-08-13 09:20:48.210701430 +0900
+@@ -739,6 +739,64 @@
+     # With fewer distinct seeds the pattern cycles, which keeps at least one
+     # construction slot and never duplicates a basin needlessly.
+     starts = [seeds[0], []] + seeds[1:3] if seeds else []
++    # ROLLOUT-GUIDED DEFER SEED (S3, NEXT_SOLVER ladder). Deterministic:
++    # reconstruct_ordered is a pure function of the order, so each fixed
++    # defer strictly improves the construction (the non-deterministic
++    # insert_capped version of this idea was refuted as draw noise). Walks
++    # the EDD order; at each undecided sacrifice, evaluates defer offsets
++    # {5,15,40} by rollout to completion and keeps the best. Measured seeds:
++    # P4 -9.6%, P5 -14.1%, P6 -1.9% vs best-of-5, with negligible Z3 debt
++    # (the swo1 inversion mechanism does not apply). Budget-capped; self-
++    # gated on beating the best normal seed.
++    if seeds and (deadline - time.time()) > 120.0:
++        try:
++            _t0 = time.time()
++            _e3, _D3, _P3 = _fresh(p, 4)
++            _bo = sorted(range(n), key=lambda i: (_D3[i], -_P3[i]))
++            _off = {}
++
++            def _s3build(_extra=None):
++                _os = dict(_off)
++                if _extra:
++                    _os.update(_extra)
++                _sq = sorted(((k + _os.get(i, 0), k, i)
++                              for k, i in enumerate(_bo)))
++                _sq = [i for _, _, i in _sq]
++                if _e3.reconstruct_ordered([-1] * n, _sq, False, 7) != -1:
++                    return None, None
++                _td = [i for i in _sq if _e3.get_block(i)[6]
++                       and _e3.get_block(i)[5] > _D3[i]]
++                return _e3.objective(), _td
++
++            _cur, _td = _s3build()
++            _dec = set()
++            while _cur is not None and time.time() - _t0 < 40.0:
++                _nx = next((i for i in _td if i not in _dec), None)
++                if _nx is None:
++                    break
++                _dec.add(_nx)
++                _cc = {0: _cur}
++                for _d in (5, 15, 40):
++                    _o, _ = _s3build({_nx: _off.get(_nx, 0) + _d})
++                    if _o is not None:
++                        _cc[_d] = _o
++                _bd = min(_cc, key=lambda d: _cc[d][3])
++                if _bd != 0:
++                    _off[_nx] = _off.get(_nx, 0) + _bd
++                _cur, _td = _s3build()
++            if _cur is not None and seeds:
++                _e3b, _, _ = _fresh(p, 4)
++                _e3b.set_solution(seeds[0])
++                _e3b.build_occ(_e3b.horizon())
++                _so = _e3b.objective()[3]
++                _diag("s3seed", obj=round(_cur[3]), seed=round(_so),
++                      used=_cur[3] < _so, sec=round(time.time() - _t0, 1))
++                if _cur[3] < _so:
++                    _s3flat = _e3.get_solution()
++                    starts = [_s3flat, seeds[0], [], seeds[1]] \
++                             if len(seeds) > 1 else [_s3flat, seeds[0]]
++        except Exception:
++            pass
+     # The gate reserve scales with n: its rescue ladder is up to ~6 checker
+     # calls, and a checker call grows with instance size. Without the reserve
+     # the gate ran in the last ~2.5s before the hard deadline -- on the
