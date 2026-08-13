@@ -112,3 +112,24 @@ sequential scan is an optimizer rather than a new significance test.  An
 additional 5% P4/P5 edge is recorded separately.  The plateau test, not this
 public exhaustive scan, decides whether the construction changes a reachable
 basin.
+
+## Frozen fixed-iteration plateau gate
+
+For the final carried construction on each board, run two unlocked arms at
+ALNS seeds 7, 11, 23, and 41: the frozen free construction and the frozen stay
+construction.  Both use exactly 20,000 single-thread iterations, the full
+10-operator mask, identical ALNS parameters, and no exit or assignment lock.
+The stay action is allowed to wash out; this stage asks whether the constructed
+shell reaches a different plateau, not whether forcing the action is helpful.
+
+All 16 baseline trajectories on the API-only build must match the immutable
+job-74963 baselines exactly in initial/final hashes, components, checker result,
+audit, and run statistics.  All 32 new arms must be checker-feasible.  The stay
+constructor advances only with more wins than losses, pooled median at most
+-2%, a P4 or P5 board median at most -3%, and no board median above +2%.
+
+Passing authorizes a budget-capped native selector and disjoint-seed then Train
+validation; it still does not authorize the public action table.  Failure says
+the construction-only form washes out and moves the mechanism into the repair
+transition itself.  It does not justify another start hedge or a persistent
+stay lock.
