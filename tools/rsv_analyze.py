@@ -220,6 +220,9 @@ def load_gate(gate):
         rows.append({
             "instance": pair["instance"], "seed": pair["seed"],
             "a": av, "b": bv, "delta": (bv - av) / av * 100.0,
+            "dz1": float(b["obj1"]) - float(a["obj1"]),
+            "wall_a": float(a["wall"]), "wall_b": float(b["wall"]),
+            "tl": float(pair["tl"]),
             "prob_path": pathlib.Path(pair["probPath"]),
         })
     if missing:
@@ -250,6 +253,17 @@ def main():
     sum_delta = (sum(row["b"] for row in pairs) /
                  sum(row["a"] for row in pairs) - 1.0) * 100.0
     print(f"objective-sum delta {sum_delta:+.2f}%  (descriptive; scales differ by instance)")
+    best = min(pairs, key=lambda row: row["delta"])
+    worst = max(pairs, key=lambda row: row["delta"])
+    wall_delta = statistics.median(row["wall_b"] - row["wall_a"] for row in pairs)
+    overruns = sum(row[arm] > row["tl"] + 10.0
+                   for row in pairs for arm in ("wall_a", "wall_b"))
+    print(f"pair tails          best P{best['instance']} s{best['seed']} "
+          f"{best['delta']:+.1f}%; worst P{worst['instance']} s{worst['seed']} "
+          f"{worst['delta']:+.1f}%; |delta|>50% "
+          f"{sum(abs(row['delta']) > 50 for row in pairs)}")
+    print(f"runtime             median(B-A) {wall_delta:+.2f}s; "
+          f"wall > TL+10s {overruns}")
 
     by_instance = {}
     for row in pairs:
@@ -261,6 +275,7 @@ def main():
         instances.append({
             "instance": instance,
             "delta": statistics.mean(row["delta"] for row in group),
+            "dz1": statistics.mean(row["dz1"] for row in group),
             "seeds": len(group),
             **feat,
         })
@@ -298,13 +313,14 @@ def main():
               if row["peak_over_fill"] <= PRELIMINARY_MAX_EXPOSURE]
     outside = [row for row in instances
                if row["peak_over_fill"] > PRELIMINARY_MAX_EXPOSURE]
-    print_summary(f"exposure <= {PRELIMINARY_MAX_EXPOSURE}", summarize(inside))
-    print_summary(f"exposure >  {PRELIMINARY_MAX_EXPOSURE}", summarize(outside))
+    print_summary("inside prelim load", summarize(inside))
+    if outside:
+        print_summary("beyond prelim load", summarize(outside))
 
-    print("\ninstance  exposure  delta(mean seeds)  moved/blocks  at-limit  shift")
+    print("\ninstance  exposure  delta(mean seeds)      dZ1  moved/blocks  at-limit  shift")
     for row in sorted(instances, key=lambda item: item["peak_over_fill"]):
         print(f"{row['instance']:8d}  {row['peak_over_fill']:8.3f}  "
-              f"{row['delta']:+9.2f}% ({row['seeds']})     "
+              f"{row['delta']:+9.2f}% ({row['seeds']})  {row['dz1']:+7.1f}  "
               f"{row['moved_blocks']:3d}/{row['blocks']:<3d}       "
               f"{row['at_limit_blocks']:3d}      {row['mean_shift']:4.1f}")
 
