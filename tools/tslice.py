@@ -22,6 +22,7 @@ any improvement is attributable to the window, not to a different repair.
 """
 import json
 import os
+import random
 import pathlib
 import sys
 
@@ -29,10 +30,18 @@ REPO = pathlib.Path(__file__).resolve().parent.parent
 
 
 def main():
+    # 08-13 follow-up: the first version reinserted in the board's own
+    # due-date order, deliberately, so any gain would be attributable to the
+    # window. But that GUARANTEES returning to the same arrangement -- the same
+    # rule on the same input gives the same answer -- so 0/821 may have
+    # measured the reinsertion rule, not the neighbourhood. TRIES>1 shuffles
+    # the reinsertion order instead, which is the only way to tell them apart.
     prob_id = sys.argv[1]
     tl = float(sys.argv[2])
     seed = int(sys.argv[3]) if len(sys.argv) > 3 else 7
     widths = [int(x) for x in sys.argv[4:]] or [5, 10, 20, 40]
+    TRIES = int(os.environ.get("TSLICE_TRIES", "1"))
+    rng = random.Random(12345)
     sys.path.insert(0, str(REPO / "solver"))
     os.environ["OGC_SEED"] = str(seed)
     import myalgorithm as ma
@@ -68,26 +77,31 @@ def main():
             if not cut or len(cut) > n // 2:
                 continue
             tries += 1
-            st = list(base)
-            for i in cut:
-                st[i * 7 + 6] = 0
-            eng.set_solution(st)
-            eng.build_occ(hz)
-            # the board's own rule: earliest due first, longest first on ties
-            for i in sorted(cut, key=lambda i: (D[i], -P[i])):
-                eng.insert_capped(i, -1, -1)
-            o = eng.objective()
-            if all(eng.get_block(i)[6] for i in cut):
-                d = (o[3] - o0[3]) / o0[3] * 100
-                if d < -1e-9:
-                    hits += 1
-                    if d < best:
-                        best = d
-                        biggest = (t0, len(cut))
+            for attempt in range(TRIES):
+                st = list(base)
+                for i in cut:
+                    st[i * 7 + 6] = 0
+                eng.set_solution(st)
+                eng.build_occ(hz)
+                if attempt == 0:
+                    order = sorted(cut, key=lambda i: (D[i], -P[i]))
+                else:
+                    order = list(cut)
+                    rng.shuffle(order)
+                for i in order:
+                    eng.insert_capped(i, -1, -1)
+                o = eng.objective()
+                if all(eng.get_block(i)[6] for i in cut):
+                    d = (o[3] - o0[3]) / o0[3] * 100
+                    if d < -1e-9:
+                        hits += 1
+                        if d < best:
+                            best = d
+                            biggest = (t0, len(cut), attempt)
         eng.set_solution(base)
         eng.build_occ(hz)
-        tag = (f"best {best:+.2f}% at t={biggest[0]} ({biggest[1]} blocks)"
-               if biggest else "no window improves")
+        tag = (f"best {best:+.2f}% at t={biggest[0]} ({biggest[1]} blocks,"
+               f" try {biggest[2]})" if biggest else "no window improves")
         print(f"   W={W:<3d} {tries:3d} windows tried, {hits:3d} improved   {tag}")
 
 
