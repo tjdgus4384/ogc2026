@@ -38,3 +38,4 @@ campaign/math-first-r1/corpus/model-cases.jsonl
 # docs/CAMPAIGN_LEDGER.md. Kept on disk, not in Git.
 archive/campaigns-*.tar.zst
 logs/
+data/mini/
