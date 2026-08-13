@@ -4163,3 +4163,38 @@ prob_3 q=1.0   0W/4L  median +7.99%
 부수 관측: q0.4 기준선이 rep0/1/2에서 **정확히 78,705**로 동일하다 — P3의 population
 경로는 주어진 씨앗에서 결정적이다. 즉 P3의 목표 대비 격차는 산포가 아니라 고정값이며,
 드로를 더 뽑아 이길 수 있는 종류가 아니다.
+
+## 08-14 `seedlock`: v5.5가 고친 씨앗 잠금 회귀가 v6.0에 되살아났다 — 측정상 잠복
+
+`_seed_free`는 모든 후보를 `lockv`(드라이버의 부분 선호 잠금 포함)로 짓지만 **이긴
+순서를 다시 지을 때 잠금을 버린다**:
+
+```python
+if best[1] is not orders[-1]:
+    eng.reconstruct_ordered([-1] * n, best[1], False, 7)   # lockv가 아님
+```
+
+VERSION의 v5.5 항목이 정확히 이 증상을 "seed-lock repair"로 기록하고 있고,
+`git log -S`는 현재 줄을 **v6.0(08-12)**로 짚는다. 재도입이다.
+
+**측정:**
+
+```
+prob_3  sat=0.464 lock=yes   engine board == seeds[0]? False
+        고정 80개 중 ENGINE 보드 22개 위반, seeds[0] 0개
+        obj: 잠금없음 539,249  vs  잠금 1,280,210   (씨앗 단계 잠금 대가 2.4배)
+prob_4/5/6  sat=0.796/0.840/1.514 > 0.6 -> 잠금 없음, 분기가 무연산
+```
+
+**그러나 잠복이다.** `_seed_free`와 탐색 사이의 엔진 사용은 `set_assignment_lock`과
+탐색 호출뿐이고, P3가 타는 `_population_search`는 첫 창시자에서 `set_solution`으로
+엔진 보드를 덮어쓴다. 위반 보드가 답이 되는 경로는 **창시자가 전부 실패해
+`if not pop: return`으로 빠질 때뿐**이다. 성능 레버가 아니라 드문 경로의 보험이다.
+
+부수 관측 두 가지가 다음 실험을 낳았다:
+- 씨앗 단계에서 잠금이 **2.4배**를 요구한다 -> `lockq`는 위쪽만 쓸었다. 아래쪽
+  (0.0/0.15/0.28)은 시험된 적이 없다 -> `lockdown`
+- `_population_search`는 `starts`의 **빈 슬롯을 건너뛴다**(`if len(st0) != n*7:
+  continue`). `api.cpp:507`에서 빈 벡터는 "새로 구성하라"는 뜻이고 `run_portfolio`는
+  그렇게 한다. 즉 population은 창시자가 3명이고 유일한 독립 구성 슬롯을 잃는다
+  -> `pop4`

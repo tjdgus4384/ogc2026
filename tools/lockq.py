@@ -20,12 +20,15 @@ route P3 never takes.
     python3 tools/lockq.py prob_3 220 4
 """
 import json
+import os
 import pathlib
 import sys
 import time
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
-QS = (0.4, 0.6, 0.8, 1.0)
+# 0.4 (the shipped value) must stay FIRST: it is the paired baseline.
+QS = tuple(float(x) for x in
+           os.environ.get("OGC_LOCKQ", "0.4,0.6,0.8,1.0").split(","))
 
 
 def main():
