@@ -17,6 +17,7 @@ import argparse
 import hashlib
 import json
 import math
+import os
 import pathlib
 import random
 import statistics
@@ -107,6 +108,11 @@ def checked_record(ma, prob: dict, eng, n: int) -> dict:
 
 
 def run(args) -> None:
+    if (args.mode == "lock" and
+            os.environ.get("OGC_KEEP_ASSIGNMENT_LOCK") != "1"):
+        raise RuntimeError(
+            "lock arm requires OGC_KEEP_ASSIGNMENT_LOCK=1; shipped ALNS "
+            "releases assignment guidance after 60% of the budget")
     solver = args.solver.resolve()
     sys.path.insert(0, str(solver))
     import myalgorithm as ma
@@ -332,6 +338,104 @@ def collect(args) -> None:
     print(json.dumps(output["summary"], sort_keys=True), flush=True)
 
 
+def baseline_signature(report: dict) -> dict:
+    """Trajectory fields that must survive the diagnostic-only rebuild."""
+    return {
+        "instance": report["instance"],
+        "seed": report["seed"],
+        "iters": report["iters"],
+        "start_objective": report["start_objective"],
+        "start_flat_sha256": report["start_flat_sha256"],
+        "search_objective": report["search_objective"],
+        "search_flat_sha256": report["search_flat_sha256"],
+        "checker": report["checker"],
+        "audit": report["audit"],
+        "run_stats": report["run_stats"],
+    }
+
+
+def collect_persistent(args) -> None:
+    """Join a keep-lock rerun to the original baseline/start measurements."""
+    rows = []
+    aa_mismatches = []
+    for new_base_path in sorted(args.directory.glob("p*-s*-baseline.json")):
+        stem = new_base_path.name[:-len("-baseline.json")]
+        new_base = json.loads(new_base_path.read_text())
+        lock = json.loads((args.directory / f"{stem}-lock.json").read_text())
+        old_base = json.loads(
+            (args.reference / f"{stem}-baseline.json").read_text())
+        start = json.loads((args.reference / f"{stem}-start.json").read_text())
+        identity = (new_base["instance"], new_base["seed"], new_base["iters"])
+        if any((r["instance"], r["seed"], r["iters"]) != identity
+               for r in (lock, old_base, start)):
+            raise RuntimeError(f"joined arm identity mismatch at {stem}")
+        if baseline_signature(new_base) != baseline_signature(old_base):
+            aa_mismatches.append(stem)
+        if new_base["start_flat_sha256"] == lock["start_flat_sha256"]:
+            raise RuntimeError(f"baseline/lock unexpectedly share a start at {stem}")
+        if start["start_flat_sha256"] != lock["start_flat_sha256"]:
+            raise RuntimeError(f"start/lock initial bytes differ at {stem}")
+        if not lock["lock_held"]:
+            raise RuntimeError(f"persistent lock did not hold at {stem}")
+        a = new_base["checker"]
+        row = {
+            "instance": int(new_base["instance"]),
+            "seed": int(new_base["seed"]),
+            "baseline_feasible": bool(a["feasible"]),
+            "baseline": a["objective"],
+        }
+        for arm, report in (("start", start), ("lock", lock)):
+            b = report["checker"]
+            row[f"{arm}_feasible"] = bool(b["feasible"])
+            row[arm] = b["objective"]
+            row[f"{arm}_delta_pct"] = (
+                100.0 * (float(b["objective"]) - float(a["objective"])) /
+                float(a["objective"])
+                if a["feasible"] and b["feasible"] else None
+            )
+        rows.append(row)
+    if len(rows) != 16:
+        raise RuntimeError(f"expected 16 joined pairs, found {len(rows)}")
+
+    all_start_feasible = all(
+        r["baseline_feasible"] and r["start_feasible"] for r in rows)
+    all_lock_feasible = all(
+        r["baseline_feasible"] and r["lock_feasible"] for r in rows)
+    start_summary = arm_summary(rows, "start")
+    lock_summary = arm_summary(rows, "lock")
+    start_pass = arm_pass(start_summary, all_start_feasible)
+    lock_pass = arm_pass(lock_summary, all_lock_feasible)
+    if aa_mismatches:
+        verdict = "invalid_baseline_aa_mismatch"
+    elif lock_pass:
+        verdict = "persistent_lock_survives"
+    elif start_pass:
+        verdict = "start_only_survives"
+    elif not all_start_feasible or not all_lock_feasible:
+        verdict = "reject_infeasible"
+    else:
+        verdict = "reject_plateau_transfer"
+    output = {
+        "schema_version": 1,
+        "reference": str(args.reference.resolve()),
+        "rows": rows,
+        "summary": {
+            "baseline_aa_exact": not aa_mismatches,
+            "baseline_aa_mismatches": aa_mismatches,
+            "all_start_arms_checker_feasible": all_start_feasible,
+            "all_lock_arms_checker_feasible": all_lock_feasible,
+            "start": start_summary,
+            "lock": lock_summary,
+            "start_pass": start_pass,
+            "lock_pass": lock_pass,
+            "verdict": verdict,
+        },
+    }
+    (args.directory / "summary.json").write_text(
+        json.dumps(output, indent=2, sort_keys=True) + "\n")
+    print(json.dumps(output["summary"], sort_keys=True), flush=True)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     sub = parser.add_subparsers(dest="command", required=True)
@@ -347,6 +451,10 @@ def main() -> None:
     p_collect = sub.add_parser("collect")
     p_collect.add_argument("directory", type=pathlib.Path)
     p_collect.set_defaults(func=collect)
+    p_persistent = sub.add_parser("collect-persistent")
+    p_persistent.add_argument("directory", type=pathlib.Path)
+    p_persistent.add_argument("reference", type=pathlib.Path)
+    p_persistent.set_defaults(func=collect_persistent)
     args = parser.parse_args()
     args.func(args)
 

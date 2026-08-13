@@ -155,6 +155,10 @@ Source audit after launch found that the shipped ALNS intentionally clears
 score cannot decide the hard-lock gate.  Baseline and `start` are unaffected.
 A default-off `OGC_KEEP_ASSIGNMENT_LOCK=1` audit switch must be frozen in a
 new build, and only a rerun under that switch may populate the lock column.
+That rerun also repeats all 16 baseline arms on the new build.  Their starting
+hash, final hash, objective, ALNS statistics, audit, and checker result must be
+exactly equal to the original baseline before old `start` and new `lock` rows
+may be joined.  Timing is deliberately excluded from this A/A identity test.
 
 The `start` and `lock` states must have the same byte hash before search, every
 run must execute exactly 20,000 iterations, and the lock arm must finish with
