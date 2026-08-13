@@ -1,161 +1,130 @@
 #!/usr/bin/env python3
-"""Realize the master's (bay, entry) schedule through the real kernel.
+"""THE bottleneck, isolated: can we rebuild a packing we KNOW exists?
 
-master.py answers whether a better schedule EXISTS at a given density; this
-answers whether the kernel can BUILD it. The two failures the ledger records
-for schedule-like locks do not apply here, and the distinction is the point:
+Three refuted directions all died in the same place -- encoding-level
+crossover (children +104% above annealed parents), relax-then-realise (F5:
+29-48 of 200 blocks realised on P3), and assignment optimisation (19 of 200
+blocks have no seat at the proven optimum). Each found a good (bay, entry)
+and could not turn it into geometry. So one faithful realiser reopens all
+three at once, and that makes the realiser the architectural keystone.
 
-    asgcap pinned assignments into a FINISHED board       (bay full of the
-                                                           blocks that filled it)
-    the 40% argmax lock chose bays with no capacity model (collapse measured)
+It is also the rare question with GROUND TRUTH. Take an annealed board, keep
+only its (bay, entry) -- the board itself proves that schedule is realisable --
+and rebuild the geometry from empty. A perfect realiser returns the same
+objective. The shipped greedy returns +102% to +171%.
 
-Here the board starts EMPTY, the schedule respects per-(bay, day) capacity by
-construction, entries are scheduled -- not left to greedy -- and insertion
-follows the master's own day order, which is exactly the order the greedy
-itself builds in.
+This harness separates the two failure modes that were tangled together:
 
-Procedure: solve the master at rho, then insert blocks in ascending scheduled
-day (long stays first within a day), each forced to its (bay, entry <= d).
-Whatever fails its lock gets a second pass in its bay unconstrained, then a
-third anywhere -- those are the schedule's real casualties. Score on the
-engine, verify with the official checker, and print master-predicted vs
-realized. The realization gap IS the measurement:
+  DRIFT    greedy takes the earliest legal day, so blocks land before plan,
+           occupancy diverges and later blocks are pushed out
+  SPATIAL  even on the exact planned day, no position is found
 
-    realized ~ predicted    the schedule survives geometry; wire it in as the
-                            construction stage and gate it;
-    realized >> predicted   cumulative capacity is too loose a model of
-                            packability at this rho -- lower rho or add cuts.
+builds/ordf wires Ctx::entryFloor and Ctx::entryCap through
+reconstruct_ordered, so setting floor = cap = e PINS every block to its planned
+day and leaves a pure spatial question. The counts below are the measurement
+the architecture decision needs:
 
-    python3 tools/realize.py prob_4 0.65 [secs]
+  free      floor=[], cap=[]        the shipped realiser
+  floor     floor=e                 no earlier than plan
+  pinned    floor=e, cap=e          exactly on plan -- pure spatial failure
+
+If `pinned` seats nearly every block, greedy's weakness is day drift and a
+cheap fix exists. If it strands many, position choice itself is the wall and a
+real search (beam / backtracking) is required.
+
+    python3 tools/realize.py prob_5 600 7
 """
+import hashlib
 import json
-import math
-import os
 import pathlib
 import sys
-import time
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
-SC = 1000
-TGT = {"prob_3": 64695, "prob_4": 1908043, "prob_5": 7718486, "prob_6": 25452695}
-OURS = {"prob_3": 78710, "prob_4": 3021623, "prob_5": 10620093, "prob_6": 28851794}
+ORDF = str(REPO / "builds" / "ordf")
 
 
-def poly_area(v):
-    s = 0.0
-    for k in range(len(v)):
-        x1, y1 = v[k]
-        x2, y2 = v[(k + 1) % len(v)]
-        s += x1 * y2 - x2 * y1
-    return abs(s) / 2
-
-
-def solve_master(prob, rho, secs):
-    from ortools.sat.python import cp_model as cp
-    B, bays, W = prob["blocks"], prob["bays"], prob["weights"]
-    n, m = len(B), len(bays)
-    A = [b["width"] * b["height"] for b in bays]
-    u = [sum(A) / m / a for a in A]
-    uw = [int(round(SC * x)) for x in u]
-    wl = [b["workload"] for b in B]
-    R = [int(math.ceil(b["release_time"] - 1e-9)) for b in B]
-    D = [int(round(b["due_date"])) for b in B]
-    P = [max(1, int(math.ceil(b["processing_time"] - 1e-9))) for b in B]
-    PREF = [[float(v) for v in b["bay_preferences"]] for b in B]
-    REG = [[int(round(max(PREF[i]) - PREF[i][j])) for j in range(m)]
-           for i in range(n)]
-    AR = [int(round(min(max(poly_area(l) for l in sh["layers"])
-                        for sh in b["shape"]))) for b in B]
-    H = max(D) + 64
-    mdl = cp.CpModel()
-    x = [[mdl.NewBoolVar(f"x{i}_{j}") for j in range(m)] for i in range(n)]
-    s = [mdl.NewIntVar(R[i], H - P[i], f"s{i}") for i in range(n)]
-    e = [mdl.NewIntVar(R[i], H, f"e{i}") for i in range(n)]
-    t = [mdl.NewIntVar(0, H, f"t{i}") for i in range(n)]
-    for i in range(n):
-        mdl.AddExactlyOne(x[i])
-        mdl.Add(e[i] == s[i] + P[i])
-        mdl.Add(t[i] >= e[i] - D[i])
-    for j in range(m):
-        iv = [mdl.NewOptionalIntervalVar(s[i], P[i], e[i], x[i][j], f"iv{i}_{j}")
-              for i in range(n)]
-        mdl.AddCumulative(iv, AR, int(rho * A[j]))
-    tot = sum(wl)
-    V = []
-    for j in range(m):
-        v = mdl.NewIntVar(0, uw[j] * tot, f"v{j}")
-        mdl.Add(v == sum(uw[j] * wl[i] * x[i][j] for i in range(n)))
-        V.append(v)
-    hi = mdl.NewIntVar(0, max(uw) * tot, "hi")
-    lo = mdl.NewIntVar(0, max(uw) * tot, "lo")
-    mdl.AddMaxEquality(hi, V)
-    mdl.AddMinEquality(lo, V)
-    spread = mdl.NewIntVar(0, max(uw) * tot, "sp")
-    mdl.Add(spread == hi - lo)
-    z3 = mdl.NewIntVar(0, sum(max(r) for r in REG), "z3")
-    mdl.Add(z3 == sum(REG[i][j] * x[i][j] for i in range(n) for j in range(m)))
-    z1 = mdl.NewIntVar(0, n * H, "z1")
-    mdl.Add(z1 == sum(t))
-    mdl.Minimize(W["w1"] * SC * z1 + W["w2"] * spread + W["w3"] * SC * z3)
-    sv = cp.CpSolver()
-    sv.parameters.max_time_in_seconds = secs
-    sv.parameters.num_search_workers = 8
-    st = sv.Solve(mdl)
-    if st not in (2, 4):          # FEASIBLE, OPTIMAL
-        return None
-    sched = [(next(j for j in range(m) if sv.Value(x[i][j])), sv.Value(s[i]))
-             for i in range(n)]
-    return {"status": sv.StatusName(st), "obj": sv.ObjectiveValue() / SC,
-            "z1": sv.Value(z1), "z2": sv.Value(spread) / SC,
-            "z3": sv.Value(z3), "sched": sched}
+def cached(prob_id, tl, seed, solver_dir):
+    so = pathlib.Path(solver_dir) / "sscore.cpython-312-x86_64-linux-gnu.so"
+    stamp = f"{so.stat().st_mtime_ns}" if so.exists() else "noso"
+    h = hashlib.sha256(f"{solver_dir}|{stamp}".encode()).hexdigest()[:12]
+    p = REPO / "runs" / "boards" / f"{prob_id}_tl{int(tl)}_s{seed}_{h}.json"
+    if not p.exists():
+        sys.exit(f"no cached board {p.name}")
+    return json.loads(p.read_text())["base"]
 
 
 def main():
-    prob_id = sys.argv[1]
-    rho = float(sys.argv[2])
-    secs = float(sys.argv[3]) if len(sys.argv) > 3 else 240.0
-    sys.path.insert(0, str(REPO / "solver"))
-    os.environ.setdefault("OGC_SEED", "7")
-    import myalgorithm as ma
-    prob = json.load(open(REPO / "data" / "preliminary_test" / f"{prob_id}.json"))
+    pid, tl = sys.argv[1], float(sys.argv[2])
+    seed = int(sys.argv[3]) if len(sys.argv) > 3 else 7
+    ds = next(d for d in ("preliminary_test", "train_final", "train")
+              if (REPO / "data" / d / f"{pid}.json").exists())
+    prob = json.load(open(REPO / "data" / ds / f"{pid}.json"))
     n = len(prob["blocks"])
-
-    t0 = time.time()
-    M = solve_master(prob, rho, secs)
-    if M is None:
-        print(f"{prob_id} rho {rho}: master infeasible/unsolved")
-        return
-    print(f"{prob_id} rho {rho}: master {M['status']} obj {M['obj']:,.0f} "
-          f"(Z1={M['z1']} Z2={M['z2']:,.0f} Z3={M['z3']})  "
-          f"target {TGT[prob_id]:,}  our median {OURS[prob_id]:,}  "
-          f"[{time.time()-t0:.0f}s]")
-
+    sys.path.insert(0, ORDF)
+    import myalgorithm as ma
     eng, D, P = ma._fresh(prob, 4)
-    st = [0] * (n * 7)
-    eng.set_solution(st)
-    eng.build_occ(eng.horizon())
-    order = sorted(range(n), key=lambda i: (M["sched"][i][1], -P[i]))
-    exact = inbay = free = lost = 0
+    hz = eng.horizon()
+    base = cached(pid, tl, seed, str(REPO / "solver"))
+
+    bay = [base[i * 7] for i in range(n)]
+    e = [base[i * 7 + 4] for i in range(n)]
+    placed0 = sum(base[i * 7 + 6] for i in range(n))
+    eng.set_solution(base)
+    eng.build_occ(hz)
+    z1, z2, z3, tot = eng.objective()
+    print(f"{pid} s{seed}: annealed {tot:,.0f}  (z1 {z1:,.0f})"
+          f"  {placed0}/{n} placed", flush=True)
+
+    order = sorted(range(n), key=lambda i: (e[i], i))
+
+    def run(tag, floor, cap):
+        args = [list(bay), order, False, 7]
+        bad = eng.reconstruct_ordered(*args, floor or [], cap or [])
+        seated = sum(eng.get_block(i)[6] for i in range(n))
+        if bad != -1:
+            # reconstruct_ordered restores the backup on failure, so count how
+            # far it got by replaying without the aborting block
+            print(f"   {tag:<8} FAILED at block {bad}"
+                  f" (rank {order.index(bad)}/{n})", flush=True)
+            return None
+        o = eng.objective()
+        onday = sum(1 for i in range(n)
+                    if eng.get_block(i)[6] and eng.get_block(i)[4] == e[i])
+        early = sum(1 for i in range(n)
+                    if eng.get_block(i)[6] and eng.get_block(i)[4] < e[i])
+        late = sum(1 for i in range(n)
+                   if eng.get_block(i)[6] and eng.get_block(i)[4] > e[i])
+        print(f"   {tag:<8} {o[3]:>14,.0f} ({(o[3]-tot)/tot*100:+7.1f}%)"
+              f"  seated {seated}/{n}  on-plan {onday}"
+              f"  early {early}  late {late}", flush=True)
+        return o[3]
+
+    run("free", None, None)
+    run("floor", [max(0, x) for x in e], None)
+    run("pinned", [max(0, x) for x in e], [max(0, x) for x in e])
+
+    # pure spatial diagnosis: pin the days and place blocks ONE AT A TIME,
+    # never aborting, so we count exactly how many have no seat on their day.
+    eng.set_solution([0] * (n * 7))
+    eng.build_occ(hz)
+    miss = []
     for i in order:
-        j, d = M["sched"][i]
-        if eng.insert_capped(i, d, j):
-            exact += 1
-        elif eng.insert_capped(i, -1, j):
-            inbay += 1
-        elif eng.insert_capped(i, -1, -1):
-            free += 1
-        else:
-            lost += 1
+        if not eng.insert_capped(i, e[i], bay[i]):
+            miss.append(i)
+            continue
+        if eng.get_block(i)[4] != e[i]:
+            miss.append(i)
+    seated = sum(eng.get_block(i)[6] for i in range(n))
     o = eng.objective()
-    sol = ma._recs_to_sol(ma._extract(eng, n), eng.entry_ranks())
-    res = ma._check(prob, sol)
-    feas = res.get("feasible") if res else None
-    print(f"   realized: {o[3]:>12,.0f}  Z1={o[0]:.0f} Z2={o[1]:.0f} Z3={o[2]:.0f}"
-          f"   checker feasible={feas}")
-    print(f"   locks: {exact} at schedule, {inbay} late-in-bay, "
-          f"{free} anywhere, {lost} unplaced"
-          f"   realization gap {(o[3]-M['obj'])/M['obj']*100:+.1f}%"
-          f"   vs our median {(o[3]-OURS[prob_id])/OURS[prob_id]*100:+.1f}%")
+    print(f"   one-by-one, days pinned: {seated}/{n} seated,"
+          f" {len(miss)} off-plan or unseated  obj {o[3]:,.0f}"
+          f" ({(o[3]-tot)/tot*100:+.1f}%)", flush=True)
+    if miss:
+        big = sorted(miss, key=lambda i: -P[i])[:8]
+        print(f"      first misses by entry rank:"
+              f" {[order.index(i) for i in miss[:8]]}", flush=True)
+        print(f"      longest missed: P={[P[i] for i in big]}"
+              f" bays={[bay[i] for i in big]}", flush=True)
 
 
 if __name__ == "__main__":

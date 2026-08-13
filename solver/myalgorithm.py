@@ -713,7 +713,11 @@ def _arm_free(p, deadline, seed=7, tl=None):
     # on P3 where the unlocked control managed 97.3k (official-TL best
     # unlocked: 85,490). Cleared before gate/polish; unlocked fallback.
     asg = None
-    if spec and _saturation(p) < 0.6:
+    # LOCK/PREFP FRONTIER (v6.5). The two preference mechanisms are
+    # exclusive -- stacked they push locked boards over the tardiness edge --
+    # and this constant decides which a spec board gets. 0.6 was a bare
+    # constant; 0.85 was measured on three independent sets (see VERSION).
+    if spec and _saturation(p) < 0.85:
         pref = [b["bay_preferences"] for b in p["blocks"]]
         nn = len(pref)
         spread = sorted(range(nn),

@@ -1,16 +1,12 @@
-#!/bin/bash
+#!/usr/bin/env bash
 #SBATCH -J realize
 #SBATCH -N 1
-#SBATCH --exclusive
-#SBATCH -o slurm-%j.out
-export PYTHONNOUSERSITE=1
-PY="$PWD/.miniforge/envs/ogc2026/bin/python"
-mkdir -p runs/realize
-i=0
-for r in 0.60 0.65 0.70 0.75; do
-  c=$((i*8)); OMP_NUM_THREADS=4 taskset -c $c-$((c+7)) \
-    $PY -u tools/realize.py prob_3 $r 120 > runs/realize/prob_3-$r.txt 2>&1 &
-  i=$((i+1))
+#SBATCH -c 8
+#SBATCH --mem=24G
+#SBATCH -t 00:30:00
+set -euo pipefail
+REPO="${SLURM_SUBMIT_DIR:-$(pwd)}"
+PY="$REPO/.miniforge/envs/ogc2026/bin/python"
+for a in "prob_3 240 7" "prob_4 480 7" "prob_5 600 7" "prob_6 900 7" "prob_5 600 11"; do
+  OGC_SEED=$(echo $a|awk '{print $3}') "$PY" -u "$REPO/tools/realize.py" $a || true
 done
-wait
-for r in 0.60 0.65 0.70 0.75; do echo "##### rho $r"; cat runs/realize/prob_3-$r.txt; done
