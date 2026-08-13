@@ -63,12 +63,16 @@ This corrects a concrete search-vocabulary omission: ordinary repair samples
 release, resident exits, and a coarse stride, but `e_k-P_i`/`f_k-P_i` are the
 entry days at which the candidate's *exit* meets an event.  At each bay,
 orientation, and event day, use integral bay/bounding-box corners and snapped
-resident bounding-box contacts.  Exact geometry, not the bounding boxes,
-classifies the resulting candidates.  Deduplicate and keep at most
-`m*ceil(sqrt(n))` alternatives per free block after the incumbent, ordered by
-the candidate's nonnegative immediate tardiness/preference cost and then
-lexicographically.  This cap is frozen before score output and is identical in
-both arms.  Candidate hashes and the exact free ids are evidence fields.
+resident bounding-box contacts.  To bound raw enumeration before its score is
+known, each `(block,bay,event)` call retains the first
+`m*ceil(sqrt(n))` exact-rest-free rows in deterministic
+`(orientation,y,x)` order.  Across those per-event prefixes, deduplicate and
+keep at most `m*ceil(sqrt(n))` alternatives per free block after the incumbent,
+ordered by the candidate's nonnegative immediate tardiness/preference cost and
+then lexicographically.  These structural caps are frozen before score output
+and identical in both arms.  Saturated-call counts, candidate hashes, and the
+exact free ids are evidence fields; a negative certificate is conditional on
+this prefix-bounded vocabulary.
 
 The menu is deliberately bounded and therefore the only scope of a negative
 certificate.  It is, however, broad enough to change bay, day, orientation,
