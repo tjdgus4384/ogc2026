@@ -14,7 +14,7 @@
 # running eval once produced a wall=0.01s _trivial fallback.
 set -euo pipefail
 REPO="${SLURM_SUBMIT_DIR:-$(pwd)}"
-PY="$REPO/.miniforge/envs/ogc2026/bin/python"
+PY="${OGC_PY312:-$REPO/.miniforge/envs/ogc2026/bin/python}"
 DIR="$REPO/$1"
 cd "$DIR"
 # This env ships no python-config, so read EXT_SUFFIX from sysconfig instead:
