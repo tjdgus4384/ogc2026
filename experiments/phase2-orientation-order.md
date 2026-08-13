@@ -81,3 +81,27 @@ explicit loss; the reverse is an explicit recovery win.
 The screen is deliberately effect-size gated.  A trajectory-only change below
 this scale cannot plausibly close the current all-time-minimum gaps and should
 not consume another multi-day campaign.
+
+## Reachability verdict: job 74935
+
+The repaired checker-symmetric construction audit completed all 48 pairs.  The
+mechanism is live: 42 pairs changed and phase 2 succeeded in both arms on every
+board.  It is not constructively favorable: the changed comparisons produced
+16 wins, 23 losses, 3 ties, and one pair invalid in both arms, with pooled
+median delta +0.442%.
+
+| board | changed | W/L/T | median delta | phase-2 success OFF/ON |
+|---|---:|---:|---:|---:|
+| P3 | 7/12 | 3/1/3 | 0.000% | 50/53 |
+| P4 | 12/12 | 4/8/0 | +0.727% | 692/701 |
+| P5 | 11/12 | 3/8/0 | +0.742% | 1200/1198 |
+| P6 | 12/12 | 6/6/0 | +0.091% | 1857/1865 |
+
+The preregistered first gate asked whether the path was reachable and not an
+all-strict loss, so it advances despite this weak prior.  The primary screen
+now freezes one OFF `_seed_free` board per instance and loads those exact bytes
+in both processes.  OFF and ON then run seeds 7, 11, 23, and 41 for exactly
+20,000 single-thread ALNS iterations with the full 10-operator mask.  This
+common-start design measures only phase-2 repair ordering, not a second seed
+lottery.  The official checker gates every arm and the original primary-screen
+thresholds above remain unchanged.

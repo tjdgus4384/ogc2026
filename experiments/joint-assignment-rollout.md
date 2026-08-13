@@ -110,3 +110,54 @@ The next rerun selects the baseline by the checker-authoritative objective
 across all six orders and screens the fixed top-20 candidate vocabulary through
 the same gate.  No P3/P4/P6 delta from 74932 advances the route until that
 four-board rerun completes.
+
+## Causal construction verdict: job 74933
+
+The symmetric rerun completed on the frozen `builds/jasg-causal` artifact
+(`SOURCE_COMMIT=e19c7510...`, binary SHA-256 `37d650...`).  Every same-bay
+intervention reproduced its free baseline byte-for-byte, so the score changes
+below are causal assignment effects rather than new RNG draws.
+
+| board | checker-selected order | baseline | one forced decision | gated delta | null |
+|---|---|---:|---:|---:|---:|
+| P3 | noisy_a | 539,249 | block 197 -> bay 0: 501,605 | -6.981% | 200/200 |
+| P4 | due_long | 8,040,292 | block 13 -> bay 2: 6,674,831 | -16.983% | 150/150 |
+| P5 | due | 20,111,373 | block 57 -> bay 1: 18,296,095 | -9.026% | 200/200 |
+| P6 | noisy_a | 43,224,763 | block 183 -> bay 1: 42,103,320 | -2.594% | 250/250 |
+
+All four selected boards were checker-feasible and replay-exact.  P5 is also a
+useful warning against kernel-only selection: seven of its fixed top-20 raw
+actions were rejected by the checker.  The checker-authoritative screen, not
+the raw reconstruction score, selected the reported survivor.  The frozen
+advance rule is met independently on P3, P4, and P5.
+
+This is not a solver result.  The action was found exhaustively on each public
+board, and historical law F4 says a better seed commonly washes out under
+ALNS.  Historical hard-lock results also show that a constraint can preserve a
+decision while worsening the reachable basin.  Those two effects must be
+separated before spending a full driver budget on a sequential selector.
+
+## Frozen plateau-transfer kill test
+
+Job 74933's four JSON files are the immutable action manifest.  On the same
+causal build with `OGC_CAUSAL_BAY_RNG=1`, replay the recorded order and action
+and run three arms for exactly 20,000 single-thread ALNS iterations at seeds 7,
+11, 23, and 41:
+
+1. `baseline`: the recorded free construction with no lock;
+2. `start`: the causal construction, releasing the lock before ALNS; and
+3. `lock`: the identical causal construction, retaining only the selected
+   block-to-bay lock throughout ALNS.
+
+The `start` and `lock` states must have the same byte hash before search, every
+run must execute exactly 20,000 iterations, and the lock arm must finish with
+the selected block in the selected bay.  The official checker and production
+gate are authoritative; all 48 arms must be feasible.
+
+Each treatment is judged against its paired baseline.  It passes only with a
+pooled median at most -2%, more wins than losses, at least one P3/P4/P5 board
+median at most -3%, and no board median above +2%.  A passing `start` arm
+supports a universal action-selector/seed route; a passing `lock` arm supports
+a persistent steering route.  Neither authorizes the per-board oracle actions
+in production.  A survivor still needs a budget-capped sequential/beam action
+selector, equal-budget full-driver validation, and the declared Train splits.
