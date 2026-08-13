@@ -174,10 +174,17 @@ def cmd_collect(args):
     # median draw is our position; the minimum over a dozen seeds is a lottery
     # ticket and quoting it makes the gap to the target look far smaller than it
     # is (P4: best draw +25% against a median of +59%).
+    # ...and only for the preliminary boards. `alltime_min` is keyed P3..P6 on
+    # the PRELIMINARY instances; a train/train_final gate has its own prob_3
+    # that shares the number and nothing else. Applying the table across
+    # datasets printed silent nonsense (train_final prob_3 read as "+6890.8%
+    # vs target" on 08-13) before it crashed on the first id with no entry.
+    if manifest.get("dataset") != "preliminary_test":
+        return
     print("   -- median draw vs all-time minimum (best-of-N in parens) --")
     for inst in manifest["instances"]:
         sel = sorted((r["b"] for r in rows if r["instance"] == inst))
-        if not sel:
+        if not sel or f"P{inst}" not in amin:
             continue
         tgt = amin[f"P{inst}"]["objective"]
         med = sel[len(sel) // 2] if len(sel) % 2 else \
