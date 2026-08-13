@@ -104,6 +104,47 @@ def synthetic_problem() -> dict:
     }
 
 
+def large_batch_problem() -> dict:
+    common = {
+        "release_time": 1, "due_date": 3, "processing_time": 2,
+        "workload": 1, "bay_preferences": [1],
+    }
+    simple = [{"orientation": 0, "layers": [square(0, 0, 1, 1)]}]
+    tall = [{"orientation": 0,
+             "layers": [square(0, 0, 1, 1), square(2, 0, 3, 1)]}]
+    return {
+        "bays": [{"width": 22, "height": 1}],
+        "weights": {"w1": 1, "w2": 1, "w3": 1},
+        # ID 19 must enter before ID 0.  IDs 1..18 are disjoint fillers that
+        # push the same (bay,day) batch past the old cap of 16.
+        "blocks": [dict(common, shape=tall)]
+                  + [dict(common, shape=simple) for _ in range(19)],
+    }
+
+
+def audit_large_batch(ma) -> dict:
+    prob = large_batch_problem()
+    eng = ma._build_engine(prob)
+    eng.build_occ(16)
+    if not eng.place_at(19, 0, 0, 2, 0, 1):
+        raise AssertionError("large-batch directional resident failed")
+    for block in range(1, 19):
+        if not eng.place_at(block, 0, 0, block + 3, 0, 1):
+            raise AssertionError(f"large-batch filler {block} failed")
+    if not eng.place_at(0, 0, 0, 0, 0, 1):
+        raise AssertionError("large-batch final placement failed")
+    entry = list(eng.entry_ranks())
+    if not entry[19] < entry[0]:
+        raise AssertionError(f"large-batch topological order lost: {entry}")
+    exits = list(eng.exit_ranks())
+    recs = ma._extract(eng, 20)
+    checked = ma._check(prob, ma._recs_to_sol(recs, entry, exits))
+    if not checked or not checked.get("feasible"):
+        raise AssertionError(f"checker rejected large-batch order: {checked}")
+    return {"size": 20, "entry_rank_19": entry[19],
+            "entry_rank_0": entry[0], "checker_feasible": True}
+
+
 def audit_synthetic(ma) -> dict:
     prob = synthetic_problem()
     eng = ma._build_engine(prob)
@@ -207,7 +248,8 @@ def main() -> None:
     import myalgorithm as ma
     checker = load_module(REPO / "solver" / "utils.py", "exit_lifo_official_utils")
 
-    report = {"synthetic": audit_synthetic(ma), "boards": []}
+    report = {"synthetic": audit_synthetic(ma),
+              "large_batch": audit_large_batch(ma), "boards": []}
     for problem_path, solution_path in discover_boards(args.source_repo.resolve()):
         row = audit_board(ma, checker, problem_path, solution_path)
         report["boards"].append(row)
