@@ -1,0 +1,21 @@
+--- solver/myalgorithm.py	2026-08-13 06:17:45.653335618 +0900
++++ builds/spec5/myalgorithm.py	2026-08-13 10:21:58.356544853 +0900
+@@ -173,6 +173,18 @@
+     (-7.0%) but pays on 4-bay (P5 +4.5%) and oversaturated (P6 +2.6%)
+     boards. Keys on runtime structure -- bay count and the bbox-area
+     saturation of the on-time demand -- not on problem identity."""
++    # The >=4 cutoff was extrapolated from ONE measurement (P5, the only
++    # 4-bay board in the preliminary set, +4.5%) to every board with four or
++    # more bays. Across the 86 instances we hold that is 32 boards -- 37% of
++    # the distribution -- and most of them satisfy sat < 1.0, i.e. the spec
++    # mechanisms would be ON but for the bay-count veto. The hidden finals
++    # draw from the same distribution (train_final alone has 12 four-bay and
++    # 5 five-bay boards), so the cutoff is a generalization risk, not a
++    # preliminary-set detail. This variant keeps the saturation rule -- the
++    # part with a mechanism behind it -- and drops the bay-count veto, to be
++    # judged on the whole train_final set rather than on P3-P6.
++    if os.environ.get("OGC_SPEC5", "0") == "1":
++        return _saturation(p) < 1.0
+     if len(p["bays"]) >= 4:
+         return False
+     return _saturation(p) < 1.0
