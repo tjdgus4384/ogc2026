@@ -29,3 +29,21 @@ delta is at most -3%, all outputs are checker-feasible, and neither arm exceeds
 the common budget by more than gate overhead. The 0.30 cell cannot rescue a
 failed primary screen. Passing triggers disjoint seeds and train_final;
 failing closes S5 rather than spawning new share constants.
+
+## Verdict: job 74950
+
+The equal-budget rerun finished all independent processes and Slurm correctly
+returned failure because two primary outputs were not checker-feasible.
+
+| cell | control | candidate | delta | checker result |
+|---|---:|---:|---:|---|
+| P4 s7, 0.15 | 3,027,564 | 3,247,336 | +7.259% | both feasible |
+| P5 s7, 0.15 | 10,924,222 | -- | -- | candidate rejected |
+| P5 s11, 0.15 | -- | not run | -- | control rejected |
+| P5 s7, 0.30 diagnostic | 10,815,920 | 10,306,196 | -4.713% | both feasible |
+
+The primary screen has zero valid improvements, includes two checker failures,
+and the sole valid primary comparison regresses.  The non-pooled 0.30 diagnostic
+cannot rescue it by preregistration.  S5 is closed: there is no share sweep,
+independent replication, or Train run.  The four raw process logs and a compact
+verdict are frozen in `results/s5-recovery-74950/`.

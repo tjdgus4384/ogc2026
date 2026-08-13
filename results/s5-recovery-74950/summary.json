@@ -1,0 +1,46 @@
+{
+  "diagnostic_0_30": {
+    "candidate": 10306196,
+    "candidate_feasible": true,
+    "control": 10815920,
+    "control_feasible": true,
+    "delta_pct": -4.712719768637,
+    "instance": 5,
+    "seed": 7
+  },
+  "job_id": 74950,
+  "primary": [
+    {
+      "candidate": 3247336,
+      "candidate_feasible": true,
+      "control": 3027564,
+      "control_feasible": true,
+      "delta_pct": 7.259037298633,
+      "instance": 4,
+      "seed": 7
+    },
+    {
+      "candidate": null,
+      "candidate_feasible": false,
+      "control": 10924222,
+      "control_feasible": true,
+      "delta_pct": null,
+      "instance": 5,
+      "seed": 7
+    },
+    {
+      "candidate": null,
+      "candidate_feasible": null,
+      "control": null,
+      "control_feasible": false,
+      "delta_pct": null,
+      "instance": 5,
+      "seed": 11
+    }
+  ],
+  "primary_all_checker_feasible": false,
+  "primary_improvements": 0,
+  "schema_version": 1,
+  "slurm_state": "FAILED",
+  "verdict": "reject_s5"
+}

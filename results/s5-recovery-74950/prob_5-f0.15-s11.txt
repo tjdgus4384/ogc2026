@@ -1,0 +1,9 @@
+Traceback (most recent call last):
+  File "/data_fast/home/tjdgus4384/priv/ogc2026-worktrees/codex-fundamental/tools/s5_split.py", line 110, in <module>
+    main()
+  File "/data_fast/home/tjdgus4384/priv/ogc2026-worktrees/codex-fundamental/tools/s5_split.py", line 58, in main
+    cA = checked_objective(ma, prob, engA, n)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/data_fast/home/tjdgus4384/priv/ogc2026-worktrees/codex-fundamental/tools/s5_split.py", line 37, in checked_objective
+    raise RuntimeError(f"checker gate failed: {result}")
+RuntimeError: checker gate failed: {'feasible': False, 'stage': 2, 'violations': ['Stage2: t=10: block 17 entry obstructed by block 162 (new_layer=0, exist_layer=0, kind=collision, area=0.000)'], 'objective': None, 'obj1': None, 'obj2': None, 'obj3': None}

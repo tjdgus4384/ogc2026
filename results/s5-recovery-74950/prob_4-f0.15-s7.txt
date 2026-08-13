@@ -1,0 +1,2 @@
+prob_4 seed 7 budget 400s: control 3,027,564  kernel=3,027,564 Z1=179 setup=0.6s wall=400.1s gate=0.2s
+   candidate: construct 15s -> 7,270,526, anneal 385s -> 3,247,336  kernel=3,247,336 Z1=197 wall=400.0s gate=0.2s   vs control +7.26%
