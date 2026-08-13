@@ -46,27 +46,26 @@ def main():
         for k, i in enumerate(base_order):
             seq.append((k + offs.get(i, 0), k, i))
         seq.sort()
-        eng.set_solution([0] * (n * 7)); eng.build_occ(hz)
-        tardy = []
-        for _, _, i in seq:
-            if not eng.insert_capped(i, -1, -1):
-                return None, None
-            b = eng.get_block(i)
-            if b[6] and b[5] > D[i]:
-                tardy.append(i)
+        seq = [i for _, _, i in seq]
+        # deterministic: reconstruct_ordered is a pure function of the order
+        # (the S2 lesson -- insert_capped draws made the loop non-monotone)
+        if eng.reconstruct_ordered([-1] * n, seq, False, 7) != -1:
+            return None, None
+        tardy = [i for i in seq if eng.get_block(i)[6]
+                 and eng.get_block(i)[5] > D[i]]
         return eng.objective(), tardy
 
     t0 = time.time()
     cur, tardy = build()
     decided = set()
     rolls = 0
-    while time.time() - t0 < 120.0:
+    while time.time() - t0 < 150.0:
         nxt = next((i for i in tardy if i not in decided), None)
         if nxt is None:
             break
         decided.add(nxt)
         cand = {0: cur}
-        for d in (5, 15):
+        for d in (5, 15, 40):
             o, _ = build({nxt: offset.get(nxt, 0) + d})
             rolls += 1
             if o is not None:
