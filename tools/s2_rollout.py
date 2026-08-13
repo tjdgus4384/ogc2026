@@ -37,23 +37,22 @@ def main():
     order = sorted(range(n), key=lambda i: (D[i], -P[i]))     # plain EDD
 
     def construct(prefix_actions):
-        """prefix_actions: {position: ('defer',k)|('bay',j)}; returns final obj."""
-        eng.set_solution([0] * (n * 7)); eng.build_occ(hz)
+        """DETERMINISTIC construction: reconstruct_ordered is a pure function
+        of the order (fixed internal seed 7). The first S2/S3 ran on
+        insert_capped, whose per-call RNG consumption made every build a fresh
+        draw -- the measured "edges" were draw noise, and S3's monotone loop
+        came out WORSE than its own baseline, which is what exposed it. The
+        instrument discipline again: the evaluator must be deterministic
+        before its comparisons mean anything. Bay-forcing variants are
+        dropped (not expressible under reconstruct_ordered; defers carry the
+        debt-free signal anyway)."""
         seq = list(order)
-        # apply deferrals by reordering the sequence
         for pos in sorted(prefix_actions, reverse=True):
             act = prefix_actions[pos]
             if act[0] == 'defer':
                 b = seq.pop(pos); seq.insert(min(len(seq), pos + act[1]), b)
-        forced = {pos: a[1] for pos, a in prefix_actions.items()
-                  if a[0] == 'bay'}
-        for k, i in enumerate(seq):
-            j = forced.get(k, -1)
-            if not eng.insert_capped(i, -1, j):
-                if j >= 0 and not eng.insert_capped(i, -1, -1):
-                    return None
-                elif j < 0:
-                    return None
+        if eng.reconstruct_ordered([-1] * n, seq, False, 7) != -1:
+            return None
         return eng.objective()
 
     t0 = time.time()
@@ -62,14 +61,12 @@ def main():
     print(f"{prob_id} seed {seed}: S1 rollout cost {t1:.2f}s,"
           f" baseline {base[3]:,.0f}  Z1={base[0]:.0f}")
 
-    # find the first K sacrifice positions in the baseline
-    eng.set_solution([0] * (n * 7)); eng.build_occ(hz)
-    tardy_pos = []
-    for k, i in enumerate(order):
-        eng.insert_capped(i, -1, -1)
-        b = eng.get_block(i)
-        if b[6] and b[5] > D[i]:
-            tardy_pos.append(k)
+    # sacrifice positions from the deterministic baseline board
+    construct({})
+    pos_of = {i: k for k, i in enumerate(order)}
+    tardy_pos = sorted(pos_of[i] for i in range(n)
+                       if eng.get_block(i)[6]
+                       and eng.get_block(i)[5] > D[i])
     print(f"   {len(tardy_pos)} sacrifice positions; probing first 8")
 
     wins = 0
@@ -78,10 +75,8 @@ def main():
         variants = {
             'defer5':  {pos: ('defer', 5)},
             'defer15': {pos: ('defer', 15)},
+            'defer40': {pos: ('defer', 40)},
         }
-        pr = PREF[i]
-        second = sorted(range(len(pr)), key=lambda j: -pr[j])[1]
-        variants['bay2nd'] = {pos: ('bay', second)}
         row = []
         for name, acts in variants.items():
             o = construct(acts)
