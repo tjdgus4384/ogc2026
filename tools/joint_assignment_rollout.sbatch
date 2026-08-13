@@ -8,7 +8,21 @@
 set -uo pipefail
 
 ROOT="${OGC_ROOT:-$PWD}"
-PY="${OGC_PY312:-$ROOT/.miniforge/envs/ogc2026/bin/python}"
+if [[ -n "${OGC_PY312:-}" ]]; then
+  PY="$OGC_PY312"
+elif [[ -x "$ROOT/.miniforge/envs/ogc2026/bin/python" ]]; then
+  PY="$ROOT/.miniforge/envs/ogc2026/bin/python"
+else
+  # Linked persistent worktrees intentionally do not duplicate the large
+  # environment.  Resolve the canonical checkout through Git's common dir.
+  COMMON_DIR="$(git -C "$ROOT" rev-parse --path-format=absolute --git-common-dir)"
+  CANONICAL_ROOT="$(dirname "$COMMON_DIR")"
+  PY="$CANONICAL_ROOT/.miniforge/envs/ogc2026/bin/python"
+fi
+if [[ ! -x "$PY" ]]; then
+  echo "Python 3.12 environment not found: $PY" >&2
+  exit 2
+fi
 SOLVER="${1:-$ROOT/builds/pc2}"
 OUT="${2:-$ROOT/runs/joint-assignment-rollout-${SLURM_JOB_ID}}"
 mkdir -p "$OUT"

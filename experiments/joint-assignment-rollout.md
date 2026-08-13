@@ -54,3 +54,9 @@ completed.  Their apparent deltas are not verdicts because the same-bay RNG
 control had not yet been measured.  The corrected rerun adds that control and
 uses the production gate symmetrically; no score from 74887 is eligible for an
 advance decision.
+
+Job 74922 exited before launching Python because the first harness version
+assumed that a linked worktree duplicated the canonical checkout's
+`.miniforge` environment.  It produced no measurement.  The harness now
+resolves that environment through Git's common directory while keeping all
+source and output artifacts in the persistent worktree.
