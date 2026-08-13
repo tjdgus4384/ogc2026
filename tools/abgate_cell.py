@@ -14,6 +14,8 @@ import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 
+from abgate_seal import file_sha256, tree_seal
+
 # Solve in a fresh process, then score with the checker the gate pins for BOTH
 # variants, so a candidate can never be judged by its own copy of utils.py.
 RUNNER = r'''
@@ -64,6 +66,9 @@ def run_variant(py, solver_dir, checker_dir, prob_path, tl, seed, cpus, extra):
 
 
 def run_pair(py, manifest, pair, cpus):
+    expected_prob = pair.get("probSha256")
+    if expected_prob and file_sha256(pair["probPath"]) != expected_prob:
+        raise RuntimeError(f"problem changed after submission: {pair['probPath']}")
     arms = {"A": (manifest["baseDir"], manifest["baseEnv"]),
             "B": (manifest["candDir"], manifest["candEnv"])}
     order = ["A", "B"] if pair["order"] == "AB" else ["B", "A"]
@@ -79,6 +84,24 @@ def run_pair(py, manifest, pair, cpus):
 def main():
     gate, idx, py = pathlib.Path(sys.argv[1]), int(sys.argv[2]), sys.argv[3]
     manifest = json.loads((gate / "manifest.json").read_text())
+    harness_seal = manifest.get("harnessSeal")
+    if harness_seal and tree_seal(pathlib.Path(__file__).resolve().parent) != harness_seal:
+        sys.exit("gate harness changed after submission")
+    seals = manifest.get("seals")
+    if seals:
+        roots = {"base": manifest["baseDir"],
+                 "candidate": manifest["candDir"],
+                 "checker": manifest["checkerDir"]}
+        for name, root in roots.items():
+            actual = tree_seal(root)
+            if actual != seals[name]:
+                before, after = seals[name], actual
+                changed = sorted(key for key in before.keys() & after.keys()
+                                 if before[key] != after[key])
+                missing = sorted(before.keys() - after.keys())
+                added = sorted(after.keys() - before.keys())
+                sys.exit(f"{name} tree changed after submission: "
+                         f"changed={changed}, missing={missing}, added={added}")
     pairs = [p for p in manifest["pairs"] if p["cell"] == idx]
     cpus = sorted(os.sched_getaffinity(0))
     # 4 pinned cores per pair = the grading envelope; disjoint slots per pair.

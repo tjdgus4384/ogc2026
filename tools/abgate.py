@@ -24,8 +24,11 @@ import json
 import math
 import os
 import pathlib
+import shutil
 import subprocess
 import sys
+
+from abgate_seal import file_sha256, seal_id, tree_seal
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
 REFS = json.load(open(REPO / "data" / "prelim_refs.json"))
@@ -50,11 +53,13 @@ def cmd_submit(args):
     seeds = [int(x) for x in args.seeds.split(",")]
     base = pathlib.Path(args.base).resolve()
     cand = pathlib.Path(args.cand).resolve() if args.cand else base
+    checker = pathlib.Path(args.checker).resolve()
     data = REPO / "data" / args.data
     # Instance-major so a cell's pairs share a time limit. A cell ends only
     # when its slowest pair does, so mixing P3 (2x240s) with P6 (2x900s) parks
     # the P3 cores for twenty minutes.
     pairs = []
+    prob_hashes = {}
     for ii, inst in enumerate(insts):
         for si, seed in enumerate(seeds):
             if args.tl:
@@ -63,9 +68,11 @@ def cmd_submit(args):
                 tl = REFS["hidden_specs"][f"P{inst}"]["tl"]
             else:
                 sys.exit(f"no official TL for instance {inst}; pass --tl")
+            prob_path = data / f"prob_{inst}.json"
+            prob_hashes.setdefault(prob_path, file_sha256(prob_path))
             pairs.append({
                 "idx": len(pairs), "instance": inst, "seed": seed, "tl": tl,
-                "probPath": str(data / f"prob_{inst}.json"),
+                "probPath": str(prob_path), "probSha256": prob_hashes[prob_path],
                 # Counterbalance on seed+instance parity so each arm runs first
                 # about half the time, in every cell: a systematic first-run or
                 # second-run effect then cannot masquerade as a treatment one.
@@ -76,30 +83,73 @@ def cmd_submit(args):
     for i, pair in enumerate(pairs):
         pair["cell"] = i // args.per_cell
     ncells = (len(pairs) + args.per_cell - 1) // args.per_cell
-    manifest = {
-        "tag": args.tag, "baseDir": str(base), "candDir": str(cand),
-        "baseEnv": parse_env(args.base_env), "candEnv": parse_env(args.cand_env),
-        # One checker for both arms, pinned independently of either solver dir:
-        # the two utils.py in this repo differ only by input-validation guards,
-        # and the stricter one must judge every arm.
-        "checkerDir": str(pathlib.Path(args.checker).resolve()),
-        "dataset": args.data,
-        "instances": insts, "seeds": seeds, "pairs": pairs,
-    }
     if args.dry:
-        print(json.dumps({k: v for k, v in manifest.items() if k != "pairs"},
-                         indent=2, sort_keys=True))
+        seals = {"base": tree_seal(base), "candidate": tree_seal(cand),
+                 "checker": tree_seal(checker)}
+        print(json.dumps({
+            "tag": args.tag, "baseDir": str(base), "candDir": str(cand),
+            "checkerDir": str(checker), "baseEnv": parse_env(args.base_env),
+            "candEnv": parse_env(args.cand_env), "dataset": args.data,
+            "instances": insts, "seeds": seeds,
+            "sealIds": {name: seal_id(value) for name, value in seals.items()},
+            "sealFiles": {name: len(value) for name, value in seals.items()},
+        }, indent=2, sort_keys=True))
         print(f"would submit {len(pairs)} pairs in {ncells} cells "
               f"({args.per_cell}/cell, longest TL {max(p['tl'] for p in pairs)}s "
               f"-> cell wall about {2 * max(p['tl'] for p in pairs) // 60} min)")
         return
     gate.mkdir(parents=True)
+    snapshots = gate / "snapshots"
+    snapshots.mkdir()
+    materialized = {}
+
+    def snapshot(role, source):
+        key = str(source)
+        if key in materialized:
+            return materialized[key]
+        before = tree_seal(source)
+        dest = snapshots / role
+        shutil.copytree(source, dest,
+                        ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+        after = tree_seal(dest)
+        if after != before:
+            sys.exit(f"{source} changed while its gate snapshot was copied")
+        materialized[key] = dest.resolve()
+        return materialized[key]
+
+    base_snapshot = snapshot("base", base)
+    cand_snapshot = snapshot("candidate", cand)
+    checker_snapshot = snapshot("checker", checker)
+    harness = gate / "harness"
+    harness.mkdir()
+    for name in ("abgate.sbatch", "abgate_cell.py", "abgate_seal.py"):
+        shutil.copy2(REPO / "tools" / name, harness / name)
+    manifest = {
+        "tag": args.tag,
+        "baseDir": str(base_snapshot), "candDir": str(cand_snapshot),
+        "checkerDir": str(checker_snapshot),
+        "originalDirs": {"base": str(base), "candidate": str(cand),
+                         "checker": str(checker)},
+        "harnessDir": str(harness.resolve()),
+        "harnessSeal": tree_seal(harness),
+        "baseEnv": parse_env(args.base_env), "candEnv": parse_env(args.cand_env),
+        # One checker for both arms, pinned independently of either solver dir.
+        "dataset": args.data,
+        "instances": insts, "seeds": seeds, "pairs": pairs,
+        # Jobs run from immutable, gate-local snapshots.  Seals make accidental
+        # mutation fail before import and preserve exact ignored-build bytes.
+        "seals": {
+            "base": tree_seal(base_snapshot),
+            "candidate": tree_seal(cand_snapshot),
+            "checker": tree_seal(checker_snapshot),
+        },
+    }
     (gate / "manifest.json").write_text(
         json.dumps(manifest, indent=2, sort_keys=True) + "\n")
     out = subprocess.run(
         ["sbatch", "-p", args.partition,
          f"--array=0-{ncells - 1}%{args.concurrent}",
-         str(REPO / "tools" / "abgate.sbatch")],
+         str(harness / "abgate.sbatch")],
         cwd=REPO, capture_output=True, text=True,
         env={**os.environ, "OGC_ABGATE_DIR": str(gate)})
     if out.returncode != 0:
