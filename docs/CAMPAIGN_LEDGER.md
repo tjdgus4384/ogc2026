@@ -2508,3 +2508,24 @@ P6 (2.19)                 2일            154/250  (62%)            5일
 **원리적 수정안 (train이 음수를 확인할 때만 만든다).** 밀기를 슬랙의 일부로 제한한다 —
 `eBot`을 `R + slack/2` 이상으로는 밀지 않으면 정시 창의 유연성이 남는다. 실행 중
 계산되므로 `m>=4` 같은 구조 하드코딩이 아니다. 순서를 지켜 측정 후에 만든다.
+
+### rsv 채택 전제조건: A팔이 출하본의 충실한 대역인가 (확정)
+
+`builds/rsv` vs `solver/` 전체 diff:
+
+```
+knobs.hpp    rsv() 추가 — OGC_RSV 미설정이면 0
+core.hpp     packFill, dayLoadE 필드 추가 (순수 추가)
+api.cpp      dayLoadE 계산 + packFill 저장 — 기존 fillRatio/dayLoad는 불변
+repair.hpp   rs = knobs::rsv()!=0 && !dayLoadE.empty()
+             거짓이면 dl=dayLoad, thr=fillRatio — 출하본과 같은 식   ← 유일한 행동 지점
+```
+
+`myalgorithm.py`, `utils.py`, `alns.hpp`, `occ.hpp`, `crane.hpp`, `geometry.hpp`는
+바이트 동일. **`fillRatio`·`dayLoad`를 건드리지 않으므로 밀도 스크린(repair.hpp:102)도
+불변**이다 — r1이 섞었던 교란이 여기엔 없다.
+
+따라서 env 미설정 상태(채점 서버)에서 `builds/rsv`는 출하본과 행동이 같고, 게이트의
+A팔은 출하본의 충실한 대역이다. 구성 목적값 A/A(4보드×3순서 완전 일치)와 벽시계
+동일(587.4 vs 587.3s 중앙)이 이를 뒷받침한다. **채택은 `rs`를 항상 참으로 승격하고
+env 스위치를 제거하는 것**이 된다 — 결함 수리를 스위치 뒤에 남길 이유가 없다.
