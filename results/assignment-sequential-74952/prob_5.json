@@ -1,0 +1,222 @@
+{
+  "additional_delta_pct": -1.8224763262324557,
+  "beam_width": 2,
+  "cumulative_delta_pct": -10.68410396445832,
+  "depths": [
+    {
+      "beam": [
+        {
+          "actions": [
+            {
+              "bay": 1,
+              "block": 57
+            },
+            {
+              "bay": 3,
+              "block": 118
+            }
+          ],
+          "checker": {
+            "feasible": true,
+            "flat_sha256": "22dd6f5915c06e5b590db61825d698ce407e44212f592af26da248eaf52cfc07",
+            "objective": 18075336.0,
+            "rescued": false,
+            "solution_sha256": "94d868abd3b4f621d16eee5c63e2e6479cfebd0fb100c2e71e67bf68e1769ee8"
+          },
+          "components": [
+            1306.0,
+            1116.0,
+            4922.0,
+            18075336.0
+          ],
+          "flat_sha256": "22dd6f5915c06e5b590db61825d698ce407e44212f592af26da248eaf52cfc07",
+          "raw_objective": 18075336.0
+        },
+        {
+          "actions": [
+            {
+              "bay": 1,
+              "block": 57
+            },
+            {
+              "bay": 1,
+              "block": 134
+            }
+          ],
+          "checker": {
+            "feasible": true,
+            "flat_sha256": "ee9d673fdad9b424713449b89684bac83acf1913d3891066beee8df75522fead",
+            "objective": 18114575.0,
+            "rescued": false,
+            "solution_sha256": "edae0e7bbbbd78f9d8253c2c061c2cb75e4815b344929ce75e6ee4a51bd95d1f"
+          },
+          "components": [
+            1311.0,
+            3221.0,
+            4605.0,
+            18114575.0
+          ],
+          "flat_sha256": "ee9d673fdad9b424713449b89684bac83acf1913d3891066beee8df75522fead",
+          "raw_objective": 18114575.0
+        }
+      ],
+      "built": 796,
+      "checker_rejected": 0,
+      "checker_screened": 20,
+      "depth": 1,
+      "failed": 0,
+      "null_byte_identical": 199,
+      "null_tested": 199,
+      "parents": 1,
+      "raw_losses": 556,
+      "raw_wins": 41,
+      "strict_improving_children": 20
+    },
+    {
+      "beam": [
+        {
+          "actions": [
+            {
+              "bay": 1,
+              "block": 57
+            },
+            {
+              "bay": 1,
+              "block": 134
+            },
+            {
+              "bay": 2,
+              "block": 36
+            }
+          ],
+          "checker": {
+            "feasible": true,
+            "flat_sha256": "6f148da0fb5e9810c12c6549284bef5e9b89ffdcd6d67441cd28ec9e9a2750fe",
+            "objective": 17962653.0,
+            "rescued": false,
+            "solution_sha256": "1d7f0355ea0218cfb6ef58a285020da9f66759bc7554a5dedd3313b9c2ed117e"
+          },
+          "components": [
+            1301.0,
+            3510.0,
+            4450.0,
+            17962653.0
+          ],
+          "flat_sha256": "6f148da0fb5e9810c12c6549284bef5e9b89ffdcd6d67441cd28ec9e9a2750fe",
+          "raw_objective": 17962653.0
+        },
+        {
+          "actions": [
+            {
+              "bay": 1,
+              "block": 57
+            },
+            {
+              "bay": 1,
+              "block": 134
+            },
+            {
+              "bay": 2,
+              "block": 61
+            }
+          ],
+          "checker": {
+            "feasible": true,
+            "flat_sha256": "95f3139897f4d7e3ba2d3d0d621098cc7b73215078b36aea441799abcab8e8b2",
+            "objective": 17976660.0,
+            "rescued": false,
+            "solution_sha256": "57a30e6611f43fec3ae60729567fe8cf07381b414128bf1b81a9cd545498cb07"
+          },
+          "components": [
+            1301.0,
+            3516.0,
+            4555.0,
+            17976660.0
+          ],
+          "flat_sha256": "95f3139897f4d7e3ba2d3d0d621098cc7b73215078b36aea441799abcab8e8b2",
+          "raw_objective": 17976660.0
+        }
+      ],
+      "built": 1584,
+      "checker_rejected": 0,
+      "checker_screened": 20,
+      "depth": 2,
+      "failed": 0,
+      "null_byte_identical": 396,
+      "null_tested": 396,
+      "parents": 2,
+      "raw_losses": 1160,
+      "raw_wins": 28,
+      "strict_improving_children": 20
+    }
+  ],
+  "final": {
+    "actions": [
+      {
+        "bay": 1,
+        "block": 57
+      },
+      {
+        "bay": 1,
+        "block": 134
+      },
+      {
+        "bay": 2,
+        "block": 36
+      }
+    ],
+    "checker": {
+      "feasible": true,
+      "flat_sha256": "6f148da0fb5e9810c12c6549284bef5e9b89ffdcd6d67441cd28ec9e9a2750fe",
+      "objective": 17962653.0,
+      "rescued": false,
+      "solution_sha256": "1d7f0355ea0218cfb6ef58a285020da9f66759bc7554a5dedd3313b9c2ed117e"
+    },
+    "components": [
+      1301.0,
+      3510.0,
+      4450.0,
+      17962653.0
+    ],
+    "flat_sha256": "6f148da0fb5e9810c12c6549284bef5e9b89ffdcd6d67441cd28ec9e9a2750fe",
+    "raw_objective": 17962653.0
+  },
+  "instance": 5,
+  "manifest": "/data_fast/home/tjdgus4384/priv/ogc2026-worktrees/codex-fundamental/runs/joint-assignment-rollout-74933/prob_5.json",
+  "one_step": {
+    "actions": [
+      {
+        "bay": 1,
+        "block": 57
+      }
+    ],
+    "checker": {
+      "feasible": true,
+      "flat_sha256": "1fbab54c4e993d0e00aba696e42743d792bd3f0586254c55d2228aa77ac63780",
+      "objective": 18296095.0,
+      "rescued": false,
+      "solution_sha256": "202b518541e27f6b7b61ca2f256f972f08cc8cae92ffa7784625608202342246"
+    },
+    "components": [
+      1327.0,
+      2040.0,
+      4428.0,
+      18296095.0
+    ],
+    "flat_sha256": "1fbab54c4e993d0e00aba696e42743d792bd3f0586254c55d2228aa77ac63780",
+    "raw_objective": 18296095.0
+  },
+  "order": "due",
+  "problem": "/data_fast/home/tjdgus4384/priv/ogc2026-worktrees/codex-fundamental/data/preliminary_test/prob_5.json",
+  "requested_additional_depth": 2,
+  "root_free_checker_objective": 20111373.0,
+  "same_bay_null": {
+    "byte_identical": 595,
+    "pass": true,
+    "tested": 595
+  },
+  "schema_version": 1,
+  "solver": "/data_fast/home/tjdgus4384/priv/ogc2026-worktrees/codex-fundamental/builds/jasg-causal",
+  "top_raw_vocabulary": 20,
+  "wall_seconds": 352.0521015059203
+}

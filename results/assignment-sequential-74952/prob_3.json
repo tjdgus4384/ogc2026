@@ -1,0 +1,222 @@
+{
+  "additional_delta_pct": -6.115369663380548,
+  "beam_width": 2,
+  "cumulative_delta_pct": -12.669286359362744,
+  "depths": [
+    {
+      "beam": [
+        {
+          "actions": [
+            {
+              "bay": 0,
+              "block": 197
+            },
+            {
+              "bay": 2,
+              "block": 131
+            }
+          ],
+          "checker": {
+            "feasible": true,
+            "flat_sha256": "6855f0d25a2e0c6d0b7c30a7e079cb0c021bf1cc77ba74e7640f659926593973",
+            "objective": 484850.0,
+            "rescued": false,
+            "solution_sha256": "7fce3a12c6e91a005d82599952c9678d03976d3000ffe4c629429fc50c5f4e76"
+          },
+          "components": [
+            0.0,
+            4120.0,
+            3095.0,
+            484850.0
+          ],
+          "flat_sha256": "6855f0d25a2e0c6d0b7c30a7e079cb0c021bf1cc77ba74e7640f659926593973",
+          "raw_objective": 484850.0
+        },
+        {
+          "actions": [
+            {
+              "bay": 0,
+              "block": 197
+            },
+            {
+              "bay": 1,
+              "block": 188
+            }
+          ],
+          "checker": {
+            "feasible": true,
+            "flat_sha256": "eb3774ff4190c92ac5272c1d0fdd3c9c60b0af4b57d699d3c70a9bc4161745a5",
+            "objective": 488225.0,
+            "rescued": false,
+            "solution_sha256": "b2fc79d5e995c14885f4b9c64df8aa5d8c43bfeeb8d85fea73a745daa3411dac"
+          },
+          "components": [
+            0.0,
+            3745.0,
+            3130.0,
+            488225.0
+          ],
+          "flat_sha256": "eb3774ff4190c92ac5272c1d0fdd3c9c60b0af4b57d699d3c70a9bc4161745a5",
+          "raw_objective": 488225.0
+        }
+      ],
+      "built": 597,
+      "checker_rejected": 0,
+      "checker_screened": 20,
+      "depth": 1,
+      "failed": 0,
+      "null_byte_identical": 199,
+      "null_tested": 199,
+      "parents": 1,
+      "raw_losses": 362,
+      "raw_wins": 35,
+      "strict_improving_children": 20
+    },
+    {
+      "beam": [
+        {
+          "actions": [
+            {
+              "bay": 0,
+              "block": 197
+            },
+            {
+              "bay": 2,
+              "block": 131
+            },
+            {
+              "bay": 1,
+              "block": 19
+            }
+          ],
+          "checker": {
+            "feasible": true,
+            "flat_sha256": "c149ce5a5a7c38df8253bdc519bab42c25855c400e83e3dcda05a85de0acec11",
+            "objective": 470930.0,
+            "rescued": false,
+            "solution_sha256": "0bcbfbb0e090e2c9da9121726c6f93f1c6f61bed116ede3edd186b8060b9efb9"
+          },
+          "components": [
+            0.0,
+            4126.0,
+            3002.0,
+            470930.0
+          ],
+          "flat_sha256": "c149ce5a5a7c38df8253bdc519bab42c25855c400e83e3dcda05a85de0acec11",
+          "raw_objective": 470930.0
+        },
+        {
+          "actions": [
+            {
+              "bay": 0,
+              "block": 197
+            },
+            {
+              "bay": 2,
+              "block": 131
+            },
+            {
+              "bay": 0,
+              "block": 31
+            }
+          ],
+          "checker": {
+            "feasible": true,
+            "flat_sha256": "347e8d06dfc8d0e40f54bfbe87f9667853e234aabc77afddbfd83e004593969d",
+            "objective": 472770.0,
+            "rescued": false,
+            "solution_sha256": "8bd926cd28ad51962e460b39d089b18b532794d3cd3a8715a4e615c3153f96e3"
+          },
+          "components": [
+            0.0,
+            4134.0,
+            3014.0,
+            472770.0
+          ],
+          "flat_sha256": "347e8d06dfc8d0e40f54bfbe87f9667853e234aabc77afddbfd83e004593969d",
+          "raw_objective": 472770.0
+        }
+      ],
+      "built": 1188,
+      "checker_rejected": 0,
+      "checker_screened": 20,
+      "depth": 2,
+      "failed": 0,
+      "null_byte_identical": 396,
+      "null_tested": 396,
+      "parents": 2,
+      "raw_losses": 750,
+      "raw_wins": 40,
+      "strict_improving_children": 20
+    }
+  ],
+  "final": {
+    "actions": [
+      {
+        "bay": 0,
+        "block": 197
+      },
+      {
+        "bay": 2,
+        "block": 131
+      },
+      {
+        "bay": 1,
+        "block": 19
+      }
+    ],
+    "checker": {
+      "feasible": true,
+      "flat_sha256": "c149ce5a5a7c38df8253bdc519bab42c25855c400e83e3dcda05a85de0acec11",
+      "objective": 470930.0,
+      "rescued": false,
+      "solution_sha256": "0bcbfbb0e090e2c9da9121726c6f93f1c6f61bed116ede3edd186b8060b9efb9"
+    },
+    "components": [
+      0.0,
+      4126.0,
+      3002.0,
+      470930.0
+    ],
+    "flat_sha256": "c149ce5a5a7c38df8253bdc519bab42c25855c400e83e3dcda05a85de0acec11",
+    "raw_objective": 470930.0
+  },
+  "instance": 3,
+  "manifest": "/data_fast/home/tjdgus4384/priv/ogc2026-worktrees/codex-fundamental/runs/joint-assignment-rollout-74933/prob_3.json",
+  "one_step": {
+    "actions": [
+      {
+        "bay": 0,
+        "block": 197
+      }
+    ],
+    "checker": {
+      "feasible": true,
+      "flat_sha256": "dddf6aaf6246c9c843b0241ba0cbd14bdd82954c0da1b3e9eb1bf099e78e389d",
+      "objective": 501605.0,
+      "rescued": false,
+      "solution_sha256": "1246b31684ad721a3a36bde4dacb750d8d704ea97241901c9da62f03ea3cdfca"
+    },
+    "components": [
+      0.0,
+      3841.0,
+      3216.0,
+      501605.0
+    ],
+    "flat_sha256": "dddf6aaf6246c9c843b0241ba0cbd14bdd82954c0da1b3e9eb1bf099e78e389d",
+    "raw_objective": 501605.0
+  },
+  "order": "noisy_a",
+  "problem": "/data_fast/home/tjdgus4384/priv/ogc2026-worktrees/codex-fundamental/data/preliminary_test/prob_3.json",
+  "requested_additional_depth": 2,
+  "root_free_checker_objective": 539249.0,
+  "same_bay_null": {
+    "byte_identical": 595,
+    "pass": true,
+    "tested": 595
+  },
+  "schema_version": 1,
+  "solver": "/data_fast/home/tjdgus4384/priv/ogc2026-worktrees/codex-fundamental/builds/jasg-causal",
+  "top_raw_vocabulary": 20,
+  "wall_seconds": 183.93480771314353
+}

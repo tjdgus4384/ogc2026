@@ -180,6 +180,19 @@ at the end is recorded but not required.  `guide60` uses the same effect-size
 and checker thresholds as `start` and persistent `lock`; it cannot borrow a
 win from either arm.
 
+The `start` and `lock` states must have the same byte hash before search, every
+run must execute exactly 20,000 iterations, and the lock arm must finish with
+the selected block in the selected bay.  The official checker and production
+gate are authoritative; all treatment arms must be feasible.
+
+Each treatment is judged against its paired baseline.  It passes only with a
+pooled median at most -2%, more wins than losses, at least one P3/P4/P5 board
+median at most -3%, and no board median above +2%.  A passing `start` arm
+supports a universal action-selector/seed route; a passing `lock` arm supports
+a persistent steering route.  Neither authorizes the per-board oracle actions
+in production.  A survivor still needs a budget-capped sequential/beam action
+selector, equal-budget full-driver validation, and the declared Train splits.
+
 ## Start-only verdict: job 74943
 
 All 16 baseline and all 16 start-only searches completed before the invalid
@@ -250,15 +263,38 @@ new fixed-iteration plateau test, then a native 4-core/budget-capped
 implementation and all declared Train splits.  Per-board action sequences are
 never production constants.
 
-The `start` and `lock` states must have the same byte hash before search, every
-run must execute exactly 20,000 iterations, and the lock arm must finish with
-the selected block in the selected bay.  The official checker and production
-gate are authoritative; all 48 arms must be feasible.
+## Sequential construction verdict: job 74952
 
-Each treatment is judged against its paired baseline.  It passes only with a
-pooled median at most -2%, more wins than losses, at least one P3/P4/P5 board
-median at most -3%, and no board median above +2%.  A passing `start` arm
-supports a universal action-selector/seed route; a passing `lock` arm supports
-a persistent steering route.  Neither authorizes the per-board oracle actions
-in production.  A survivor still needs a budget-capped sequential/beam action
-selector, equal-budget full-driver validation, and the declared Train splits.
+All four boards selected three-decision constructions, every screened final
+board was checker-feasible, and all 2,380 semantic nulls reproduced their
+parents byte-for-byte and component-for-component.
+
+| board | one action | three actions | additional delta | delta from free | null |
+|---|---:|---:|---:|---:|---:|
+| P3 | 501,605 | 470,930 | -6.115% | -12.669% | 595/595 |
+| P4 | 6,674,831 | 6,210,812 | -6.952% | -22.754% | 445/445 |
+| P5 | 18,296,095 | 17,962,653 | -1.822% | -10.684% | 595/595 |
+| P6 | 42,103,320 | 41,476,895 | -1.488% | -4.044% | 745/745 |
+
+P4 exceeds the preregistered additional-5% edge, while carried parents make
+every board non-regressive.  The construction gate therefore advances.  The
+single-core scan took 98--422 seconds, so this is still an oracle constructor,
+not an official-budget implementation.  Detailed action paths and every depth
+report are frozen under `results/assignment-sequential-74952/`.
+
+## Frozen sequential plateau-transfer gate
+
+Replay each three-action lock vector and require the recorded final hash,
+components, and checker objective exactly.  Then release all locks and run the
+same 20,000 single-thread ALNS iterations at seeds 7, 11, 23, and 41.  Compare
+against the immutable job-74943 free baseline and one-action start rows; scan
+time is deliberately excluded here because this stage asks only whether the
+lower construction changes the reachable plateau.
+
+All 16 sequential arms must be checker-feasible.  Against the free baseline,
+advance requires pooled median at most -2%, more wins than losses, no board
+median above +2%, and a P4 or P5 median at most -3%.  Against the one-action
+start, additionally require a non-positive pooled median and no board median
+above +2%; an infeasible one-action reference is recorded but cannot erase a
+feasible sequential recovery.  Failure closes this constructor before any
+native parallelization, Train run, or wall-budget claim.

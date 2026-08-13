@@ -1,0 +1,44 @@
+{
+  "all_checker_and_null_valid": true,
+  "no_board_regression": true,
+  "p4_or_p5_additional_five_pct": true,
+  "rows": [
+    {
+      "actions": 3,
+      "additional_delta_pct": -6.115369663380548,
+      "checker_feasible": true,
+      "cumulative_delta_pct": -12.669286359362744,
+      "instance": 3,
+      "null_pass": true,
+      "wall_seconds": 183.93480771314353
+    },
+    {
+      "actions": 3,
+      "additional_delta_pct": -6.951771513016584,
+      "checker_feasible": true,
+      "cumulative_delta_pct": -22.753899982736947,
+      "instance": 4,
+      "null_pass": true,
+      "wall_seconds": 97.77063179691322
+    },
+    {
+      "actions": 3,
+      "additional_delta_pct": -1.8224763262324557,
+      "checker_feasible": true,
+      "cumulative_delta_pct": -10.68410396445832,
+      "instance": 5,
+      "null_pass": true,
+      "wall_seconds": 352.0521015059203
+    },
+    {
+      "actions": 3,
+      "additional_delta_pct": -1.487828038263966,
+      "checker_feasible": true,
+      "cumulative_delta_pct": -4.0436728363322665,
+      "instance": 6,
+      "null_pass": true,
+      "wall_seconds": 422.0582967780065
+    }
+  ],
+  "verdict": "advance_plateau_test"
+}
