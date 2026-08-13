@@ -19,10 +19,12 @@ vocabulary; FEASIBLE without a checked gain is unresolved.
 
 The free set is the whole-board top ``min(24, ceil(sqrt(n)))`` blocks by
 weighted personal cost.  Every free block gathers event-corner alternatives
-from every bay, sorts them by immediate personal cost and then the raw
-placement tuple, and retains exactly up to ``m*ceil(sqrt(n))`` alternatives in
-addition to its incumbent.  Full objective is primary; ``sum(exit)`` is the
-only deterministic secondary objective.
+from every bay.  Each ``(block, bay, event)`` API call first retains at most
+``m*ceil(sqrt(n))`` rows in native ``(orientation, y, x)`` order.  The union is
+globally deduplicated, sorted by immediate personal cost and then the raw
+placement tuple, and capped again at the same ``m*ceil(sqrt(n))`` alternatives
+in addition to its incumbent.  Full objective is primary; ``sum(exit)`` is
+the only deterministic secondary objective.
 
 Required experimental Engine APIs
 ---------------------------------
@@ -51,6 +53,11 @@ keeps only an earliest day per bay and filters through the fixed-duration
 oracle, which would remove the very C5-prime candidates this probe measures.
 All CP leaves go through a fresh Engine flexible audit and the raw official
 checker; there is no rescue or checker no-good loop.
+
+This is a public, hash-bound mechanism probe rather than a tunable search
+driver.  Its whole-board free set, 60-second-per-arm budget, solver seed 1,
+candidate caps, preliminary problem identity, and plateau instance/seed
+identity are frozen and fail closed.
 """
 
 from __future__ import annotations
@@ -74,6 +81,30 @@ from ortools.sat.python import cp_model
 ROOT = Path(__file__).resolve().parents[1]
 SAFE_INT = (1 << 62) - 1
 SCHEMA_VERSION = 1
+PRELIMINARY_PROBLEM_SHA256 = {
+    "P3": "c4f47c17910cf7c4a8aceaff74e6a5b884f752c389383fdd95f2ae2ce9a708d4",
+    "P4": "6faa53137e705d44dc469a27e0f090fff07aec6b61712bb0edcaeba983d6d17a",
+    "P5": "823eb0f8211071ceafa56a275e45b0f7d01c3448fb2548c5e4798dd0e723db00",
+    "P6": "43b6103cd1f1be2cbcccaad6fb29da30302e6302d01e1e620c2c67cedb7244b2",
+}
+PLATEAU_SHA256 = {
+    ("P3", 7): "4190e5a73867bcf1b6702544de0b5c34e095fe53ce0f5bbe3b4493aa6f431eb4",
+    ("P3", 11): "e5ee6354de980191576679ca2279cbd02e24e7fa9753e329485bab701af78349",
+    ("P3", 23): "8f84e933e25d0d3369350d4bbe7ee1607c1fe0491db5de6a8485d9d8ded5be56",
+    ("P3", 41): "28cc587b216f0cc90b50508d5d49d506986696d48ad2410d000fe0142dad32f9",
+    ("P4", 7): "7b3cee57bee39979fa044fa99b7b3495a919ddda9b9d8423c4222a9dba586e93",
+    ("P4", 11): "f64c4468b0d739321c664e299ee5453d11c910a75385ebc13c1afcba94f0941d",
+    ("P4", 23): "9c6cb013e17e1440ef78b258dc2c13c897468f1f31280ac616790a22e7ffd287",
+    ("P4", 41): "3b9cc827fdc9bf28312a9bedf73deb459b8d9d0c4d8daaa95e29811132dac501",
+    ("P5", 7): "07fbd253d9b4bddbda5b5989617b88a9ac6ede03d36eb8488c99334157ce0b35",
+    ("P5", 11): "84285be693ef3182bd3a68204ab3854501c3fbe0f2880a1b48136f89ceefb78f",
+    ("P5", 23): "654ae86e7a835cdc04f4d70b72b7b5d87520b4be4763317a58adb8580cb893d8",
+    ("P5", 41): "2e1941b6affc7134b2bb33cfcdae22e1be3d5543c564ad5d57d58686cbcbf175",
+    ("P6", 7): "43427bbde27aebde8f7565aa46fb8667497bb84b3b9e96014c6b94208de1aa0f",
+    ("P6", 11): "6e67fde94eb4ff4b10e7806aacbc4b00f04cfac1a004de99ac693d7ff083f305",
+    ("P6", 23): "a9fc73e10927cf8e52cf0b410cf4fe92817ce9813aabdacde9e1abf1be921ec8",
+    ("P6", 41): "1138c43bebd92d44b46284a09e45acc8c402d24f8dc8a98244ce87cd121e4874",
+}
 
 
 class ProbeError(RuntimeError):
@@ -170,6 +201,53 @@ def _fraction_text(value: Fraction) -> str:
     )
 
 
+def _canonical_instance(value: Any) -> str:
+    text = str(value).strip().upper()
+    if text.startswith("PROB_"):
+        text = text[5:]
+    if text.startswith("P"):
+        text = text[1:]
+    if text not in {"3", "4", "5", "6"}:
+        raise ProbeError(
+            f"instance must identify preliminary P3-P6, got {value!r}"
+        )
+    return f"P{text}"
+
+
+def _model_horizon(
+    numbers: dict[str, Any], source_flat: Sequence[int]
+) -> int:
+    """Return the frozen, endpoint-inclusive event/exit upper bound.
+
+    Raw event entries are releases, ``floor(D-P)``, and incumbent entry/exit
+    endpoints shifted by zero or ``-P``.  Their minimum exits are therefore
+    bounded by the three terms below.  A least one-way nesting closure only
+    copies an existing exit endpoint, and an exit above this bound can be
+    reduced without worsening feasibility, the primary objective, or
+    ``sum(exit)``.  Consequently ``f == H`` is legal and no useful leaf needs
+    ``f > H``.
+    """
+
+    n = numbers["n"]
+    if len(source_flat) != 7 * n:
+        raise ProbeError(
+            f"source flat must have length {7 * n}, got {len(source_flat)}"
+        )
+    max_due = max(_ceil(value) for value in numbers["due"])
+    source_max_exit = max(int(source_flat[7 * i + 5]) for i in range(n))
+    max_processing = max(numbers["processing"])
+    horizon = max(
+        source_max_exit + max_processing,
+        max(numbers["release"][i] + numbers["processing"][i]
+            for i in range(n)),
+        max_due,
+    )
+    if not 0 <= horizon <= (1 << 31) - 1:
+        raise ProbeError(f"horizon exceeds Engine int32 range: {horizon}")
+    _safe(horizon * (n + 1) + n, "horizon/rank key bound")
+    return horizon
+
+
 def _load_solver(solver_dir: Path):
     solver_dir = solver_dir.resolve()
     sys.path.insert(0, str(solver_dir))
@@ -184,7 +262,16 @@ def _load_solver(solver_dir: Path):
         )
     if ma.utils is None:
         raise ApiContractError("raw official checker (solver/utils.py) is unavailable")
-    return ma, module_path
+    utils_file = getattr(ma.utils, "__file__", None)
+    if not utils_file:
+        raise ApiContractError("raw official checker has no import provenance")
+    utils_path = Path(utils_file).resolve()
+    if utils_path.parent != solver_dir:
+        raise ApiContractError(
+            f"official checker imported from {utils_path}, not requested "
+            f"{solver_dir}"
+        )
+    return ma, module_path, utils_path
 
 
 def _new_engine(ma, problem: dict[str, Any], horizon: int):
@@ -358,7 +445,10 @@ def _inspect_flat(
         # Both duration arms are judged with the official flexible-exit oracle.
         # ``fixed`` describes only the CP equality f=e+P; it must not silently
         # switch validation back to the historical conservative oracle.
-        audit = [int(round(value)) for value in engine.audit_state(True)]
+        audit = [
+            _exact_int(value, f"audit_state[{index}]")
+            for index, value in enumerate(engine.audit_state(True))
+        ]
     except TypeError as exc:
         raise ApiContractError(
             "Engine.audit_state(bool flexibleExits) is required"
@@ -430,7 +520,7 @@ def _inspect_flat(
                 f"engine={engine_objective[-1]}, checker={checker_total}"
             )
 
-    valid = bool(audit and audit[0] == 0 and checker_ok)
+    valid = bool(audit == [0, -1] and checker_ok)
     if not valid and validation_error is None:
         first = None if checker is None else (checker.get("violations") or [None])[0]
         validation_error = f"audit={audit}, checker_first={str(first)[:240]}"
@@ -1084,7 +1174,10 @@ def _solve_arm(
 
 
 def _classification(
-    baseline: dict[str, Any], fixed: dict[str, Any], flex: dict[str, Any]
+    instance: Any,
+    baseline: dict[str, Any],
+    fixed: dict[str, Any],
+    flex: dict[str, Any],
 ) -> dict[str, Any]:
     base_total = Fraction(
         baseline["exact_objective"]["total"]["exact"]
@@ -1098,6 +1191,44 @@ def _classification(
 
     fixed_total = arm_total(fixed)
     flex_total = arm_total(flex)
+    try:
+        canonical_instance = _canonical_instance(instance)
+    except ProbeError:
+        # Unit-level synthetic classification is deliberately evidence-
+        # ineligible; the CLI run path requires and hash-binds P3-P6 below.
+        canonical_instance = None
+    eligible_instance = canonical_instance in {"P4", "P5", "P6"}
+
+    def exact_ratio(numerator: Fraction | None,
+                    denominator: Fraction | None) -> str | None:
+        if numerator is None or denominator is None or denominator == 0:
+            return None
+        return _fraction_text(numerator / denominator)
+
+    baseline_margin = (
+        base_total - flex_total if flex_total is not None else None
+    )
+    fixed_margin = (
+        fixed_total - flex_total
+        if flex_total is not None and fixed_total is not None else None
+    )
+    baseline_dual_pass = bool(
+        flex_total is not None and base_total > 0
+        and flex_total < base_total
+        and flex_total * 100 <= base_total * 99
+    )
+    fixed_dual_pass = bool(
+        flex_total is not None and fixed_total is not None and fixed_total > 0
+        and flex_total < fixed_total
+        and flex_total * 100 <= fixed_total * 99
+    )
+    flex_uses_nonminimum_stay = bool(
+        flex_total is not None and int(flex.get("extended_blocks", 0)) > 0
+    )
+    mechanism_positive = bool(
+        eligible_instance and baseline_dual_pass and fixed_dual_pass
+        and flex_uses_nonminimum_stay
+    )
     if ((fixed.get("validation") and not fixed["validation"].get("valid")) or
             (flex.get("validation") and not flex["validation"].get("valid"))):
         verdict = "MODEL_OR_API_MISMATCH"
@@ -1112,7 +1243,7 @@ def _classification(
         verdict = "MODEL_OR_API_MISMATCH"
     elif flex_total is not None and flex_total < base_total:
         verdict = (
-            "FLEX_STRICT_CAUSAL_GAIN"
+            "FLEX_CHECKED_DUAL_GAIN"
             if fixed_total is not None and flex_total < fixed_total
             else "FLEX_CHECKED_GAIN"
         )
@@ -1133,6 +1264,34 @@ def _classification(
         verdict = "UNRESOLVED"
     return {
         "verdict": verdict,
+        # This instance label is a preregistered evidence gate only.  It never
+        # changes candidates, constraints, objective, seed, time, or any other
+        # solver behavior above.
+        "mechanism_positive": mechanism_positive,
+        "mechanism_positive_rule": (
+            "instance in {P4,P5,P6} and flex<=0.99*baseline and "
+            "flex<=0.99*fixed and flex uses >=1 nonminimum stay; all "
+            "quantities checker-authoritative"
+        ),
+        "mechanism_instance_eligible": eligible_instance,
+        "canonical_instance": canonical_instance,
+        "flex_le_99pct_baseline": baseline_dual_pass,
+        "flex_le_99pct_fixed": fixed_dual_pass,
+        "flex_uses_nonminimum_stay": flex_uses_nonminimum_stay,
+        "positive_evidence_scope": (
+            "checker-authoritative existence evidence; OPTIMAL is not required "
+            "and no causal-optimality claim is implied"
+        ),
+        "baseline_minus_flex_exact": (
+            _fraction_text(baseline_margin)
+            if baseline_margin is not None else None
+        ),
+        "fixed_minus_flex_exact": (
+            _fraction_text(fixed_margin) if fixed_margin is not None else None
+        ),
+        "flex_over_baseline_exact": exact_ratio(flex_total, base_total),
+        "flex_over_fixed_exact": exact_ratio(flex_total, fixed_total),
+        "zero_denominator_ratio_policy": "ratio=null; cross-multiplied margin gate remains exact",
         "negative_certificate_requires_optimal": True,
         "fixed_checked_delta": (
             _fraction_text(fixed_total - base_total)
@@ -1159,10 +1318,20 @@ def _run(args: argparse.Namespace) -> dict[str, Any]:
         raise ProbeError("problem JSON must be an object")
     numbers = _problem_numbers(problem)
     n, m = numbers["n"], numbers["m"]
-    if not math.isfinite(args.seconds) or args.seconds <= 0:
-        raise ProbeError("--seconds must be finite and positive")
-    if args.free_count < 0:
-        raise ProbeError("--free-count must be 0 (auto) or positive")
+    canonical_instance = _canonical_instance(args.instance)
+    problem_sha256 = _file_digest(problem_path)
+    expected_problem_sha256 = PRELIMINARY_PROBLEM_SHA256[canonical_instance]
+    if problem_sha256 != expected_problem_sha256:
+        raise ProbeError(
+            f"problem hash does not match {canonical_instance}: "
+            f"{problem_sha256} != {expected_problem_sha256}"
+        )
+    if args.seconds != 60.0:
+        raise ProbeError("the frozen public probe requires --seconds 60")
+    if args.seed != 1:
+        raise ProbeError("the frozen public probe requires --seed 1")
+    if args.free_count != 0:
+        raise ProbeError("the frozen public probe requires --free-count 0")
     alternative_cap = m * math.ceil(math.sqrt(n))
     total_candidate_cap = 1 + alternative_cap
     if args.candidate_cap not in (0, total_candidate_cap):
@@ -1174,9 +1343,34 @@ def _run(args: argparse.Namespace) -> dict[str, Any]:
 
     plateau_raw = _load_json(plateau_path)
     source_flat, plateau_meta = _read_flat(plateau_raw, n)
-    if "instance" in plateau_meta and str(plateau_meta["instance"]) != str(args.instance):
+    if "instance" not in plateau_meta:
+        raise ProbeError("plateau report is missing authoritative instance metadata")
+    plateau_instance = _canonical_instance(plateau_meta["instance"])
+    if plateau_instance != canonical_instance:
         raise ProbeError(
-            f"plateau instance {plateau_meta['instance']!r} != --instance {args.instance!r}"
+            f"plateau instance {plateau_instance} != --instance "
+            f"{canonical_instance}"
+        )
+    if "seed" not in plateau_meta:
+        raise ProbeError("plateau report is missing authoritative seed metadata")
+    plateau_seed = _exact_int(plateau_meta["seed"], "plateau seed metadata")
+    if plateau_seed != args.plateau_seed:
+        raise ProbeError(
+            f"plateau seed {plateau_seed} != --plateau-seed "
+            f"{args.plateau_seed}"
+        )
+    plateau_sha256 = _file_digest(plateau_path)
+    expected_plateau_sha256 = PLATEAU_SHA256.get(
+        (canonical_instance, plateau_seed)
+    )
+    if expected_plateau_sha256 is None:
+        raise ProbeError(
+            f"plateau seed is outside the frozen set: {plateau_seed}"
+        )
+    if plateau_sha256 != expected_plateau_sha256:
+        raise ProbeError(
+            f"plateau hash does not match {canonical_instance}/seed"
+            f"{plateau_seed}: {plateau_sha256} != {expected_plateau_sha256}"
         )
     if "flat_sha256" in plateau_meta:
         actual = _digest(source_flat)
@@ -1201,12 +1395,17 @@ def _run(args: argparse.Namespace) -> dict[str, Any]:
             f"{short_blocks[:8]}"
         )
 
-    ma, module_path = _load_solver(solver_path)
-    horizon = max(
-        max(source_flat[7 * i + 5] for i in range(n)),
-        max(numbers["release"]) + sum(numbers["processing"]),
-    ) + 1
-    _safe(horizon * (n + 1) + n, "horizon/rank key bound")
+    ma, module_path, utils_path = _load_solver(solver_path)
+    # Frozen event/closure upper bound shared by candidate events, CP entries,
+    # exits, and engine audit.  Raw events are R, floor(D-P), and incumbent
+    # e/f shifted by 0 or -P, so every minimum exit is bounded by the maximum
+    # below.  One-way least closure only copies such exit endpoints.  Any exit
+    # above that maximum can be reduced without hurting feasibility, primary
+    # objective, or the secondary sum(f); therefore it cannot be uniquely
+    # optimal and is unnecessary for a negative certificate.
+    horizon = _model_horizon(numbers, source_flat)
+    source_max_exit = max(source_flat[7 * i + 5] for i in range(n))
+    max_processing = max(numbers["processing"])
     baseline = _inspect_flat(
         ma,
         problem,
@@ -1288,7 +1487,7 @@ def _run(args: argparse.Namespace) -> dict[str, Any]:
     for arm in (fixed, flex):
         arm["vocabulary_sha256"] = vocabulary_sha256
         arm["candidate_cap_per_free_block"] = total_candidate_cap
-    classification = _classification(baseline, fixed, flex)
+    classification = _classification(canonical_instance, baseline, fixed, flex)
 
     relation_counts = {str(code): sum(row[2] == code for row in relations)
                        for code in (1, 2, 3)}
@@ -1296,7 +1495,9 @@ def _run(args: argparse.Namespace) -> dict[str, Any]:
         "schema_version": SCHEMA_VERSION,
         "status": "OK",
         "probe": "paired_fixed_vs_flexible_repack",
-        "instance": args.instance,
+        "instance": canonical_instance,
+        "requested_instance": str(args.instance),
+        "plateau_seed": plateau_seed,
         "problem": str(problem_path),
         "plateau": str(plateau_path),
         "solver": str(solver_path),
@@ -1308,27 +1509,58 @@ def _run(args: argparse.Namespace) -> dict[str, Any]:
                 "weighted_cost_desc,tardiness_desc,due_asc,block_id_asc"
             ),
             "seconds_per_arm": args.seconds,
+            "plateau_seed": plateau_seed,
             "requested_candidate_cap": args.candidate_cap,
             "candidate_cap_rule": "1+m*ceil(sqrt(n))",
             "candidate_cap_per_free_block_including_original": total_candidate_cap,
             "candidate_alternative_cap_per_free_block": alternative_cap,
+            "candidate_prefix_cap_per_block_bay_event": alternative_cap,
+            "candidate_api_native_order": "orientation,y,x",
+            "candidate_global_order": (
+                "immediate_personal_cost,(bay,orientation,x,y,entry)"
+            ),
             "candidate_bays": "all",
+            "pair_relations_hard_row_cap": 4096,
+            "hard_row_cap_scope": (
+                "experimental API safety bound, independent of problem/seed/instance"
+            ),
             "seed": args.seed,
             "workers": 1,
         },
         "provenance": {
-            "problem_sha256": _file_digest(problem_path),
-            "plateau_sha256": _file_digest(plateau_path),
+            "problem_sha256": problem_sha256,
+            "expected_problem_sha256": expected_problem_sha256,
+            "problem_identity_hash_bound": True,
+            "plateau_sha256": plateau_sha256,
+            "expected_plateau_sha256": expected_plateau_sha256,
+            "plateau_identity_hash_bound": True,
             "plateau_flat_sha256": _digest(source_flat),
+            "plateau_instance_seed_bound": True,
             "tool_sha256": _file_digest(Path(__file__).resolve()),
             "myalgorithm_sha256": _file_digest(solver_path / "myalgorithm.py"),
+            "utils_path": str(utils_path),
+            "utils_sha256": _file_digest(utils_path),
             "sscore_path": str(module_path),
             "sscore_sha256": _file_digest(module_path),
             "python": platform.python_version(),
             "platform": platform.platform(),
             "ortools_module": str(Path(cp_model.__file__).resolve()),
         },
-        "dimensions": {"blocks": n, "bays": m, "horizon": horizon},
+        "dimensions": {
+            "blocks": n,
+            "bays": m,
+            "horizon": horizon,
+            "horizon_rule": (
+                "max(max_source_exit+max_processing,"
+                "max_i(release_i+processing_i),ceil(max_due))"
+            ),
+            "horizon_proof": (
+                "all raw-event minimum exits are <=H; one-way closure copies "
+                "only those endpoints; sum(exit) removes gratuitous exits >H"
+            ),
+            "source_max_exit": source_max_exit,
+            "max_processing": max_processing,
+        },
         "source_duration": {
             "overlong_blocks": overlong_blocks,
             "overlong_count": len(overlong_blocks),
@@ -1364,6 +1596,7 @@ def _args_json(args: argparse.Namespace) -> dict[str, Any]:
         "output": str(args.output),
         "solver": str(args.solver),
         "instance": args.instance,
+        "plateau_seed": args.plateau_seed,
         "free_count": args.free_count,
         "seconds": args.seconds,
         "candidate_cap": args.candidate_cap,
@@ -1382,22 +1615,31 @@ def _write_report(path: Path, report: dict[str, Any]) -> None:
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("problem", type=Path, help="problem JSON")
-    parser.add_argument("plateau", type=Path,
-                        help="flat list JSON or report containing a flat field")
+    parser.add_argument(
+        "plateau", type=Path,
+        help="authoritative plateau report with flat/instance/seed metadata",
+    )
     parser.add_argument("output", type=Path, help="single JSON report path")
     parser.add_argument("--solver", type=Path, default=ROOT / "solver")
     parser.add_argument("--instance", required=True,
-                        help="provenance label only; never selects a rule")
+                        help=("P3-P6 identity, normalized from 3/P3/prob_3 and "
+                              "bound to the frozen problem SHA; affects only "
+                              "the evidence verdict, never solver behavior"))
+    parser.add_argument(
+        "--plateau-seed", required=True, type=int,
+        help="must exactly match the plateau report's authoritative seed",
+    )
     parser.add_argument("--free-count", type=int, default=0,
-                        help="0 uses min(24,ceil(sqrt(n))); positive is capped at 24")
+                        help="frozen at 0: use min(24,ceil(sqrt(n)))")
     parser.add_argument("--seconds", type=float, default=60.0,
-                        help="identical one-worker wall limit for each arm")
+                        help="frozen at 60 seconds for each one-worker arm")
     parser.add_argument(
         "--candidate-cap", type=int, default=0,
         help=("0 uses frozen total 1+m*ceil(sqrt(n)); the only accepted "
               "explicit value is that same total"),
     )
-    parser.add_argument("--seed", type=int, default=1)
+    parser.add_argument("--seed", type=int, default=1,
+                        help="frozen deterministic CP-SAT seed 1")
     return parser.parse_args()
 
 

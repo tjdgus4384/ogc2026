@@ -35,6 +35,11 @@ seed, worker count, limits, and incumbent between its two arms.  It is a
 paired test of duration/nesting semantics, not a claim of full-grid or global
 optimality.
 
+The authoritative public probe is hash-bound to the four preliminary
+problems and all sixteen immutable plateau files at seeds `7,11,23,41`.  It
+uses CP-SAT seed `1`, one worker, and exactly 60 seconds per arm.  The first
+stop decision consumes seed 7 only.
+
 ## Frozen coalition and candidate menu
 
 For a complete checker-authoritative incumbent with `n` blocks, let
@@ -50,7 +55,11 @@ free coalition.  This uses objective data only; there is no problem id, seed,
 saturation, elapsed-time, or learned dispatch rule.  Every non-free block has
 exactly its incumbent `(bay,orientation,x,y,entry)` candidate.  Every free
 block also retains that incumbent candidate, so the whole incumbent is an
-explicit witness in both arms.
+explicit geometry/entry witness in both arms.  A minimum-duration incumbent
+is also a literal timing witness in both arms.  If a checker-authoritative
+source already has `f-e>P`, its literal timing is a FLEX witness while FIXED
+contains the same geometry/entry projection with `f=e+P`; reports must expose
+this asymmetry.
 
 Additional entry days are the feasible, deduplicated event boundaries
 
@@ -77,6 +86,21 @@ this prefix-bounded vocabulary.
 The menu is deliberately bounded and therefore the only scope of a negative
 certificate.  It is, however, broad enough to change bay, day, orientation,
 and both coordinates together, unlike a one-witness exit repair.
+
+All event generation, CP domains, and Engine audits share the inclusive bound
+
+```
+H = max(max_source_exit + max_processing,
+        max_i(R_i+P_i),
+        max_i(ceil(D_i))).
+```
+
+Every frozen event above has minimum exit at most `H`.  A least one-way
+nesting closure only copies one of those exit endpoints, and any larger exit
+can be reduced without hurting feasibility or the nonnegative primary
+objective; the frozen secondary `sum(f)` also removes gratuitous slack.  Thus
+`f==H` is legal and values outside the Engine's signed 32-bit range fail
+closed.
 
 ## Exact pair semantics
 
@@ -152,8 +176,10 @@ checker objective to equal the modeled objective.  No rescue ladder is used.
 Development inputs are the already consumed, checker-authoritative P3--P6
 plateaus at seeds 7, 11, 23, and 41.  First run seed 7 on all four boards.  A
 mechanism-positive result requires on P4, P5, or P6 a checker-certified FLEX
-board at least `1%` below both the incumbent and its paired FIXED result.  This
-is an effect-size kill criterion, not an adoption threshold.
+board at least `1%` below both the positive-valued incumbent and its
+positive-valued paired FIXED result, with at least one strict `f-e>P` stay in
+the emitted FLEX board.  This is an effect-size existence criterion, not an
+optimality claim or an adoption threshold.
 
 - If FIXED also beats the incumbent by `1%`, the new event/geometry coalition
   is separately live; do not attribute that part to flexible duration.

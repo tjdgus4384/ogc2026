@@ -32,7 +32,8 @@ RESOLVED="$(git -C "$ROOT" rev-parse --verify "${COMMIT}^{commit}")"
 [[ "${COMMIT,,}" == "$RESOLVED" ]] || die "commit is not exact"
 
 for member in solver/build.sh solver/src/api.cpp \
-              solver/tests/exit_closure_test.cpp tools/flexible_repack.py; do
+              solver/tests/exit_closure_test.cpp tools/flexible_repack.py \
+              tools/test_flexible_repack.py; do
   git -C "$ROOT" cat-file -e "$RESOLVED:$member" || die "missing $member"
 done
 
@@ -53,6 +54,8 @@ git -C "$ROOT" archive --format=tar "$RESOLVED" solver |
   tar --extract --file=- --directory="$DEST/solver" --strip-components=1
 git -C "$ROOT" show "$RESOLVED:tools/flexible_repack.py" \
   >"$DEST/tools/flexible_repack.py"
+git -C "$ROOT" show "$RESOLVED:tools/test_flexible_repack.py" \
+  >"$DEST/tools/test_flexible_repack.py"
 printf '%s\n' "$RESOLVED" >"$DEST/SOURCE_COMMIT"
 chmod 0444 "$DEST/SOURCE_COMMIT"
 
@@ -61,6 +64,7 @@ g++ -O2 -std=c++17 -fopenmp "$DEST/solver/tests/exit_closure_test.cpp" \
   -o "$DEST/solver/exit_closure_test"
 "$DEST/solver/exit_closure_test"
 "$PY" -m py_compile "$DEST/tools/flexible_repack.py"
+"$PY" -m py_compile "$DEST/tools/test_flexible_repack.py"
 
 "$PY" - "$DEST/solver" <<'PY'
 import sys
@@ -77,6 +81,8 @@ for name in ("event_corner_candidates", "pair_relations", "audit_state",
         raise RuntimeError(f"missing experimental API {name}")
 print("flexible-repack build/API/unit PASS", flush=True)
 PY
+
+"$PY" "$DEST/tools/test_flexible_repack.py" --solver "$DEST/solver"
 
 find "$DEST" -type f ! -name SHA256SUMS -print0 |
   sort -z | xargs -0 sha256sum >"$DEST/SHA256SUMS"
