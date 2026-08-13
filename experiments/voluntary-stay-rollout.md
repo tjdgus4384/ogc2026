@@ -113,6 +113,25 @@ additional 5% P4/P5 edge is recorded separately.  The plateau test, not this
 public exhaustive scan, decides whether the construction changes a reachable
 basin.
 
+## Sequential construction verdict: job 75036
+
+Every board accepted two additional actions.  All 2,380 same-exit nulls
+reproduced their parent bytes and components, every final board passed the
+production checker, and no rescue mutation entered a final target vector.
+
+| board | one action | three actions | additional delta | delta from free | final Z1 |
+|---|---:|---:|---:|---:|---:|
+| P3 | 531,784 | 475,013 | -10.676% | -11.912% | 1 |
+| P4 | 7,223,445 | 6,850,118 | -5.168% | -14.803% | 458 |
+| P5 | 19,069,335 | 18,551,535 | -2.715% | -7.756% | 1343 |
+| P6 | 42,285,462 | 41,304,351 | -2.320% | -4.443% | 6001 |
+
+P4 independently exceeds the recorded additional-5% edge, but the more
+important result is the common sign: unlike construction-score assignment
+depth, voluntary-stay depth improves all four boards.  The frozen verdict is
+`advance_stay_plateau_test`.  Full target vectors, action paths, depth audits,
+and checker records are under `results/voluntary-stay-sequential-75036/`.
+
 ## Frozen fixed-iteration plateau gate
 
 For the final carried construction on each board, run two unlocked arms at

@@ -1,0 +1,45 @@
+{
+  "all_checker_and_null_valid": true,
+  "no_board_regression": true,
+  "p4_or_p5_additional_five_pct": true,
+  "rows": [
+    {
+      "actions": 3,
+      "additional_delta_pct": -10.675575045507198,
+      "checker_feasible": true,
+      "cumulative_delta_pct": -11.912122229248455,
+      "instance": 3,
+      "null_pass": true,
+      "wall_seconds": 108.93536464800127
+    },
+    {
+      "actions": 3,
+      "additional_delta_pct": -5.168268049386408,
+      "checker_feasible": true,
+      "cumulative_delta_pct": -14.802621596330084,
+      "instance": 4,
+      "null_pass": true,
+      "wall_seconds": 57.69055570079945
+    },
+    {
+      "actions": 3,
+      "additional_delta_pct": -2.7153542585517534,
+      "checker_feasible": true,
+      "cumulative_delta_pct": -7.755999553088692,
+      "instance": 5,
+      "null_pass": true,
+      "wall_seconds": 137.5716067480389
+    },
+    {
+      "actions": 3,
+      "additional_delta_pct": -2.3202087752996525,
+      "checker_feasible": true,
+      "cumulative_delta_pct": -4.442851427548602,
+      "instance": 6,
+      "null_pass": true,
+      "wall_seconds": 195.76485029002652
+    }
+  ],
+  "schema_version": 1,
+  "verdict": "advance_stay_plateau_test"
+}
