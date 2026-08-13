@@ -1,0 +1,75 @@
+{
+  "audit": [
+    0,
+    -1
+  ],
+  "checker": {
+    "exact_exit_order": false,
+    "feasible": true,
+    "first_violation": null,
+    "flat_sha256": "99b1a3ed505db64cbcbd4836586e4b7b4bb80130be1de462ecac757b690b42ca",
+    "objective": 33038360.0,
+    "solution_sha256": "1625fee08ae8a82d1780672658aecac3c625009ce7bdf3e863a33f04120fc803",
+    "stage": 5,
+    "violations": 0
+  },
+  "checkpoint": null,
+  "checkpoint_iteration": 1000,
+  "elapsed": 269.0663281281013,
+  "instance": 6,
+  "iters": 20000,
+  "mode": "reference",
+  "official_exit_order": false,
+  "peak_rss_kib": 122956,
+  "plateau": "/data_fast/home/tjdgus4384/priv/ogc2026-worktrees/codex-fundamental/results/obstruction-exit-closure-9002c73/plateaus/p6-s23.json",
+  "problem": "/data_fast/home/tjdgus4384/priv/ogc2026-worktrees/codex-fundamental/data/preliminary_test/prob_6.json",
+  "run_stats": [
+    20000.0,
+    7138.0,
+    73.0,
+    538.0,
+    33038360.0,
+    -1.0,
+    -1.0,
+    -1.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    551277.0,
+    44948.0
+  ],
+  "schema_version": 1,
+  "search_flat_sha256": "99b1a3ed505db64cbcbd4836586e4b7b4bb80130be1de462ecac757b690b42ca",
+  "search_objective": [
+    4762.0,
+    557.0,
+    8571.0,
+    33038360.0
+  ],
+  "seed": 23,
+  "solver": "/data_fast/home/tjdgus4384/priv/ogc2026-worktrees/codex-fundamental/builds/jasg-stay-rollout",
+  "start_audit": [
+    0,
+    -1
+  ],
+  "start_checker": {
+    "exact_exit_order": false,
+    "feasible": true,
+    "first_violation": null,
+    "flat_sha256": "e43f5f03194ecbc098616fef31315247c3ee7dd5365dcb5547b4f736b2df67de",
+    "objective": 34354833.0,
+    "solution_sha256": "a7e39530186568e54c211b3a891c05dd0329db1e763ae32d0503f7af13476147",
+    "stage": 5,
+    "violations": 0
+  },
+  "start_flat_sha256": "e43f5f03194ecbc098616fef31315247c3ee7dd5365dcb5547b4f736b2df67de",
+  "start_objective": [
+    4965.0,
+    1866.0,
+    8255.0,
+    34354833.0
+  ],
+  "telemetry": null
+}

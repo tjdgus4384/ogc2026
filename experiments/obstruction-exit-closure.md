@@ -180,3 +180,35 @@ fixed-iteration seed 7, with no subset or per-instance dispatch.  Require
 `m>=4`, saturation below/above one) median at most `+1.5%`.  Hidden robustness
 can be claimed only as proxy robustness until a new server submission is
 measured.
+
+### First-delivery result (commit `9002c73`, jobs 75426/75538--75540/75548/75617)
+
+The frozen build and unit test passed, all 48 reference/control/treatment arms
+completed, and the collector accepted every integrity contract.  All final and
+iteration-1,000 checkpoint outputs were checker-feasible.  Reference and OFF
+were exact, every OFF closure counter was zero, and the one ON cell with no
+accepted closure was an exact semantic null at both checkpoint and final.
+
+The final 16 paired deltas were 10 wins, 4 losses, and 2 ties.  Their pooled
+median was `-1.9623787728%` and mean was `-1.5293210266%`.  Board medians were
+P3 `-1.2569469693%`, P4 `-3.0989571717%`, P5 `-1.6219754017%`, and P6
+`-1.1015045338%`.  Thus the sign condition, the P4/P5 condition, and all board
+vetoes passed, but the preregistered pooled `<= -2%` condition missed by
+`0.0376212272` percentage points.  The verdict is therefore
+`reject_first_witness_exit_closure`; the threshold is not relaxed and the
+equal-wall gate is not authorized.
+
+This is a rejection of the bounded first-witness delivery, not of flexible
+exit times.  The treatment made 93,016 structural attempts, built 27,833
+closures, selected 6,155 repaired suffixes, and accepted 1,817, but only 50
+accepted closure transitions were immediate new incumbents.  No phase-3 seed
+or failed-insertion rescue fired.  Median slowdown was `1.1321x`, while the
+worst paired regression was P3 seed 23 at `+7.408%`.  The next hypothesis must
+therefore reduce indiscriminate speculative delivery or strengthen the
+transition criterion without fitting an instance, seed, firing frequency, or
+post-hoc threshold.  The first-witness arm itself must not be wired into the
+production portfolio.
+
+The checker-authoritative plateau states, all arm reports, aggregate summary,
+and a provenance receipt are frozen under
+`results/obstruction-exit-closure-9002c73/`.
