@@ -297,8 +297,10 @@ def _gate(p, eng, n, deadline=None):
         # costs ~25ms on the 44-board corpus.  A hit is rechecked with the exact
         # emitted EXIT order; any error, deadline risk, or rejection restores
         # the already-verified original byte-for-byte.
-        room2 = (deadline is None or
-                 time.time() + 1.3 * ck + 0.8 < deadline)
+        post_enabled = os.environ.get("OGC_EXIT_TWIN_POST") == "1"
+        room2 = (post_enabled and
+                 (deadline is None or
+                  time.time() + 1.3 * ck + 0.8 < deadline))
         pull = getattr(eng, "pull_twin_flexible", None)
         exit_ranks = getattr(eng, "exit_ranks", None)
         if pull is not None and exit_ranks is not None and room2:
