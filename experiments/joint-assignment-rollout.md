@@ -326,3 +326,32 @@ gain over the free baseline; it limits the causal conclusion: accumulating
 construction-score actions is not reliably better than stopping after one.
 Full hashes, audits, checker records, and paired rows are frozen under
 `results/assignment-sequential-transfer-74955/`.
+
+## Frozen causal-depth rollout selector
+
+The rejected monotonic-depth claim isolates one remaining question: can a
+small search rollout rank construction depths better than construction score?
+For every P3-P6 seed in 7, 11, 23, and 41, exactly replay three starts:
+
+1. the free construction from job 74933;
+2. its one-action construction; and
+3. its three-action construction from job 74952.
+
+Run each branch for 2,000 single-thread iterations, exactly 10% of the frozen
+20,000-iteration horizon, with the same ALNS seed and all locks released.
+Apply the production checker gate to every short branch.  Select the lowest
+checker objective; exact ties prefer free, then one action, then three actions.
+This policy has no fitted threshold, board id, or size classifier.  The
+selected branch's long result is read from the immutable jobs 74943 and 74955,
+not rerun.  A short-infeasible branch is ineligible; a selected branch with an
+infeasible long result is an explicit selector failure.
+
+This discovery screen advances only if all free short controls and all 16
+selected long arms are checker-feasible, the selected long result beats the
+free baseline in more cells than it loses with pooled median at most -2%, no
+board median above +2%, and P4 or P5 median at most -3%.  Prediction itself
+must have median regret at most 2% versus the per-cell best feasible long arm,
+and no board's median regret may exceed 5%.  Passing requires an identical
+test on disjoint seeds 3, 17, 31, and 47 before native implementation or Train.
+Failure closes rollout-based causal-depth selection; the already-rejected
+construction-score selector is not revived.
