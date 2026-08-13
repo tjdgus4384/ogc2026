@@ -78,6 +78,7 @@ for name in ("event_corner_candidates", "pair_relations", "audit_state",
 print("flexible-repack build/API/unit PASS", flush=True)
 PY
 
-find "$DEST" -type f -print0 | sort -z | xargs -0 sha256sum >"$DEST/SHA256SUMS"
+find "$DEST" -type f ! -name SHA256SUMS -print0 |
+  sort -z | xargs -0 sha256sum >"$DEST/SHA256SUMS"
 chmod 0444 "$DEST/SHA256SUMS"
 echo "PASS $DEST $RESOLVED"
