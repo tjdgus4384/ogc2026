@@ -251,8 +251,12 @@ struct Engine {
     double opUsed_[10] = {0}, opImp_[10] = {0};
     double totIters_ = 0, totFailed_ = 0;
     double totExitTwinTests_ = 0, totExitTwinPass_ = 0;
+    double totExitTwinCompared_ = 0, totExitTwinDominant_ = 0;
+    double totExitTwinRescued_ = 0;
     std::vector<double> lastStats() const {
-        return {totIters_, totFailed_, totExitTwinTests_, totExitTwinPass_};
+        return {totIters_, totFailed_, totExitTwinTests_, totExitTwinPass_,
+                totExitTwinCompared_, totExitTwinDominant_,
+                totExitTwinRescued_};
     }
     std::vector<double> lastOps() const {
         std::vector<double> v;
@@ -677,7 +681,9 @@ struct Engine {
         return {(double)st.iters, (double)st.accepted, (double)st.improved,
                 (double)st.failed, st.best, (double)st.badIter,
                 (double)st.badKind, (double)st.badPhase,
-                (double)st.exitTwinTests, (double)st.exitTwinPass};
+                (double)st.exitTwinTests, (double)st.exitTwinPass,
+                (double)st.exitTwinCompared, (double)st.exitTwinDominant,
+                (double)st.exitTwinRescued};
     }
 
     // the production search: N threads anneal in parallel; per-thread
@@ -799,6 +805,9 @@ struct Engine {
                     totFailed_ += (double)st.failed;
                     totExitTwinTests_ += (double)st.exitTwinTests;
                     totExitTwinPass_ += (double)st.exitTwinPass;
+                    totExitTwinCompared_ += (double)st.exitTwinCompared;
+                    totExitTwinDominant_ += (double)st.exitTwinDominant;
+                    totExitTwinRescued_ += (double)st.exitTwinRescued;
                     for (int k = 0; k < 10; k++) {
                         opUsed_[k] += (double)st.opUsed[k];
                         opImp_[k]  += (double)st.opImp[k];

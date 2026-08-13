@@ -175,10 +175,36 @@ def audit_synthetic(ma) -> dict:
         raise AssertionError(
             f"fallback mismatch: treatment={treatment} inserted={inserted}")
 
+    # With a wider entry cap the legacy scan eventually finds a normal
+    # placement after the resident exits.  The remembered exact placement is
+    # two tardy days cheaper, so objective-dominant ON must keep e=1 while OFF
+    # keeps the legacy e=3.  This exercises the comparison path independently
+    # of the no-legacy-candidate fallback above.
+    eng3 = ma._build_engine(prob)
+    eng3.build_occ(16)
+    if not eng3.place_at(0, 0, 0, 2, 0, 1):
+        raise AssertionError("synthetic dominance setup failed")
+    if not eng3.insert_capped(1, 5, -1):
+        raise AssertionError("synthetic dominance insertion failed")
+    selected_entry = int(eng3.get_block(1)[4])
+    expected_entry = 1 if treatment else 3
+    if selected_entry != expected_entry:
+        raise AssertionError(
+            f"dominance mismatch: treatment={treatment} "
+            f"entry={selected_entry} expected={expected_entry}")
+    recs3 = ma._extract(eng3, 2)
+    xr3 = list(eng3.exit_ranks()) if treatment else None
+    checked3 = ma._check(
+        prob, ma._recs_to_sol(recs3, list(eng3.entry_ranks()), xr3))
+    if not checked3 or not checked3.get("feasible"):
+        raise AssertionError(f"checker rejected dominance witness: {checked3}")
+
     return {"legacy_verdict": verdict[0], "official_verdict": verdict[1],
             "entry_ranks": entry, "lifo_exit_ranks": lifo,
             "checker_feasible": True, "treatment": treatment,
-            "fallback_inserted": inserted}
+            "fallback_inserted": inserted,
+            "dominance_selected_entry": selected_entry,
+            "dominance_expected_entry": expected_entry}
 
 
 def discover_boards(source_repo: pathlib.Path) -> list[tuple[pathlib.Path, pathlib.Path]]:

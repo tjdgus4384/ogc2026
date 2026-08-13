@@ -22,6 +22,8 @@ struct RunStats { long iters=0, accepted=0, improved=0, failed=0; double best;
     long tRemove=0, tInsert=0, tEval=0, tSamples=0;
     long opUsed[10] = {0}, opImp[10] = {0};
                   long exitTwinTests=0, exitTwinPass=0;
+                  long exitTwinCompared=0, exitTwinDominant=0,
+                       exitTwinRescued=0;
                   long badIter=-1; int badKind=-1; int badPhase=-1; };
 
 // Full-state audit -- the development assertion tool. Run it (auditEvery) when
@@ -370,6 +372,9 @@ inline RunStats run(repair::Ctx& c, double seconds, const RunParams& rp,
 
     const Problem& pb = *c.pb; Sol& s = *c.s;
     const long twinTests0 = c.exitTwinTests, twinPass0 = c.exitTwinPass;
+    const long twinCompared0 = c.exitTwinCompared;
+    const long twinDominant0 = c.exitTwinDominant;
+    const long twinRescued0 = c.exitTwinRescued;
     c.rng.seed(seedv);
     Destroyers ds(10); ds.rng = &c.rng;
     auto t0 = std::chrono::steady_clock::now();
@@ -727,6 +732,9 @@ no_swap:
     st.best = best;
     st.exitTwinTests = c.exitTwinTests - twinTests0;
     st.exitTwinPass = c.exitTwinPass - twinPass0;
+    st.exitTwinCompared = c.exitTwinCompared - twinCompared0;
+    st.exitTwinDominant = c.exitTwinDominant - twinDominant0;
+    st.exitTwinRescued = c.exitTwinRescued - twinRescued0;
     if (getenv("SMAX_DEBUG")) {   // per-op economics: who fired, who earned
         fprintf(stderr, "[ops]");
         for (int i = 0; i < ds.K; i++)

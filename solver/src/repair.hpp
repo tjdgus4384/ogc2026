@@ -68,11 +68,23 @@ struct Ctx {
     bool z1live = false;              // some block is tardy
     long exitTwinTests = 0;           // diagnostic shadow counters
     long exitTwinPass = 0;
+    long exitTwinCompared = 0;
+    long exitTwinDominant = 0;
+    long exitTwinRescued = 0;
     struct ExitFallback {
         bool valid = false;
         int bay = -1, ori = 0, x = 0, y = 0, e = 0, f = 0;
     } exitFallback;
 };
+
+inline Ctx::ExitFallback currentPlacement(const Sol& s, int A) {
+    return {true, s.bay[A], s.ori[A], s.x[A], s.y[A], s.e[A], s.f[A]};
+}
+
+inline void loadPlacement(Sol& s, int A, const Ctx::ExitFallback& q) {
+    s.bay[A]=q.bay; s.ori[A]=q.ori; s.x[A]=q.x; s.y[A]=q.y;
+    s.e[A]=q.e; s.f[A]=q.f; s.placed[A]=1;
+}
 
 // Official-feasible state predicate for operators that move an already
 // constructed board.  The fixed oracle remains the cheap first path.
@@ -82,20 +94,48 @@ inline bool stateFeasible(Ctx& c, int A) {
            core::vpFlexibleExits(*c.pb, *c.s, A);
 }
 
-// Preserve the legacy first-fit path exactly: a checker-only candidate is
-// remembered, never committed immediately.  The caller continues the entire
-// original scan and a later fixed-oracle placement still wins.  Only an
-// insertion that would otherwise fail can consume this fallback.
+// Preserve the legacy first-fit path unless an exact-only candidate is
+// objectively dominant on the SAME partial board.  We remember the first
+// checker-only candidate and continue the original scan.  At the first legacy
+// success, compare the two true weighted objectives without drawing RNG: a
+// strict improvement may replace the legacy choice, while a tie or regression
+// restores it byte-for-byte.  If the legacy scan exhausts, the saved candidate
+// remains a rescue fallback.  SHADOW performs the comparison but never changes
+// the selected placement.
 inline bool insertionCandidate(Ctx& c, int A) {
-    if (core::vpConservative(*c.pb, *c.s, A)) return true;
+    Sol& s = *c.s;
+    if (core::vpConservative(*c.pb, s, A)) {
+        if (!c.exitFallback.valid ||
+            !(knobs::exitTwinShadow() || knobs::exitTwin()))
+            return true;
+
+        const auto legacy = currentPlacement(s, A);
+        const double legacyObj = core::evaluate(*c.pb, s).total;
+        loadPlacement(s, A, c.exitFallback);
+        const bool exactStillFeasible = core::vpFlexibleExits(*c.pb, s, A);
+        if (!exactStillFeasible) {
+            // Residents cannot change during one insertion scan, so this is a
+            // defensive invariant guard rather than an expected branch.
+            loadPlacement(s, A, legacy);
+            c.exitFallback.valid = false;
+            return true;
+        }
+        const double exactObj = core::evaluate(*c.pb, s).total;
+        c.exitTwinCompared++;
+        const bool dominant = exactObj < legacyObj - 1e-9;
+        c.exitTwinDominant += dominant;
+        if (!knobs::exitTwin() || !dominant)
+            loadPlacement(s, A, legacy);
+        c.exitFallback.valid = false;
+        return true;
+    }
     if (!c.exitFallback.valid &&
         (knobs::exitTwinShadow() || knobs::exitTwin()) &&
-        core::hasExitTwin(*c.s, A)) {
+        core::hasExitTwin(s, A)) {
         c.exitTwinTests++;
-        const bool flexible = core::vpFlexibleExits(*c.pb, *c.s, A);
+        const bool flexible = core::vpFlexibleExits(*c.pb, s, A);
         c.exitTwinPass += flexible;
         if (flexible) {
-            const Sol& s = *c.s;
             c.exitFallback = {true, s.bay[A], s.ori[A], s.x[A], s.y[A],
                               s.e[A], s.f[A]};
         }
@@ -108,8 +148,7 @@ inline bool commitExitFallback(Ctx& c, int A) {
     Sol& s = *c.s;
     const Problem& pb = *c.pb;
     const auto q = c.exitFallback;
-    s.bay[A]=q.bay; s.ori[A]=q.ori; s.x[A]=q.x; s.y[A]=q.y;
-    s.e[A]=q.e; s.f[A]=q.f; s.placed[A]=1;
+    loadPlacement(s, A, q);
     if (!core::vpFlexibleExits(pb, s, A)) {
         s.placed[A]=0;
         c.exitFallback.valid=false;
@@ -117,6 +156,7 @@ inline bool commitExitFallback(Ctx& c, int A) {
     }
     s.addIdx(A);
     c.oc->stamp(pb, s, A, true);
+    c.exitTwinRescued++;
     return true;
 }
 

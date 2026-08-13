@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Deterministic OFF/SHADOW/ON gate for failed-insert EXIT fallbacks.
+"""Deterministic OFF/SHADOW/ON gate for exact EXIT candidate routing.
 
 All arms start from the exact same serialized construction and run the same
 single-thread ALNS seed for a fixed iteration count.  OFF and SHADOW must be
-state-identical; SHADOW only prices the first exact fallback in an otherwise
-failed insertion.  ON may consume that fallback after the legacy scan is
-exhausted.  This isolates mechanism from node speed and from seed construction.
+state-identical; SHADOW prices the first exact-only candidate against the first
+later legacy candidate but preserves the legacy choice.  ON may select a
+strictly cheaper exact candidate, or consume it after the legacy scan is
+exhausted.  This isolates mechanism from node speed and seed construction.
 """
 from __future__ import annotations
 
@@ -143,19 +144,26 @@ def cmd_collect(args) -> None:
             "shadow_pass": int(round(shadow["run_stats"][9])),
             "on_tests": int(round(on["run_stats"][8])),
             "on_pass": int(round(on["run_stats"][9])),
+            "shadow_compared": int(round(shadow["run_stats"][10])),
+            "shadow_dominant": int(round(shadow["run_stats"][11])),
+            "on_compared": int(round(on["run_stats"][10])),
+            "on_dominant": int(round(on["run_stats"][11])),
+            "on_rescued": int(round(on["run_stats"][12])),
             "off_elapsed": float(off["elapsed"]),
+            "shadow_elapsed": float(shadow["elapsed"]),
             "on_elapsed": float(on["elapsed"]),
             "aa_equal": True,
         })
 
     if not rows:
         raise RuntimeError(f"no result rows in {args.directory}")
-    print("instance seed       OFF          ON      delta   shadow pass   ON pass  time")
+    print("instance seed       OFF          ON      delta  shadow pass  cmp/dom  rescue  time")
     for r in rows:
         print(f"P{r['instance']:<7} {r['seed']:<4} {r['off']:>11,.0f} "
               f"{r['on']:>11,.0f} {r['delta_pct']:>+8.3f}% "
-              f"{r['shadow_pass']:>6}/{r['shadow_tests']:<6} "
-              f"{r['on_pass']:>6}/{r['on_tests']:<6} "
+              f"{r['shadow_pass']:>5}/{r['shadow_tests']:<6} "
+              f"{r['shadow_compared']:>4}/{r['shadow_dominant']:<4} "
+              f"{r['on_rescued']:>6} "
               f"{r['on_elapsed']/max(1e-9,r['off_elapsed']):>5.2f}x")
 
     summary = {"pairs": len(rows), "aa_mismatches": 0, "instances": {}}
@@ -172,6 +180,11 @@ def cmd_collect(args) -> None:
             "sign_p": sign_test(wins, losses),
             "shadow_tests": sum(r["shadow_tests"] for r in rr),
             "shadow_pass": sum(r["shadow_pass"] for r in rr),
+            "shadow_compared": sum(r["shadow_compared"] for r in rr),
+            "shadow_dominant": sum(r["shadow_dominant"] for r in rr),
+            "on_rescued": sum(r["on_rescued"] for r in rr),
+            "median_shadow_time_ratio": statistics.median(
+                r["shadow_elapsed"] / max(1e-9, r["off_elapsed"]) for r in rr),
             "median_time_ratio": statistics.median(
                 r["on_elapsed"] / max(1e-9, r["off_elapsed"]) for r in rr),
         }
@@ -180,6 +193,8 @@ def cmd_collect(args) -> None:
               f"median {item['median_delta_pct']:+.3f}%  "
               f"mean {item['mean_delta_pct']:+.3f}%  "
               f"shadow {item['shadow_pass']}/{item['shadow_tests']}  "
+              f"cmp/dom {item['shadow_compared']}/{item['shadow_dominant']}  "
+              f"rescue {item['on_rescued']}  "
               f"time {item['median_time_ratio']:.2f}x")
     all_ds = [r["delta_pct"] for r in rows]
     wins = sum(d < -1e-12 for d in all_ds)
@@ -189,6 +204,11 @@ def cmd_collect(args) -> None:
         "median_delta_pct": statistics.median(all_ds),
         "mean_delta_pct": statistics.fmean(all_ds),
         "sign_p": sign_test(wins, losses),
+        "shadow_compared": sum(r["shadow_compared"] for r in rows),
+        "shadow_dominant": sum(r["shadow_dominant"] for r in rows),
+        "on_rescued": sum(r["on_rescued"] for r in rows),
+        "median_shadow_time_ratio": statistics.median(
+            r["shadow_elapsed"] / max(1e-9, r["off_elapsed"]) for r in rows),
     }
     print(f"ALL: {wins}W/{losses}L/{len(rows)-wins-losses}T  "
           f"median {summary['all']['median_delta_pct']:+.3f}%  "
