@@ -40,9 +40,7 @@ import myalgorithm as ma
 prob = json.load(open(sys.argv[2]))
 K = int(sys.argv[3])
 n = len(prob["blocks"])
-eng, _ = ma._fresh(prob, 4)
-D = [int(round(b["due_date"])) for b in prob["blocks"]]
-P = [max(1, int(-(-b["processing_time"] // 1))) for b in prob["blocks"]]
+eng, D, P = ma._fresh(prob, 4)
 out = []
 for k in range(K):
     if k == 0:
