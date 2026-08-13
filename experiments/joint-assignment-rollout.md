@@ -298,3 +298,31 @@ start, additionally require a non-positive pooled median and no board median
 above +2%; an infeasible one-action reference is recorded but cannot erase a
 feasible sequential recovery.  Failure closes this constructor before any
 native parallelization, Train run, or wall-budget claim.
+
+## Sequential plateau verdict: job 74955
+
+Every sequential arm replayed its frozen start exactly, ran 20,000 iterations,
+and passed the checker.  Against the free construction, the total three-action
+mechanism passes its half of the gate.
+
+| board | vs free median | vs one action median | one-action pairs |
+|---|---:|---:|---:|
+| P3 | -5.223% | -8.237% | 4/4 |
+| P4 | -3.227% | +0.676% | 4/4 |
+| P5 | -3.881% | +5.041% | 3/4 |
+| P6 | -1.031% | -0.310% | 4/4 |
+
+The free comparison is 10 wins and 6 losses with pooled median -3.604%; all
+four board medians are negative.  The incremental comparison is also favorable
+in aggregate (10 wins, 5 losses, pooled median -0.655% over 15 numerical
+pairs), and the sequential arm checker-recovers P5 seed 11 where the one-action
+arm failed.  However, P5's +5.041% median among its three numerical pairs
+exceeds the preregistered +2% board veto.  Immediate construction improvements
+there do not monotonically lower the ALNS plateau.
+
+The sequential-only constructor is therefore rejected before native
+parallelization, Train, or a wall-budget claim.  This does not retract its real
+gain over the free baseline; it limits the causal conclusion: accumulating
+construction-score actions is not reliably better than stopping after one.
+Full hashes, audits, checker records, and paired rows are frozen under
+`results/assignment-sequential-transfer-74955/`.

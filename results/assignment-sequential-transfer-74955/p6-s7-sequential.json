@@ -1,0 +1,71 @@
+{
+  "actions": [
+    {
+      "bay": 1,
+      "block": 183
+    },
+    {
+      "bay": 0,
+      "block": 136
+    },
+    {
+      "bay": 1,
+      "block": 79
+    }
+  ],
+  "audit": [
+    0,
+    -1
+  ],
+  "checker": {
+    "feasible": true,
+    "flat_sha256": "53c9afbaacce189d5fef65f8e970b69347a9b712d2de1a711d57f8b5ce92cbcb",
+    "objective": 33851148.0,
+    "rescued": false,
+    "solution_sha256": "ebf717d3e155c29687ba6c254f8c5756b7809ea9b87cbff69cfc97de2f987dd7"
+  },
+  "construction": "/data_fast/home/tjdgus4384/priv/ogc2026-worktrees/codex-fundamental/results/assignment-sequential-74952/prob_6.json",
+  "elapsed": 278.33877111715265,
+  "instance": 6,
+  "iters": 20000,
+  "order": "noisy_a",
+  "run_stats": [
+    20000.0,
+    7205.0,
+    302.0,
+    422.0,
+    33851148.0,
+    -1.0,
+    -1.0,
+    -1.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+  ],
+  "schema_version": 1,
+  "search_components": [
+    4906.0,
+    3037.0,
+    7457.0,
+    33851148.0
+  ],
+  "search_flat_sha256": "53c9afbaacce189d5fef65f8e970b69347a9b712d2de1a711d57f8b5ce92cbcb",
+  "seed": 7,
+  "solver": "/data_fast/home/tjdgus4384/priv/ogc2026-worktrees/codex-fundamental/builds/jasg-causal",
+  "start_checker": {
+    "feasible": true,
+    "flat_sha256": "d6b31a0151a4c8e0e048d2818dfef030ff75754d76fc39c22780b4ec398057df",
+    "objective": 41476895.0,
+    "rescued": false,
+    "solution_sha256": "220ec46fa07935fc05e49f01640689b3ab0a9d7520c629b796a434154b8ee530"
+  },
+  "start_components": [
+    6031.0,
+    2246.0,
+    8335.0,
+    41476895.0
+  ],
+  "start_flat_sha256": "d6b31a0151a4c8e0e048d2818dfef030ff75754d76fc39c22780b4ec398057df"
+}
