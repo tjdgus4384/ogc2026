@@ -95,6 +95,52 @@ core::Sol schedule(int e0, int f0, int e1, int f1) {
     return schedule({e0, e1}, {f0, f1});
 }
 
+// Mirrors Engine::pairRelations' public code contract using the same core
+// predicates.  The standalone header test intentionally does not link the
+// pybind translation unit.
+int pair_relation_code(const core::Problem& pb, const core::Sol& s,
+                       int a, int b) {
+    crane::ScopedMemoBypass memoBypass(true);
+    if (core::restOverlap(pb, s, a, b)) return 1;
+    const bool bBlocksA = core::entryBlocked(pb, s, b, a);
+    const bool aBlocksB = core::entryBlocked(pb, s, a, b);
+    if (bBlocksA && aBlocksB) return 1;
+    if (bBlocksA) return 2;
+    if (aBlocksB) return 3;
+    return 0;
+}
+
+void test_pair_relation_contract() {
+    const core::Problem directedPb = problem();
+    const core::Sol directed = schedule(0, 2, 1, 4);
+    assert(pair_relation_code(directedPb, directed, 0, 1) == 2);
+    assert(pair_relation_code(directedPb, directed, 1, 0) == 3);
+
+    // Relation classification is geometry-only: even a time-disjoint pair
+    // has the same directed code for the flexible CP to condition later.
+    const core::Sol timeDisjoint = schedule(0, 1, 100, 103);
+    assert(pair_relation_code(directedPb, timeDisjoint, 0, 1) == 2);
+
+    const auto left = cell(0), right = cell(2);
+    const core::Problem restPb =
+        make_problem({{left}, {left}}, {1, 1}, 3);
+    assert(pair_relation_code(restPb, schedule(0, 1, 2, 3), 0, 1) == 1);
+
+    // Bases and upper layers are pairwise disjoint at rest, while each upper
+    // layer blocks the other block's base during crane travel.
+    const core::Problem mutualPb =
+        make_problem({{left, right}, {right, left}}, {1, 1}, 3);
+    const core::Sol mutual = schedule(0, 1, 2, 3);
+    assert(!core::restOverlap(mutualPb, mutual, 0, 1));
+    assert(core::entryBlocked(mutualPb, mutual, 0, 1));
+    assert(core::entryBlocked(mutualPb, mutual, 1, 0));
+    assert(pair_relation_code(mutualPb, mutual, 0, 1) == 1);
+
+    const core::Problem clearPb =
+        make_problem({{left}, {right}}, {1, 1}, 3);
+    assert(pair_relation_code(clearPb, schedule(0, 1, 2, 3), 0, 1) == 0);
+}
+
 void stamp_all(const core::Problem& pb, const core::Sol& s,
                occ::OccIndex& oc) {
     for (int i = 0; i < pb.n; ++i)
@@ -359,6 +405,8 @@ void test_archive_run_integration() {
 
 int main() {
     const core::Problem pb = problem();
+
+    test_pair_relation_contract();
 
     // Memo-neutral speculation must use the exact geometry fallback, restore
     // nested state, and return the same predicate as the normal cached path.

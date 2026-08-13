@@ -6,7 +6,9 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 #include "alns.hpp"
+#include <limits>
 #include <map>
+#include <stdexcept>
 #ifdef _OPENMP
 #include <omp.h>
 #endif
@@ -691,6 +693,84 @@ struct Engine {
         }
         return out;
     }
+    // Exact, time-independent geometry relation between candidate placements.
+    // cand = flat [block, bay, ori, x, y, entry] * N.  The entry field is
+    // deliberately ignored: the flexible-stay CP decides whether two related
+    // placements are disjoint in time or legally nested.  Returned triples
+    // are [candidateA, candidateB, code], where
+    //   1 = hard-disjoint (rest collision or mutual obstruction),
+    //   2 = A is outer, B is inner (B obstructs moving A),
+    //   3 = B is outer, A is inner (A obstructs moving B).
+    // Same-block, different-bay, and geometrically clear pairs are omitted.
+    // This is an experimental classifier only; pairConflicts and the shipped
+    // fixed-duration path above remain unchanged.
+    std::vector<int> pairRelations(const std::vector<int>& cand) {
+        constexpr size_t stride = 6;
+        if (cand.size() % stride != 0)
+            throw std::invalid_argument(
+                "pair_relations expects flat [block,bay,ori,x,y,entry] rows");
+        const size_t count = cand.size() / stride;
+        if (count > (size_t)std::numeric_limits<int>::max())
+            throw std::invalid_argument("pair_relations has too many rows");
+        if (pb.n < 0 || pb.m < 0 || pb.geo.size() != (size_t)pb.n ||
+            pb.bayW.size() != (size_t)pb.m ||
+            pb.bayH.size() != (size_t)pb.m)
+            throw std::logic_error("pair_relations called on an invalid problem");
+
+        // Validate every row before producing a partial answer.  Coordinates
+        // must describe an in-bay placement, but entry is intentionally not
+        // range-checked because it cannot affect this geometry-only relation.
+        static const std::vector<crane::Placement> empty;
+        for (size_t q = 0; q < count; q++) {
+            const int* C = &cand[q * stride];
+            const int block = C[0], bay = C[1], ori = C[2];
+            if (block < 0 || block >= pb.n || bay < 0 || bay >= pb.m ||
+                ori < 0 || ori >= (int)pb.geo[block].orients.size())
+                throw std::invalid_argument(
+                    "pair_relations candidate index is out of range");
+            const auto& g = pb.geo[block].orients[ori];
+            if (g.layers.empty() ||
+                !crane::entryOK(pb.bayW[bay], pb.bayH[bay], empty,
+                                g, C[3], C[4]))
+                throw std::invalid_argument(
+                    "pair_relations candidate is outside its bay");
+        }
+
+        // Speculation must neither consult nor evict the live trajectory's
+        // direct-mapped geometry memo.  RAII restores the caller's prior state.
+        crane::ScopedMemoBypass memoBypass(true);
+        core::Sol pair;
+        pair.init(pb.n, pb.m);
+        std::vector<int> out;
+        for (int a = 0; a < (int)count; a++) {
+            const int* A = &cand[(size_t)a * stride];
+            for (int b = a + 1; b < (int)count; b++) {
+                const int* B = &cand[(size_t)b * stride];
+                if (A[0] == B[0] || A[1] != B[1]) continue;
+
+                pair.bay[A[0]] = A[1]; pair.ori[A[0]] = A[2];
+                pair.x[A[0]] = A[3]; pair.y[A[0]] = A[4];
+                pair.bay[B[0]] = B[1]; pair.ori[B[0]] = B[2];
+                pair.x[B[0]] = B[3]; pair.y[B[0]] = B[4];
+
+                int code = 0;
+                if (core::restOverlap(pb, pair, A[0], B[0])) {
+                    code = 1;
+                } else {
+                    const bool bBlocksA =
+                        core::entryBlocked(pb, pair, B[0], A[0]);
+                    const bool aBlocksB =
+                        core::entryBlocked(pb, pair, A[0], B[0]);
+                    if (bBlocksA && aBlocksB) code = 1;
+                    else if (bBlocksA) code = 2;
+                    else if (aBlocksB) code = 3;
+                }
+                if (code != 0)
+                    out.insert(out.end(), {a, b, code});
+            }
+        }
+        return out;
+    }
     void setAssignmentLock(std::vector<int> v) {
         lockVec = std::move(v);
         ctx.forcedBay = lockVec.empty() ? nullptr : lockVec.data();
@@ -1324,6 +1404,7 @@ PYBIND11_MODULE(sscore, m) {
         .def("reconstruct_stats", &Engine::reconstructStats)
         .def("horizon", [](Engine& e){ return e.horizonValue(); })
         .def("pair_conflicts", &Engine::pairConflicts)
+        .def("pair_relations", &Engine::pairRelations)
         .def("set_assignment_lock", &Engine::setAssignmentLock)
         .def("set_entry_lock", &Engine::setEntryLock)
         .def("compact_left", &Engine::compactLeft)
