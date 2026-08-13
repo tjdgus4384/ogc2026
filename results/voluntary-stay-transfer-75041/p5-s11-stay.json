@@ -1,0 +1,92 @@
+{
+  "actions": [
+    {
+      "base_exit": 24,
+      "block": 4,
+      "fraction": 1.0,
+      "target_exit": 27
+    },
+    {
+      "base_exit": 28,
+      "block": 162,
+      "fraction": 0.5,
+      "target_exit": 30
+    },
+    {
+      "base_exit": 28,
+      "block": 68,
+      "fraction": 1.0,
+      "target_exit": 30
+    }
+  ],
+  "audit": [
+    0,
+    -1
+  ],
+  "baseline_start_objective": [
+    1462.0,
+    1303.0,
+    4582.0,
+    20111373.0
+  ],
+  "checker": {
+    "feasible": true,
+    "flat_sha256": "41c8f797cba562aac1f9ad0a130aa525a11dfe09b818dee235bb53f98396ef09",
+    "objective": 12691167.0,
+    "rescued": false,
+    "solution_sha256": "418ae52b80af09b334e556148ab613089f0dd425b50a07e82c9ad61f05d4c0c3"
+  },
+  "construction": "/data_fast/home/tjdgus4384/priv/ogc2026-worktrees/codex-fundamental/results/voluntary-stay-sequential-75036/prob_5.json",
+  "elapsed": 145.15004667709582,
+  "instance": 5,
+  "iters": 20000,
+  "mode": "stay",
+  "order": "due",
+  "run_stats": [
+    20000.0,
+    7719.0,
+    224.0,
+    628.0,
+    12691167.0,
+    -1.0,
+    -1.0,
+    -1.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    1409412.0,
+    54373.0
+  ],
+  "schema_version": 1,
+  "search_flat_sha256": "41c8f797cba562aac1f9ad0a130aa525a11dfe09b818dee235bb53f98396ef09",
+  "search_objective": [
+    907.0,
+    385.0,
+    4477.0,
+    12691167.0
+  ],
+  "seed": 11,
+  "solver": "/data_fast/home/tjdgus4384/priv/ogc2026-worktrees/codex-fundamental/builds/jasg-stay-rollout",
+  "start_checker": {
+    "feasible": true,
+    "flat_sha256": "87a88549d36e5a69c54befa0203b6581b2f3022c2613e09b135390bf2133f315",
+    "objective": 18551535.0,
+    "rescued": false,
+    "solution_sha256": "c4751423dab34108d0b2eb2216cb12139cd7e192ab663996573fa16f64482c6f"
+  },
+  "start_flat_sha256": "87a88549d36e5a69c54befa0203b6581b2f3022c2613e09b135390bf2133f315",
+  "start_objective": [
+    1343.0,
+    2565.0,
+    4717.0,
+    18551535.0
+  ],
+  "stay_start_objective": [
+    1343.0,
+    2565.0,
+    4717.0,
+    18551535.0
+  ]
+}

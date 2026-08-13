@@ -1,0 +1,92 @@
+{
+  "actions": [
+    {
+      "base_exit": 28,
+      "block": 102,
+      "fraction": 1.0,
+      "target_exit": 29
+    },
+    {
+      "base_exit": 26,
+      "block": 48,
+      "fraction": 0.42857142857142855,
+      "target_exit": 29
+    },
+    {
+      "base_exit": 33,
+      "block": 28,
+      "fraction": 0.5,
+      "target_exit": 34
+    }
+  ],
+  "audit": [
+    0,
+    -1
+  ],
+  "baseline_start_objective": [
+    6287.0,
+    1723.0,
+    8637.0,
+    43224763.0
+  ],
+  "checker": {
+    "feasible": true,
+    "flat_sha256": "fba85fd24a2692662c334940c4181abd840abc8f6b4690830a671c6d0ca80f10",
+    "objective": 33026173.0,
+    "rescued": false,
+    "solution_sha256": "083b5c3fa29a5a270bdc782e14999edaaee33f1833eac1d2b89dbb522104df08"
+  },
+  "construction": "/data_fast/home/tjdgus4384/priv/ogc2026-worktrees/codex-fundamental/results/voluntary-stay-sequential-75036/prob_6.json",
+  "elapsed": 311.2006720989011,
+  "instance": 6,
+  "iters": 20000,
+  "mode": "stay",
+  "order": "noisy_a",
+  "run_stats": [
+    20000.0,
+    7412.0,
+    332.0,
+    494.0,
+    33026173.0,
+    -1.0,
+    -1.0,
+    -1.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    698550.0,
+    50293.0
+  ],
+  "schema_version": 1,
+  "search_flat_sha256": "fba85fd24a2692662c334940c4181abd840abc8f6b4690830a671c6d0ca80f10",
+  "search_objective": [
+    4763.0,
+    2419.0,
+    8346.0,
+    33026173.0
+  ],
+  "seed": 11,
+  "solver": "/data_fast/home/tjdgus4384/priv/ogc2026-worktrees/codex-fundamental/builds/jasg-stay-rollout",
+  "start_checker": {
+    "feasible": true,
+    "flat_sha256": "9d9adebbfa3fafe5c9f443b63bfa3fdcb24fce9a577dfd783aae1082a821ba7c",
+    "objective": 41304351.0,
+    "rescued": false,
+    "solution_sha256": "79653849db5e13e7e1c2d7a031aa171fffe178ca7c7cccf17976703258489d30"
+  },
+  "start_flat_sha256": "9d9adebbfa3fafe5c9f443b63bfa3fdcb24fce9a577dfd783aae1082a821ba7c",
+  "start_objective": [
+    6001.0,
+    1198.0,
+    8574.0,
+    41304351.0
+  ],
+  "stay_start_objective": [
+    6001.0,
+    1198.0,
+    8574.0,
+    41304351.0
+  ]
+}

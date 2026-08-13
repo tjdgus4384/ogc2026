@@ -1,0 +1,192 @@
+{
+  "all_32_checker_feasible": true,
+  "baseline_aa_exact": true,
+  "baseline_aa_mismatches": [],
+  "reference": "/data_fast/home/tjdgus4384/priv/ogc2026-worktrees/codex-fundamental/results/assignment-persistent-74963",
+  "rows": [
+    {
+      "baseline": 100030.0,
+      "baseline_feasible": true,
+      "delta_pct": 3.1490552834149756,
+      "instance": 3,
+      "seed": 7,
+      "stay": 103180.0,
+      "stay_feasible": true
+    },
+    {
+      "baseline": 103020.0,
+      "baseline_feasible": true,
+      "delta_pct": -4.013783731314308,
+      "instance": 3,
+      "seed": 11,
+      "stay": 98885.0,
+      "stay_feasible": true
+    },
+    {
+      "baseline": 111620.0,
+      "baseline_feasible": true,
+      "delta_pct": -9.939974914889804,
+      "instance": 3,
+      "seed": 23,
+      "stay": 100525.0,
+      "stay_feasible": true
+    },
+    {
+      "baseline": 110485.0,
+      "baseline_feasible": true,
+      "delta_pct": -3.0004072951079332,
+      "instance": 3,
+      "seed": 41,
+      "stay": 107170.0,
+      "stay_feasible": true
+    },
+    {
+      "baseline": 4631347.0,
+      "baseline_feasible": true,
+      "delta_pct": -7.906231167735866,
+      "instance": 4,
+      "seed": 7,
+      "stay": 4265182.0,
+      "stay_feasible": true
+    },
+    {
+      "baseline": 4448848.0,
+      "baseline_feasible": true,
+      "delta_pct": -9.476295886036116,
+      "instance": 4,
+      "seed": 11,
+      "stay": 4027262.0,
+      "stay_feasible": true
+    },
+    {
+      "baseline": 4304749.0,
+      "baseline_feasible": true,
+      "delta_pct": 1.7875374383036038,
+      "instance": 4,
+      "seed": 23,
+      "stay": 4381698.0,
+      "stay_feasible": true
+    },
+    {
+      "baseline": 4481525.0,
+      "baseline_feasible": true,
+      "delta_pct": -0.07051171197304489,
+      "instance": 4,
+      "seed": 41,
+      "stay": 4478365.0,
+      "stay_feasible": true
+    },
+    {
+      "baseline": 13543604.0,
+      "baseline_feasible": true,
+      "delta_pct": -0.7726746883621228,
+      "instance": 5,
+      "seed": 7,
+      "stay": 13438956.0,
+      "stay_feasible": true
+    },
+    {
+      "baseline": 12645859.0,
+      "baseline_feasible": true,
+      "delta_pct": 0.3582832925782266,
+      "instance": 5,
+      "seed": 11,
+      "stay": 12691167.0,
+      "stay_feasible": true
+    },
+    {
+      "baseline": 13404796.0,
+      "baseline_feasible": true,
+      "delta_pct": 3.6094021870978117,
+      "instance": 5,
+      "seed": 23,
+      "stay": 13888629.0,
+      "stay_feasible": true
+    },
+    {
+      "baseline": 12778638.0,
+      "baseline_feasible": true,
+      "delta_pct": 4.581724593810389,
+      "instance": 5,
+      "seed": 41,
+      "stay": 13364120.0,
+      "stay_feasible": true
+    },
+    {
+      "baseline": 33147299.0,
+      "baseline_feasible": true,
+      "delta_pct": -0.09878632946835277,
+      "instance": 6,
+      "seed": 7,
+      "stay": 33114554.0,
+      "stay_feasible": true
+    },
+    {
+      "baseline": 34397106.0,
+      "baseline_feasible": true,
+      "delta_pct": -3.9856056494985364,
+      "instance": 6,
+      "seed": 11,
+      "stay": 33026173.0,
+      "stay_feasible": true
+    },
+    {
+      "baseline": 34354833.0,
+      "baseline_feasible": true,
+      "delta_pct": -4.330811330097282,
+      "instance": 6,
+      "seed": 23,
+      "stay": 32866990.0,
+      "stay_feasible": true
+    },
+    {
+      "baseline": 34314242.0,
+      "baseline_feasible": true,
+      "delta_pct": -0.48526206698664653,
+      "instance": 6,
+      "seed": 41,
+      "stay": 34147728.0,
+      "stay_feasible": true
+    }
+  ],
+  "schema_version": 1,
+  "stay": {
+    "informative": 16,
+    "instances": {
+      "P3": {
+        "losses": 1,
+        "median_delta_pct": -3.5070955132111203,
+        "pairs": 4,
+        "ties": 0,
+        "wins": 3
+      },
+      "P4": {
+        "losses": 1,
+        "median_delta_pct": -3.9883714398544554,
+        "pairs": 4,
+        "ties": 0,
+        "wins": 3
+      },
+      "P5": {
+        "losses": 3,
+        "median_delta_pct": 1.9838427398380192,
+        "pairs": 4,
+        "ties": 0,
+        "wins": 1
+      },
+      "P6": {
+        "losses": 0,
+        "median_delta_pct": -2.235433858242591,
+        "pairs": 4,
+        "ties": 0,
+        "wins": 4
+      }
+    },
+    "losses": 5,
+    "median_delta_pct": -0.6289683776743846,
+    "pairs": 16,
+    "ties": 0,
+    "wins": 11
+  },
+  "verdict": "reject_stay_plateau_transfer"
+}

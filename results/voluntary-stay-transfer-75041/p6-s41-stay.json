@@ -1,0 +1,92 @@
+{
+  "actions": [
+    {
+      "base_exit": 28,
+      "block": 102,
+      "fraction": 1.0,
+      "target_exit": 29
+    },
+    {
+      "base_exit": 26,
+      "block": 48,
+      "fraction": 0.42857142857142855,
+      "target_exit": 29
+    },
+    {
+      "base_exit": 33,
+      "block": 28,
+      "fraction": 0.5,
+      "target_exit": 34
+    }
+  ],
+  "audit": [
+    0,
+    -1
+  ],
+  "baseline_start_objective": [
+    6287.0,
+    1723.0,
+    8637.0,
+    43224763.0
+  ],
+  "checker": {
+    "feasible": true,
+    "flat_sha256": "9a99c0458e45fc1b463d38cd2c81f845ef53b1230eaf3d3ba1dbb49f96b0d60a",
+    "objective": 34147728.0,
+    "rescued": false,
+    "solution_sha256": "0a1919beb5c0d55c5f3094c915f699be62f1782677a5a39993a595dee3b9782e"
+  },
+  "construction": "/data_fast/home/tjdgus4384/priv/ogc2026-worktrees/codex-fundamental/results/voluntary-stay-sequential-75036/prob_6.json",
+  "elapsed": 317.4112885571085,
+  "instance": 6,
+  "iters": 20000,
+  "mode": "stay",
+  "order": "noisy_a",
+  "run_stats": [
+    20000.0,
+    7674.0,
+    271.0,
+    411.0,
+    34147728.0,
+    -1.0,
+    -1.0,
+    -1.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    733381.0,
+    53107.0
+  ],
+  "schema_version": 1,
+  "search_flat_sha256": "9a99c0458e45fc1b463d38cd2c81f845ef53b1230eaf3d3ba1dbb49f96b0d60a",
+  "search_objective": [
+    4940.0,
+    956.0,
+    8034.0,
+    34147728.0
+  ],
+  "seed": 41,
+  "solver": "/data_fast/home/tjdgus4384/priv/ogc2026-worktrees/codex-fundamental/builds/jasg-stay-rollout",
+  "start_checker": {
+    "feasible": true,
+    "flat_sha256": "9d9adebbfa3fafe5c9f443b63bfa3fdcb24fce9a577dfd783aae1082a821ba7c",
+    "objective": 41304351.0,
+    "rescued": false,
+    "solution_sha256": "79653849db5e13e7e1c2d7a031aa171fffe178ca7c7cccf17976703258489d30"
+  },
+  "start_flat_sha256": "9d9adebbfa3fafe5c9f443b63bfa3fdcb24fce9a577dfd783aae1082a821ba7c",
+  "start_objective": [
+    6001.0,
+    1198.0,
+    8574.0,
+    41304351.0
+  ],
+  "stay_start_objective": [
+    6001.0,
+    1198.0,
+    8574.0,
+    41304351.0
+  ]
+}

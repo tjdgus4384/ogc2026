@@ -152,3 +152,36 @@ validation; it still does not authorize the public action table.  Failure says
 the construction-only form washes out and moves the mechanism into the repair
 transition itself.  It does not justify another start hedge or a persistent
 stay lock.
+
+## Fixed-iteration plateau verdict: job 75041
+
+The final run completed all 32 arms, every arm passed the production checker,
+and all 16 API-build baselines reproduced the immutable job-74963 start/final
+hashes, objectives, audits, and common ALNS statistics exactly.  Two earlier
+launches produced no admissible evidence: job 75037 incorrectly rejected the
+already-frozen rescued P5 baseline before search, and job 75039 used a different
+causal-RNG environment from the immutable reference and was cancelled.  The
+replay checks were corrected before job 75041 without changing any treatment,
+seed, iteration count, or adoption threshold.
+
+| board | W/L/T | median stay delta |
+|---|---:|---:|
+| P3 | 3/1/0 | -3.507% |
+| P4 | 3/1/0 | -3.988% |
+| P5 | 1/3/0 | +1.984% |
+| P6 | 4/0/0 | -2.235% |
+
+The 16 pairs pool to 11 wins and 5 losses, but their median is only -0.629%,
+well short of the frozen -2% requirement.  P4 clears the target-board edge and
+P5 narrowly stays below the +2% board veto, but neither clause can replace the
+failed pooled gate.  The frozen verdict is `reject_stay_plateau_transfer`.
+
+This is a useful separation rather than a reversal of the causal finding:
+voluntary stay decisions change the reachable plateau on P3, P4, and P6, while
+the fixed public construction regresses P5 after long search.  Construction-
+only starts therefore stop here; there is no native start selector, disjoint-
+seed replication, or Train run for this form.  The next authorized test places
+the same zero-own-cost stay decision inside a destroy/repair transition, where
+its value is judged by rebuilding that neighbourhood's remaining suffix.  It
+is explicitly not another start hedge or persistent exit lock.  Complete
+reports are frozen under `results/voluntary-stay-transfer-75041/`.

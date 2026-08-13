@@ -1,0 +1,92 @@
+{
+  "actions": [
+    {
+      "base_exit": 20,
+      "block": 115,
+      "fraction": 0.5,
+      "target_exit": 23
+    },
+    {
+      "base_exit": 53,
+      "block": 122,
+      "fraction": 0.5,
+      "target_exit": 55
+    },
+    {
+      "base_exit": 29,
+      "block": 9,
+      "fraction": 1.0,
+      "target_exit": 32
+    }
+  ],
+  "audit": [
+    0,
+    -1
+  ],
+  "baseline_start_objective": [
+    547.0,
+    2613.0,
+    4859.0,
+    8040292.0
+  ],
+  "checker": {
+    "feasible": true,
+    "flat_sha256": "16c823281e13b61b59960eedfa59b5e01f49226ed0747828f0e70f396efebc16",
+    "objective": 4381698.0,
+    "rescued": false,
+    "solution_sha256": "062b4b3100c649b4b94fe54fed4e64b9b0c8790a4b417def08923d827e898604"
+  },
+  "construction": "/data_fast/home/tjdgus4384/priv/ogc2026-worktrees/codex-fundamental/results/voluntary-stay-sequential-75036/prob_4.json",
+  "elapsed": 106.1433117389679,
+  "instance": 4,
+  "iters": 20000,
+  "mode": "stay",
+  "order": "due_long",
+  "run_stats": [
+    20000.0,
+    5936.0,
+    141.0,
+    553.0,
+    4381698.0,
+    -1.0,
+    -1.0,
+    -1.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    450806.0,
+    42544.0
+  ],
+  "schema_version": 1,
+  "search_flat_sha256": "16c823281e13b61b59960eedfa59b5e01f49226ed0747828f0e70f396efebc16",
+  "search_objective": [
+    276.0,
+    3270.0,
+    4526.0,
+    4381698.0
+  ],
+  "seed": 23,
+  "solver": "/data_fast/home/tjdgus4384/priv/ogc2026-worktrees/codex-fundamental/builds/jasg-stay-rollout",
+  "start_checker": {
+    "feasible": true,
+    "flat_sha256": "438b0fb8552baac9b57ca8150dc9533bed27c4b5de260c440a8a1ef6e0a6aff2",
+    "objective": 6850118.0,
+    "rescued": false,
+    "solution_sha256": "85654f0c2622e502390d9957427beba544ef48b8d9bbe70be8bc486e32070ccf"
+  },
+  "start_flat_sha256": "438b0fb8552baac9b57ca8150dc9533bed27c4b5de260c440a8a1ef6e0a6aff2",
+  "start_objective": [
+    458.0,
+    3972.0,
+    4772.0,
+    6850118.0
+  ],
+  "stay_start_objective": [
+    458.0,
+    3972.0,
+    4772.0,
+    6850118.0
+  ]
+}
