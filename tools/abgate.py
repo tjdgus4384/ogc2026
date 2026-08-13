@@ -20,6 +20,7 @@ directory under different OGC_* knobs (--cand-env), or both.
 """
 import argparse
 import collections
+import hashlib
 import json
 import math
 import os
@@ -244,6 +245,51 @@ def cmd_collect(args):
               f"   target {tgt:,}")
 
 
+def cmd_freeze(args):
+    """Freeze a complete gate's compact raw evidence outside ignored runs/."""
+    gate = GATES / args.tag
+    manifest = json.loads((gate / "manifest.json").read_text())
+    receipts = []
+    for pair in manifest["pairs"]:
+        path = gate / f"pair-{pair['idx']:03d}.json"
+        if not path.exists():
+            sys.exit(f"gate incomplete: missing {path.name}")
+        receipt = json.loads(path.read_text())
+        for key in ("idx", "instance", "seed", "order", "tl", "probPath"):
+            if receipt.get(key) != pair.get(key):
+                sys.exit(f"{path.name}: manifest mismatch in {key}")
+        receipts.append(receipt)
+    observed = {}
+    roots = manifest.get("originalDirs", {
+        "base": manifest["baseDir"], "candidate": manifest["candDir"],
+        "checker": manifest["checkerDir"],
+    })
+    for name, root in roots.items():
+        path = pathlib.Path(root)
+        if path.is_dir():
+            seal = tree_seal(path)
+            observed[name] = {"id": seal_id(seal), "files": seal}
+    payload = {
+        "schemaVersion": 1, "tag": args.tag, "manifest": manifest,
+        "receipts": receipts, "freezeObservedSeals": observed,
+    }
+    body = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+    payload["evidenceSha256"] = hashlib.sha256(body).hexdigest()
+    output = pathlib.Path(args.output) if args.output else \
+        REPO / "results" / "abgate" / f"{args.tag}.json"
+    output = output.resolve()
+    output.parent.mkdir(parents=True, exist_ok=True)
+    encoded = json.dumps(payload, indent=2, sort_keys=True) + "\n"
+    if output.exists():
+        if output.read_text() != encoded:
+            sys.exit(f"refusing to overwrite different evidence: {output}")
+        print(f"already frozen: {output}")
+        return
+    output.write_text(encoded)
+    print(f"froze {len(receipts)} pairs -> {output}")
+    print(f"evidence sha256 {payload['evidenceSha256']}")
+
+
 def main():
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -268,6 +314,10 @@ def main():
     c = sub.add_parser("collect")
     c.add_argument("tag")
     c.set_defaults(func=cmd_collect)
+    f = sub.add_parser("freeze")
+    f.add_argument("tag")
+    f.add_argument("--output")
+    f.set_defaults(func=cmd_freeze)
     args = ap.parse_args()
     args.func(args)
 
