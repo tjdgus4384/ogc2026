@@ -227,7 +227,12 @@ def _seed_free(p, diversify=True, asg=None):
                     best = (ob, od)
         if best is not None:
             if best[1] is not orders[-1]:
-                eng.reconstruct_ordered([-1] * n, best[1], False, 7)
+                # Diagnostic hard-lock audits must replay the winning order
+                # under the same lock used to score it.  The shipped soft-lock
+                # path deliberately keeps the historical unlocked replay.
+                replay_lock = (lockv if os.environ.get(
+                    "OGC_KEEP_ASSIGNMENT_LOCK") == "1" else [-1] * n)
+                eng.reconstruct_ordered(replay_lock, best[1], False, 7)
             # top DISTINCT seeds, best first: the portfolio's basin hedge
             # (different insertion orders often collapse to the same layout;
             # duplicates would waste a thread on the same basin).

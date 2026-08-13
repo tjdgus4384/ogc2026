@@ -160,6 +160,17 @@ hash, final hash, objective, ALNS statistics, audit, and checker result must be
 exactly equal to the original baseline before old `start` and new `lock` rows
 may be joined.  Timing is deliberately excluded from this A/A identity test.
 
+Job 74949 showed that suppressing only the 60% release is not a persistent-lock
+instrument: all four P3 lock arms ended with block 197 back in bay 2 rather
+than its required bay 0, so the harness failed before writing those rows.
+This was not a new unknown mechanism.  The repository's earlier lockprobe had
+already enumerated six leaks: unlocked seed replay, mid-run release, the
+ops-8/9 temporary vector, their target-block override, API single-block
+overrides, and direct atomic swap.  The first audit build closed only the
+second.  No score from job 74949 is a hard-lock verdict.  A valid rerun must
+port the already-proven default-off guards for every path exercised by the
+harness and must again fail closed on any final bay mismatch.
+
 The discovered 60% release is also a distinct, production-relevant treatment,
 not merely a failed instrument.  A fourth `guide60` arm starts from the same
 causal bytes, holds the single decision for the shipped first 60% of ALNS, and

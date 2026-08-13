@@ -276,8 +276,14 @@ struct Engine {
     // bay -- the primitive for chasing an external plan (plan seeds,
     // tools/plan_pack.py).
     bool insertCapped(int A, int eCap, int bay) {
-        std::vector<int> fbv(pb.n, -1);
-        if (bay >= 0) fbv[A] = bay;
+        std::vector<int> fbv;
+        if (knobs::keepAssignmentLock() && ctx.forcedBay)
+            fbv.assign(ctx.forcedBay, ctx.forcedBay + pb.n);
+        else
+            fbv.assign(pb.n, -1);
+        if (bay >= 0 && !(knobs::keepAssignmentLock() && ctx.forcedBay &&
+                          ctx.forcedBay[A] >= 0))
+            fbv[A] = bay;
         const int* save = ctx.forcedBay;
         ctx.forcedBay = fbv.data();
         bool ok = repair::insertGreedy(ctx, A, eCap);
@@ -977,7 +983,15 @@ struct Engine {
         int oldBay=sol.bay[i], oldOri=sol.ori[i], oldX=sol.x[i], oldY=sol.y[i],
             oldE=sol.e[i], oldF=sol.f[i];
         repair::removeBlock(ctx, i);
-        std::vector<int> asg(pb.n, -1); asg[i]=targetBay;
+        std::vector<int> asg;
+        if (knobs::keepAssignmentLock() && ctx.forcedBay)
+            asg.assign(ctx.forcedBay, ctx.forcedBay + pb.n);
+        else
+            asg.assign(pb.n, -1);
+        if (knobs::keepAssignmentLock() && ctx.forcedBay &&
+            ctx.forcedBay[i] >= 0)
+            targetBay = ctx.forcedBay[i];
+        asg[i]=targetBay;
         const int* fbPrev = ctx.forcedBay;
         ctx.forcedBay = asg.data();
         ctx.rng.seed(seed);

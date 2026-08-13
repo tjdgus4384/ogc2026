@@ -553,7 +553,16 @@ inline RunStats run(repair::Ctx& c, double seconds, const RunParams& rp,
                 if (tard.empty()) goto no_swap;
                 int A = tard[c.rng() % tard.size()];
                 int B = pl[c.rng() % pl.size()];
-                if (A != B) {
+                // A hard-lock audit must cover atomic moves too: this swap
+                // writes bay ids directly and bypasses insertGreedy.
+                bool lockOK = true;
+                if (knobs::keepAssignmentLock() && c.forcedBay && A != B) {
+                    if (c.forcedBay[A] >= 0 &&
+                        c.forcedBay[A] != s.bay[B]) lockOK = false;
+                    if (c.forcedBay[B] >= 0 &&
+                        c.forcedBay[B] != s.bay[A]) lockOK = false;
+                }
+                if (A != B && lockOK) {
                     int aB=s.bay[A], aX=s.x[A], aY=s.y[A], aE=s.e[A];
                     int bB=s.bay[B], bX=s.x[B], bY=s.y[B], bE=s.e[B];
                     c.oc->stamp(pb, s, A, false);
@@ -644,8 +653,14 @@ no_swap:
             // the upgrader claims the freed space first: forced into its
             // preferred bay at an on-time entry, then the evicted go free.
             thread_local std::vector<int> fbv;
-            fbv.assign(pb.n, -1);
-            fbv[c.tsBlk] = c.tsBay;
+            const bool hardLock = knobs::keepAssignmentLock();
+            if (hardLock && c.forcedBay)
+                fbv.assign(c.forcedBay, c.forcedBay + pb.n);
+            else
+                fbv.assign(pb.n, -1);
+            fbv[c.tsBlk] = (hardLock && c.forcedBay &&
+                            c.forcedBay[c.tsBlk] >= 0)
+                               ? c.forcedBay[c.tsBlk] : c.tsBay;
             const int* save = c.forcedBay;
             c.forcedBay = fbv.data();
             ok = repair::insertGreedy(c, c.tsBlk, c.tsECap);
