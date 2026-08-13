@@ -146,8 +146,9 @@ def _inspect_flat(ma, problem: dict[str, Any], flat: list[int],
 
 
 def _telemetry(stats: list[float]) -> dict[str, float | int]:
-    if len(stats) < 50:
-        raise RuntimeError(f"archive build returned only {len(stats)} stats")
+    if len(stats) != 50:
+        raise RuntimeError(
+            f"archive telemetry ABI requires exactly 50 stats, got {len(stats)}")
     result: dict[str, float | int] = {}
     for index, name in enumerate(CLOSURE_NAMES, 21):
         value = float(stats[index])
@@ -182,10 +183,15 @@ def _telemetry(stats: list[float]) -> dict[str, float | int]:
         c["new_best"] <= c["accepted"],
         c["rescued"] <= c["selected"],
         c["archive_updates"] <= c["suffix_built"],
+        c["archive_bound_pruned"] <= c["suffix_tried"],
         c["archive_returned"] in (0, 1),
         c["archive_returned"] <= c["archive_updates"],
         c["returned_official"] in (0, 1),
         c["archive_audit_rejects"] <= c["suffix_tried"],
+        (c["archive_updates"] != 0 or c["archive_objective"] == 0.0),
+        (c["archive_returned"] != 0 or c["archive_gain"] == 0.0),
+        (c["archive_returned"] == 0 or c["archive_gain"] > 0.0),
+        (c["archive_returned"] == 0 or c["returned_official"] == 1),
     )
     if not all(invariants):
         raise RuntimeError(f"archive telemetry invariant failed: {result!r}")
@@ -354,6 +360,31 @@ def _solution_signature(record: dict[str, Any]) -> dict[str, Any]:
     )}
 
 
+def _validate_solution_record(record: dict[str, Any], label: str) -> None:
+    objective = record.get("objective")
+    audit = record.get("audit")
+    exact = bool(record.get("overlong"))
+    valid = (
+        isinstance(record.get("flat_sha256"), str) and
+        isinstance(record.get("solution_sha256"), str) and
+        isinstance(objective, list) and len(objective) == 4 and
+        isinstance(record.get("checker_objective"), (int, float)) and
+        abs(float(record["checker_objective"]) -
+            float(objective[-1])) <= 1e-9 and
+        record.get("checker_feasible") is True and
+        isinstance(audit, list) and len(audit) > 0 and audit[0] == 0 and
+        bool(record.get("official_exit_order")) == exact and
+        isinstance(record.get("entry_ranks_sha256"), str) and
+        ((not exact and record.get("exit_ranks_sha256") is None and
+          record.get("greedy_exit_ranks_sha256") is None) or
+         (exact and isinstance(record.get("exit_ranks_sha256"), str) and
+          record.get("exit_ranks_sha256") ==
+          record.get("greedy_exit_ranks_sha256")))
+    )
+    if not valid:
+        raise RuntimeError(f"stored solution authority failed: {label}")
+
+
 def _identity(report: dict[str, Any], mode: str, instance: int,
               eval_seed: int, plateau_seed: int) -> None:
     valid = (
@@ -364,6 +395,7 @@ def _identity(report: dict[str, Any], mode: str, instance: int,
         report.get("iters") == FIXED_ITERS and
         report.get("checkpoint_iteration") == FIXED_CHECKPOINT and
         isinstance(report.get("run_stats"), list) and
+        len(report["run_stats"]) == (15 if mode == "reference" else 50) and
         int(round(float(report["run_stats"][0]))) == FIXED_ITERS and
         (mode == "reference") == (report.get("telemetry") is None) and
         (mode == "reference") == (report.get("final_rng_state") is None)
@@ -371,6 +403,19 @@ def _identity(report: dict[str, Any], mode: str, instance: int,
     if not valid:
         raise RuntimeError(
             f"report identity failed: P{instance} e{eval_seed} {mode}")
+    for field in (
+            "start", "control_final", "control_checkpoint",
+            "returned_final", "returned_checkpoint"):
+        value = report.get(field)
+        if not isinstance(value, dict):
+            raise RuntimeError(f"report is missing {field}")
+        _validate_solution_record(value, f"P{instance} e{eval_seed} {mode}:{field}")
+    if (float(report["returned_final"]["checker_objective"]) >
+            float(report["control_final"]["checker_objective"]) + 1e-9 or
+            float(report["returned_checkpoint"]["checker_objective"]) >
+            float(report["control_checkpoint"]["checker_objective"]) + 1e-9):
+        raise RuntimeError(
+            f"stored dominance failed: P{instance} e{eval_seed} {mode}")
 
 
 def _metrics(rows: list[dict[str, Any]], key: str) -> dict[str, Any]:
@@ -422,6 +467,21 @@ def _collect(args: argparse.Namespace) -> None:
     update_boards: set[int] = set()
     totals = {name: 0.0 for name in
               tuple(CLOSURE_NAMES) + tuple(f"archive_{n}" for n in ARCHIVE_NAMES)}
+    expected_files = {
+        f"p{instance}-e{eval_seed}-ps{plateau_seed}-{mode}.json"
+        for instance in range(3, 7)
+        for eval_seed, plateau_seed in zip(eval_seeds, PLATEAU_SEEDS)
+        for mode in MODES
+    }
+    actual_files = {path.name for path in directory.glob("*.json")
+                    if path.name != "summary.json"}
+    if actual_files != expected_files:
+        raise RuntimeError(
+            "gate report set mismatch: "
+            f"missing={sorted(expected_files - actual_files)}, "
+            f"extra={sorted(actual_files - expected_files)}")
+    reference_binary: str | None = None
+    candidate_binary: str | None = None
 
     for instance in range(3, 7):
         for eval_seed, plateau_seed in zip(eval_seeds, PLATEAU_SEEDS):
@@ -432,6 +492,17 @@ def _collect(args: argparse.Namespace) -> None:
             }
             for mode, report in reports.items():
                 _identity(report, mode, instance, eval_seed, plateau_seed)
+                binary = report.get("solver_extension_sha256")
+                if not isinstance(binary, str) or len(binary) != 64:
+                    raise RuntimeError(f"missing solver hash: {stem}-{mode}")
+                if mode == "reference":
+                    reference_binary = reference_binary or binary
+                    if binary != reference_binary:
+                        raise RuntimeError("mixed reference binaries in gate")
+                else:
+                    candidate_binary = candidate_binary or binary
+                    if binary != candidate_binary:
+                        raise RuntimeError("mixed candidate binaries in gate")
             reference, control, archive = (
                 reports["reference"], reports["control"], reports["archive"])
             label = f"P{instance}-e{eval_seed}-ps{plateau_seed}"
@@ -468,6 +539,13 @@ def _collect(args: argparse.Namespace) -> None:
                     not _experimental_zero(control_tel) or
                     not _live_decisions_zero(archive_tel)):
                 mismatches["telemetry"].append(label)
+            if bool(archive["archive_returned"]):
+                if (abs(float(archive_tel["archive_objective"]) -
+                        float(archive["returned_final"]["checker_objective"])) >
+                        1e-9 or
+                    int(archive_tel["returned_official"]) !=
+                        int(bool(archive["returned_final"]["overlong"]))):
+                    mismatches["telemetry"].append(label)
             for name, value in archive_tel.items():
                 totals[name] += float(value)
             if int(archive_tel["archive_updates"]) > 0:
@@ -529,6 +607,8 @@ def _collect(args: argparse.Namespace) -> None:
         "final": final,
         "telemetry_totals": totals,
         "archive_update_boards": sorted(update_boards),
+        "reference_binary_sha256": reference_binary,
+        "candidate_binary_sha256": candidate_binary,
         "median_slowdown": statistics.median(row["slowdown"] for row in rows),
         "passed": passed,
         "verdict": verdict,
