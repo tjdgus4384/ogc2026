@@ -19,6 +19,7 @@ import json
 import math
 import pathlib
 import random
+import statistics
 import sys
 import time
 
@@ -101,13 +102,13 @@ def main() -> None:
     rows = []
     for block in range(n):
         for bay in range(bays):
-            if bay == base_bays[block]:
-                continue
             locks = [-1] * n
             locks[block] = bay
             built = construct(locks, order)
             if built is None:
-                rows.append({"block": block, "bay": bay, "status": "failed"})
+                rows.append({"block": block, "bay": bay, "status": "failed",
+                             "kind": ("same_bay_null" if bay == base_bays[block]
+                                      else "alternative")})
                 continue
             obj, flat = built
             if int(flat[7 * block]) != bay:
@@ -117,6 +118,8 @@ def main() -> None:
                 "block": block,
                 "bay": bay,
                 "status": "built",
+                "kind": ("same_bay_null" if bay == base_bays[block]
+                         else "alternative"),
                 "objective": obj[3],
                 "components": list(obj),
                 "delta": obj[3] - base_obj[3],
@@ -126,9 +129,11 @@ def main() -> None:
             })
 
     built_rows = [row for row in rows if row["status"] == "built"]
-    if not built_rows:
-        raise RuntimeError("every forced-bay action failed")
-    best = min(built_rows, key=lambda row: row["objective"])
+    alternative_rows = [row for row in built_rows if row["kind"] == "alternative"]
+    null_rows = [row for row in built_rows if row["kind"] == "same_bay_null"]
+    if not alternative_rows:
+        raise RuntimeError("every alternative forced-bay action failed")
+    best = min(alternative_rows, key=lambda row: row["objective"])
     best_locks = [-1] * n
     best_locks[best["block"]] = best["bay"]
     best_replay = construct(best_locks, order)
@@ -141,20 +146,49 @@ def main() -> None:
         recs = ma._extract(engine, n)
         ranks = list(engine.entry_ranks())
         result = ma._check(prob, ma._recs_to_sol(recs, ranks))
-        if not result or not result.get("feasible"):
-            raise AssertionError(f"official checker rejected deterministic board: {result}")
-        return {"feasible": True, "objective": float(result["objective"])}
-
-    base_check = checker_record(base_flat)
-    best_check = checker_record(best["flat"])
-    if abs(base_check["objective"] - base_obj[3]) > 1e-6:
-        raise AssertionError("baseline kernel/checker objective mismatch")
-    if abs(best_check["objective"] - best["objective"]) > 1e-6:
-        raise AssertionError("candidate kernel/checker objective mismatch")
+        if result and result.get("feasible"):
+            return {"feasible": True, "objective": float(result["objective"]),
+                    "rescued": False}
+        # Raw deterministic seeds can carry the exact-touch artifact that the
+        # production pipeline always sends through _gate.  Score both arms by
+        # that same authority instead of silently dropping the board.
+        solution, gated = ma._gate(prob, engine, n, time.time() + 60.0)
+        if solution is None or not gated or not gated.get("feasible"):
+            raise AssertionError(
+                "production gate could not legalize deterministic board: "
+                f"raw={result} gated={gated}")
+        return {"feasible": True, "objective": float(gated["objective"]),
+                "rescued": True,
+                "solution_sha256": hashlib.sha256(
+                    json.dumps(solution, sort_keys=True, separators=(",", ":")).encode()
+                ).hexdigest()}
 
     compact_rows = []
-    for row in sorted(built_rows, key=lambda item: item["objective"])[:20]:
+    for row in sorted(alternative_rows, key=lambda item: item["objective"])[:20]:
         compact_rows.append({key: value for key, value in row.items() if key != "flat"})
+    null_identical = sum(row["flat"] == base_flat for row in null_rows)
+    null_deltas = [float(row["delta_pct"]) for row in null_rows]
+    causal_null_pass = len(null_rows) == n and null_identical == n
+
+    # A failed semantic no-op means the alternative arm is a different RNG
+    # draw, not a causal assignment intervention.  Do not dignify its score
+    # with an official-checker result; retain only the null diagnostics needed
+    # to repair the instrument.
+    base_check = None
+    best_check = None
+    gated_delta_pct = None
+    if causal_null_pass:
+        base_check = checker_record(base_flat)
+        best_check = checker_record(best["flat"])
+        if (not base_check["rescued"] and
+                abs(base_check["objective"] - base_obj[3]) > 1e-6):
+            raise AssertionError("baseline kernel/checker objective mismatch")
+        if (not best_check["rescued"] and
+                abs(best_check["objective"] - best["objective"]) > 1e-6):
+            raise AssertionError("candidate kernel/checker objective mismatch")
+        gated_delta_pct = (100.0 *
+                           (best_check["objective"] - base_check["objective"]) /
+                           base_check["objective"])
     report = {
         "schema_version": 1,
         "problem": str(problem_path),
@@ -170,15 +204,29 @@ def main() -> None:
         },
         "best_action": {key: value for key, value in best.items() if key != "flat"},
         "best_checker": best_check,
+        "gated_delta_pct": gated_delta_pct,
         "actions": {
-            "tested": n * max(0, bays - 1),
+            "tested": n * bays,
             "built": len(built_rows),
             "failed": len(rows) - len(built_rows),
-            "wins": sum(row["delta"] < -1e-9 for row in built_rows),
-            "ties": sum(abs(row["delta"]) <= 1e-9 for row in built_rows),
-            "losses": sum(row["delta"] > 1e-9 for row in built_rows),
+            "alternative_wins": sum(row["delta"] < -1e-9 for row in alternative_rows),
+            "alternative_ties": sum(abs(row["delta"]) <= 1e-9
+                                    for row in alternative_rows),
+            "alternative_losses": sum(row["delta"] > 1e-9 for row in alternative_rows),
+        },
+        "same_bay_null": {
+            "tested": n,
+            "built": len(null_rows),
+            "failed": n - len(null_rows),
+            "byte_identical": null_identical,
+            "median_delta_pct": (statistics.median(null_deltas)
+                                 if null_deltas else None),
+            "min_delta_pct": min(null_deltas) if null_deltas else None,
+            "max_delta_pct": max(null_deltas) if null_deltas else None,
+            "pass": causal_null_pass,
         },
         "deterministic_replay": replay_exact,
+        "interpretation_valid": causal_null_pass,
         "top_actions": compact_rows,
         "wall_seconds": time.monotonic() - started,
     }
@@ -189,11 +237,14 @@ def main() -> None:
         "baseline": base_obj[3],
         "best": best["objective"],
         "delta_pct": best["delta_pct"],
+        "gated_delta_pct": report["gated_delta_pct"],
         "action": [best["block"], best["bay"]],
-        "wins": report["actions"]["wins"],
+        "wins": report["actions"]["alternative_wins"],
         "tested": report["actions"]["tested"],
-        "checker": True,
+        "checker": causal_null_pass,
         "replay": replay_exact,
+        "same_bay_null": f"{null_identical}/{n}",
+        "interpretation_valid": causal_null_pass,
         "wall_seconds": report["wall_seconds"],
     }, sort_keys=True), flush=True)
 
