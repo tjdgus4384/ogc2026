@@ -779,7 +779,15 @@ def _arm_free(p, deadline, seed=7, tl=None):
     # SCALE-INVARIANT population gate (08-01, 40-instance sweep): the
     # population's edge is the tight regime (~1 s/block, the P3 class);
     # absolute-time windows overfit the train boards. Gate on the ratio.
-    _pop_here = sec >= 150.0 and sec / max(1, n) <= 1.6
+    # MEASURED-ZONE GUARD (v6.5.2). The population path's win zone was
+    # measured only on the P3 class (n=200, TL240, z1=0 pure assignment);
+    # the bare ratio extrapolated it to n=300 giants at TL<=480, where the
+    # finals TLs (unpublished) could land -- and measured there it LOSES:
+    # nopop-giants 14W/4L median -3.49% p=0.031 for the portfolio path.
+    # n <= 220 confines it to its evidence. Branch-checked: identical on
+    # all 44 measured configurations (4 prelim official TLs + 40
+    # train_final at TL600).
+    _pop_here = sec >= 150.0 and sec / max(1, n) <= 1.6 and n <= 220
     # OGC_SLICE=0 is the shipped ablation switch (noslice variant measured
     # +2.1% mean on the 40-pair harness 08-03 -- keep ON; sh45 share and
     # k60 subset variants refuted there too).

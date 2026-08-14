@@ -1,3 +1,18 @@
+v6.5.2 (2026-08-15) = v6.5.1 + population measured-zone guard (ROBUSTNESS).
+
+`_pop_here = sec >= 150 and sec/n <= 1.6` sent n=300 giants at TL<=480 (and
+n=250 at TL<=300) down the population path, whose win zone was measured only
+on the P3 class (n=200, TL240, z1=0 pure assignment). The finals TLs are
+unpublished, so the finals giants -- 73% of the total -- could sit on that
+cliff. Measured there (nopop-giants: 5 giants x 6 seeds, TL480, same build,
+env-only): the population path LOSES 14W/4L, median -3.49%, p=0.031 at the
+18-pair partial read that decided adoption (full 30 recorded in the ledger
+when complete). The guard adds `n <= 220`, confining the path to its
+evidence; branch arithmetic proves all 44 measured configurations (4 prelim
+official TLs + 40 train_final at TL600) are byte-identical. Same adoption
+class as v6.5.1: behaviour-preserving everywhere measured, risk removed where
+nothing was.
+
 v6.5.1 (2026-08-14) = v6.5 + assign-descent budget clamp (ROBUSTNESS REPAIR).
 
 `_assign_descent` received the full deadline while every other tail stage stops
