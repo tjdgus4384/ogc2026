@@ -5,9 +5,9 @@ n=250 at TL<=300) down the population path, whose win zone was measured only
 on the P3 class (n=200, TL240, z1=0 pure assignment). The finals TLs are
 unpublished, so the finals giants -- 73% of the total -- could sit on that
 cliff. Measured there (nopop-giants: 5 giants x 6 seeds, TL480, same build,
-env-only): the population path LOSES 14W/4L, median -3.49%, p=0.031 at the
-18-pair partial read that decided adoption (full 30 recorded in the ledger
-when complete). The guard adds `n <= 220`, confining the path to its
+env-only): the population path LOSES 25W/5L, median -5.15%, p=0.0003 over the full
+30 pairs (adoption was decided at the 18-pair partial reading 14W/4L,
+-3.49%, p=0.031; the completion strengthened it). The guard adds `n <= 220`, confining the path to its
 evidence; branch arithmetic proves all 44 measured configurations (4 prelim
 official TLs + 40 train_final at TL600) are byte-identical. Same adoption
 class as v6.5.1: behaviour-preserving everywhere measured, risk removed where
