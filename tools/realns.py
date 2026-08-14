@@ -58,9 +58,13 @@ def main():
     eng.set_entry_floor([max(0, x) for x in e])   # floor == cap => day pinned
     rng = random.Random(20260814)
 
+    import os
+    SLIDE = os.environ.get("OGC_SLIDE", "0") == "1"
+
     def seat(i):
         """try to give block i a seat on its planned day, kernel-verified."""
-        rows = eng.feasible_positions(i, K, max(0, e[i]), bay[i], e[i])
+        fn = eng.feasible_positions_slide if SLIDE else eng.feasible_positions
+        rows = fn(i, K, max(0, e[i]), bay[i], e[i])
         for q in range(0, len(rows), 5):
             j, oi, x, y, ee = rows[q:q+5]
             if eng.place_at(i, j, oi, x, y, ee):
