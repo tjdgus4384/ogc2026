@@ -1,10 +1,11 @@
 # tools/ index
 
-Auto-generated 2026-08-14 (regenerate: python3 tools/_index.py). One line per
-probe: the first docstring line. Full context lives in docs/CAMPAIGN_LEDGER.md;
-probes are kept for reproducibility even after their hypothesis dies -- the
-ledger records which verdict each one produced.
+Auto-generated (regenerate: python3 tools/_index.py). One line per
+probe: the first docstring line. Full context lives in
+docs/CAMPAIGN_LEDGER.md; probes are kept for reproducibility even
+after their hypothesis dies -- the ledger records each verdict.
 
+- `_index.py` — Regenerate tools/README.md from each probe's first docstring line.
 - `abgate.py` — Matched AB/BA gate: judge one candidate against one baseline, decisively.
 - `abgate_cell.py` — Run one abgate cell: every pair of one seed, concurrently, A/B sequential.
 - `area_bound.py` — Lower-bound the tardiness that AREA alone forces, per instance.
