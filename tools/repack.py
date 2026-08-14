@@ -1,149 +1,138 @@
 #!/usr/bin/env python3
-"""Set growth WITH geometric freedom: the question P4 never got asked.
+"""Static peak-day repack: does contact packing beat bbox-corner packing HERE?
 
-The elimination table has one untried cell. bayscratch re-packed a bay's
-geometry with the SAME block set (optimal, exactly). overfill grew the set
-with residents PINNED at our positions (+1 of 12). Nobody has asked the union:
-repack the bay's geometry from scratch AND offer the tardy blocks as punctual
-additions. blocked.py says 83% of P4's tardy days are fragmentation -- no free
-bbox anywhere at the pinned positions -- which is precisely the condition
-under which repacking-with-growth could differ from both.
+The interlock hypothesis' decisive test. The realizer A/B was the wrong
+instrument (+1..+2 seats): re-seating an annealed schedule never needs
+interlock because that schedule was CHOSEN at bbox density. The hypothesis is
+about reaching DENSER packings -- earlier entries, lower z1 -- than the
+bbox-corner generator allows.
 
-Per bay: residents keep their own entry days (the schedule axis is closed;
-only geometry moves) and MUST seat -- their candidate sets carry their witness
-anchors, so residents-SAT is guaranteed and any infeasibility is an encoding
-bug, per the instrument-validation discipline. Tardy blocks whose punctual
-window allows this bay are OPTIONAL at entry D-P (their last punctual day),
-grid candidates only. CP maximises the tardiness saved by the seated extras.
+So pack the actual peak-day residents of each bay from empty, one at a time
+(area-descending), under two placement rules:
+  corner   candidate anchors = bay walls + residents' BBOX corner snugs
+           (what cornerSetsRB produces), first feasible in (y, x) order
+  contact  bottom-left-most free position of the TRUE polygon raster,
+           found by FFT correlation over the occupancy grid (the validated
+           nest.py machinery, res 0.5: ground-truth overlap 0.00%)
+then keep inserting EXTRA blocks (the instance's tardy ones, area-desc) until
+neither rule can seat another. Score = polygon fill achieved + extra blocks
+seated. If contact barely beats corner, the bbox slack is geometrically
+unavoidable for these (mostly convex) shapes and the hypothesis DIES. If it
+seats materially more, the insertion vocabulary is the wall.
 
-    extras seat   per-bay packing is NOT optimal once the set may grow, and
-                  the exact machinery has a real P4 target;
-    none seat     the last cell of the table closes, and P4's gap is beyond
-                  every decomposed move this solver's vocabulary can express.
-
-    python3 tools/repack.py prob_4 BAY TL [seed]
+    python3 tools/repack.py prob_6 900 7
 """
-import json
-import math
-import os
-import pathlib
-import sys
-import time
-
+import hashlib, json, pathlib, sys
+import numpy as np
+from shapely.geometry import Polygon
+import shapely
 REPO = pathlib.Path(__file__).resolve().parent.parent
-SOLVER = "builds/pc2"
+RES = 0.5
+
+
+def cached(pid, tl, seed):
+    sd = str(REPO / "solver")
+    so = pathlib.Path(sd) / "sscore.cpython-312-x86_64-linux-gnu.so"
+    h = hashlib.sha256(f"{sd}|{so.stat().st_mtime_ns}".encode()).hexdigest()[:12]
+    p = REPO / "runs" / "boards" / f"{pid}_tl{int(tl)}_s{seed}_{h}.json"
+    return json.loads(p.read_text())["base"]
+
+
+def rast(pts, W, H):
+    g = Polygon(pts)
+    if not g.is_valid:
+        g = g.buffer(0)
+    minx, miny, maxx, maxy = g.bounds
+    w = int(np.ceil((maxx - minx) / RES)) + 1
+    h = int(np.ceil((maxy - miny) / RES)) + 1
+    xs = minx + (np.arange(w) + 0.5) * RES
+    ys = miny + (np.arange(h) + 0.5) * RES
+    X, Y = np.meshgrid(xs, ys)
+    return (shapely.contains_xy(g, X.ravel(), Y.ravel()).reshape(h, w),
+            minx, miny, g.area)
+
+
+def free_positions(occ, mk):
+    """boolean grid of anchor positions where mk fits with zero overlap."""
+    H, W = occ.shape; h, w = mk.shape
+    if h > H or w > W:
+        return None
+    F = np.fft.rfft2(occ.astype(np.float32), s=(H, W))
+    M = np.fft.rfft2(mk[::-1, ::-1].astype(np.float32), s=(H, W))
+    c = np.fft.irfft2(F * M, s=(H, W))[h-1:H, w-1:W]
+    return c < 0.5
 
 
 def main():
-    # repack2 mode: BAY = -1 composes all bays sequentially -- each bay's CP
-    # sees only the tardy blocks not yet seated by an earlier bay (no double
-    # counting), commits its placements, and the final board is scored on the
-    # engine and judged by the official checker. Bays are ordered by their
-    # measured savings (2, 0, 1 on P4) so the richest bay picks first.
-    prob_id = sys.argv[1]
-    bay = int(sys.argv[2])
-    tl = float(sys.argv[3])
-    seed = int(sys.argv[4]) if len(sys.argv) > 4 else 7
-    sys.path.insert(0, str(REPO / SOLVER))
-    os.environ["OGC_SEED"] = str(seed)
-    import myalgorithm as ma
-    from ortools.sat.python import cp_model as cp
-    prob = json.load(open(REPO / "data" / "preliminary_test" / f"{prob_id}.json"))
+    pid, tl = sys.argv[1], float(sys.argv[2])
+    seed = int(sys.argv[3]) if len(sys.argv) > 3 else 7
+    ds = next(d for d in ("preliminary_test","train_final","train")
+              if (REPO/"data"/d/f"{pid}.json").exists())
+    prob = json.load(open(REPO/"data"/ds/f"{pid}.json"))
     B, bays = prob["blocks"], prob["bays"]
     n, m = len(B), len(bays)
-    W_, H_ = bays[bay]["width"], bays[bay]["height"]
-
-    sol = ma.algorithm(prob, timelimit=tl)
-    eng, D, P = ma._fresh(prob, 4)
-    st = [0] * (n * 7)
-    for day, ops in sol["operations"].items():
-        for op in ops:
-            if op["type"] == "ENTRY":
-                i = op["block_id"]
-                st[i * 7:i * 7 + 7] = [op["bay_id"], op["orient_idx"], op["x"],
-                                       op["y"], int(day), int(day) + P[i], 1]
-    eng.set_solution(st)
-    eng.build_occ(eng.horizon())
-    base = eng.objective()
-    R = [int(math.ceil(b["release_time"] - 1e-9)) for b in B]
-    mine = [i for i in range(n) if st[i * 7 + 6] and st[i * 7] == bay]
-    tardy = [i for i in range(n) if st[i * 7 + 6] and st[i * 7 + 5] > D[i]
-             and R[i] <= D[i] - P[i]]
-    print(f"{prob_id} bay {bay}: board {base[3]:,.0f}, {len(mine)} residents,"
-          f" {len(tardy)} tardy candidates   (TL {tl:.0f}s, seed {seed})")
-
-    def grid(i, day, lim):
-        cs = []
-        for oi, sh in enumerate(B[i]["shape"]):
-            xs = [v[0] for lay in sh["layers"] for v in lay]
-            ys = [v[1] for lay in sh["layers"] for v in lay]
-            xlo = int(math.ceil(-min(xs) - 1e-9))
-            ylo = int(math.ceil(-min(ys) - 1e-9))
-            xhi = int(math.floor(W_ - max(xs) + 1e-9))
-            yhi = int(math.floor(H_ - max(ys) + 1e-9))
-            for x in range(xlo, xhi + 1, 2):
-                for y in range(ylo, yhi + 1, 2):
-                    cs.append((bay, oi, x, y, day))
-        if len(cs) > lim:
-            step = len(cs) / lim
-            cs = [cs[int(q * step)] for q in range(lim)]
-        return cs
-
-    CAND, flat, idx = {}, [], []
-    for i in mine:
-        cs = grid(i, st[i * 7 + 4], 60)
-        wit = (bay, st[i * 7 + 1], st[i * 7 + 2], st[i * 7 + 3], st[i * 7 + 4])
-        if wit not in cs:
-            cs.append(wit)
-        CAND[i] = cs
-    save = {}
-    for i in tardy:
-        d = D[i] - P[i]                      # last punctual day, this bay
-        cs = grid(i, d, 40)
-        if not cs:
+    cur = cached(pid, tl, seed)
+    D = [int(round(b["due_date"])) for b in B]
+    tardy = [i for i in range(n) if cur[i*7+6] and cur[i*7+5] > D[i]]
+    for j in range(m):
+        W, H = bays[j]["width"], bays[j]["height"]
+        GW, GH = int(np.ceil(W/RES)), int(np.ceil(H/RES))
+        # peak day of this bay
+        days = {}
+        for i in range(n):
+            if cur[i*7+6] and cur[i*7] == j:
+                for d in range(cur[i*7+4], cur[i*7+5]):
+                    days.setdefault(d, []).append(i)
+        if not days:
             continue
-        CAND[i] = cs
-        save[i] = st[i * 7 + 5] - D[i]       # tardy days its seating erases
-    for i in CAND:
-        for k, c in enumerate(CAND[i]):
-            flat += [i, c[0], c[1], c[2], c[3], c[4]]
-            idx.append((i, k))
-    t0 = time.time()
-    prs = eng.pair_conflicts(flat)
-    print(f"   candidates {len(idx):,} ({len(mine)} anchored residents,"
-          f" {len(save)} optional tardy)   {len(prs)//2:,} conflict pairs"
-          f"   [{time.time()-t0:.0f}s]")
-
-    mdl = cp.CpModel()
-    V, use = {}, {}
-    for i in CAND:
-        V[i] = [mdl.NewBoolVar(f"z{i}_{k}") for k in range(len(CAND[i]))]
-        if i in save:
-            use[i] = mdl.NewBoolVar(f"u{i}")
-            mdl.Add(sum(V[i]) == use[i])
-        else:
-            mdl.AddExactlyOne(V[i])
-            mdl.AddHint(V[i][len(CAND[i]) - 1], 1)     # witness anchor
-    for q in range(0, len(prs), 2):
-        (a1, k1), (a2, k2) = idx[prs[q]], idx[prs[q + 1]]
-        mdl.AddBoolOr([V[a1][k1].Not(), V[a2][k2].Not()])
-    mdl.Maximize(sum(save[i] * use[i] for i in save))
-    sv = cp.CpSolver()
-    sv.parameters.max_time_in_seconds = 240.0
-    sv.parameters.num_search_workers = 8
-    t1 = time.time()
-    stt = sv.Solve(mdl)
-    nm = sv.StatusName(stt)
-    if stt not in (cp.OPTIMAL, cp.FEASIBLE):
-        print(f"   {nm} [{time.time()-t1:.0f}s]"
-              "   <- residents alone unseatable = ENCODING BUG (witness existed)")
-        return
-    got = [i for i in save if sv.Value(use[i])]
-    days = sum(save[i] for i in got)
-    print(f"   {nm} in {time.time()-t1:.0f}s: seats {len(got)} of {len(save)}"
-          f" tardy blocks punctually, erasing {days} tardy days"
-          f" (= {days * prob['weights']['w1']:,} objective)"
-          + ("   <- THE CELL OPENS" if got else "   <- the last cell closes"))
+        d, live = max(days.items(), key=lambda kv: len(kv[1]))
+        extra = [i for i in tardy if i not in set(live)][:30]
+        seq = sorted(live, key=lambda i: -Polygon(
+            [(q[0], q[1]) for q in B[i]["shape"][cur[i*7+1]]["layers"][0]]
+            ).area) + extra
+        results = {}
+        for mode in ("corner", "contact"):
+            occ = np.zeros((GH, GW), dtype=bool)
+            anchors = [(0, 0)]
+            seated = area = 0.0; cnt = 0; extra_cnt = 0
+            for idx, i in enumerate(seq):
+                mk, ox, oy, parea = rast(
+                    [(q[0], q[1]) for q in B[i]["shape"][cur[i*7+1]]["layers"][0]],
+                    W, H)
+                fp = free_positions(occ, mk)
+                if fp is None or not fp.any():
+                    continue
+                if mode == "contact":
+                    ys, xs = np.nonzero(fp)
+                    k = np.argmin(ys * 10000 + xs)      # bottom-left
+                    py, px = int(ys[k]), int(xs[k])
+                else:
+                    # bbox-corner anchors only: walls + placed bbox corners
+                    best = None
+                    for ay, ax in anchors:
+                        if 0 <= ay < fp.shape[0] and 0 <= ax < fp.shape[1] \
+                                and fp[ay, ax]:
+                            if best is None or (ay, ax) < best:
+                                best = (ay, ax)
+                    if best is None:
+                        continue
+                    py, px = best
+                occ[py:py+mk.shape[0], px:px+mk.shape[1]] |= mk
+                bh, bw = mk.shape
+                anchors += [(py, px+bw), (py+bh, px), (py+bh, px+bw)]
+                cnt += 1; area += parea
+                if idx >= len(live):
+                    extra_cnt += 1
+            results[mode] = (cnt, extra_cnt, area)
+        c1, e1, a1 = results["corner"]; c2, e2, a2 = results["contact"]
+        print(f"{pid} bay{j} ({W}x{H}) day {d}, residents {len(live)}"
+              f" + extras {len(extra)}:", flush=True)
+        print(f"   corner : seated {c1:>3} (extra {e1})  polygon fill"
+              f" {100*a1/(W*H):.0f}%", flush=True)
+        print(f"   contact: seated {c2:>3} (extra {e2})  polygon fill"
+              f" {100*a2/(W*H):.0f}%"
+              + (f"   <-- +{e2-e1} extra blocks" if e2 > e1 else ""),
+              flush=True)
 
 
 if __name__ == "__main__":

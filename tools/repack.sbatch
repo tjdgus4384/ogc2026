@@ -1,16 +1,12 @@
-#!/bin/bash
+#!/usr/bin/env bash
 #SBATCH -J repack
 #SBATCH -N 1
-#SBATCH --exclusive
-#SBATCH -o slurm-%j.out
-export PYTHONNOUSERSITE=1
-PY="$PWD/.miniforge/envs/ogc2026/bin/python"
-mkdir -p runs/repack
-i=0
-for b in 0 1 2; do
-  c=$((i*8)); OMP_NUM_THREADS=4 taskset -c $c-$((c+7)) \
-    $PY -u tools/repack.py prob_4 $b 480 7 > runs/repack/bay$b.txt 2>&1 &
-  i=$((i+1))
+#SBATCH -c 4
+#SBATCH --mem=16G
+#SBATCH -t 00:20:00
+set -euo pipefail
+REPO="${SLURM_SUBMIT_DIR:-$(pwd)}"
+PY="$REPO/.miniforge/envs/ogc2026/bin/python"
+for a in "prob_6 900 7" "prob_4 480 7" "prob_5 600 7"; do
+  OGC_SEED=7 "$PY" -u "$REPO/tools/repack.py" $a || true
 done
-wait
-for b in 0 1 2; do echo "##### bay $b"; cat runs/repack/bay$b.txt; done
