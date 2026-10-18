@@ -75,6 +75,13 @@ _KINDS = {
     "build-proof": _COMMON | {"jobId", "extract", "build", "outputSoSha256",
                               "importStatus", "shipped"},
     "generic-static": _COMMON | {"gateId", "inputs", "outputs", "commandSha256"},
+    "license": _COMMON | {"variant", "licenseId", "noticeRequired",
+                          "shippedLegalMembers", "decisionSource", "paths",
+                          "blockers"},
+    "e2e-case": _COMMON | {"gateId", "caseId", "lineage", "case", "slurm",
+                           "result"},
+    "aggregate": _COMMON | {"runRoot", "lineage", "matrixSha256", "gates",
+                            "cases"},
 }
 
 # required keys inside named nested objects, per kind
@@ -107,6 +114,24 @@ _NESTED = {
     },
     "generic-static": {
         "tool": {"path", "sha256"},
+    },
+    "license": {
+        "tool": {"path", "sha256"},
+    },
+    "e2e-case": {
+        "tool": {"path", "sha256"},
+        "lineage": {"releaseZipSha256", "solverTreeSha256", "canonicalSoSha256",
+                    "checkerSha256"},
+        "case": {"dataset", "instance", "inputSha256", "mode", "seed", "tl"},
+        "slurm": {"jobId", "partition"},
+        "result": {"wall", "maxRssMb", "cpus", "error", "feasible", "overrun",
+                   "objective", "z1", "z2", "z3", "solutionSha256",
+                   "checkerReplayStatus"},
+    },
+    "aggregate": {
+        "tool": {"path", "sha256"},
+        "lineage": {"releaseZipSha256", "solverTreeSha256", "canonicalSoSha256",
+                    "checkerSha256"},
     },
 }
 
@@ -149,6 +174,18 @@ def validate(receipt):
         for m in pkg["members"]:
             _require({"name", "srcName", "size", "sha256", "mode"} <= set(m),
                      f"package: member incomplete: {m!r}")
+    if kind == "license":
+        _require(isinstance(receipt["paths"], list) and receipt["paths"],
+                 "license: paths must be a non-empty list")
+        for p in receipt["paths"]:
+            _require({"path", "sha256", "ownership", "source", "license",
+                      "redistribution"} <= set(p),
+                     f"license: path entry incomplete: {p!r}")
+        _require(isinstance(receipt["blockers"], list),
+                 "license: blockers must be a list")
+        if receipt["status"] == "PASS":
+            _require(receipt["blockers"] == [],
+                     "license: PASS requires zero blockers")
     # a FAIL assertion forces overall FAIL
     if any(a["status"] == "FAIL" for a in receipt["assertions"]):
         _require(receipt["status"] == "FAIL",

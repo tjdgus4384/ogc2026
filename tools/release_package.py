@@ -265,6 +265,108 @@ def cmd_package_twice(args):
                       "receipt": args.receipt, "receiptSha256": receipt_sha}))
 
 
+def cmd_package_manifest(args):
+    """Deterministic A/B package of a sealed source TREE via an explicit member
+    manifest: JSON list of {"name", "path", "sha256"} in exact output order.
+    Used for the population-candidate variant whose member set is derived from
+    candidate-seal closure paths rather than the canonical 12."""
+    tree = pathlib.Path(args.tree).resolve()
+    output = pathlib.Path(args.output)
+    manifest = json.loads(pathlib.Path(args.manifest).read_text())
+    if not isinstance(manifest, list) or not manifest:
+        _fail("manifest must be a non-empty list")
+    names = []
+    for m in manifest:
+        if not {"name", "path", "sha256"} <= set(m):
+            _fail(f"manifest entry incomplete: {m!r}")
+        _check_member_name(m["name"])
+        names.append(m["name"])
+    _check_name_collisions(names)
+    if "build.txt" not in names:
+        _fail("manifest must ship lowercase build.txt")
+    if "BUILD.txt" in names:
+        _fail("uppercase BUILD.txt forbidden in output")
+
+    assertions = []
+    for m in manifest:
+        src = tree / m["path"]
+        if not src.is_file():
+            _fail(f"manifest source missing: {src}")
+        actual = rs.sha256_file(src)
+        if actual != m["sha256"]:
+            _fail(f"manifest sha mismatch for {m['name']}: {actual}")
+    assertions.append({"id": "manifest-sha", "status": "PASS",
+                       "detail": f"{len(manifest)} members match sealed tree"})
+
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(dir=output.parent) as tmp:
+        tmp = pathlib.Path(tmp)
+        # two independent copies from the sealed tree
+        plans = []
+        for tag in ("a", "b"):
+            stage = tmp / f"stage-{tag}"
+            plan = []
+            for m in manifest:
+                dst = stage / m["name"]
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(tree / m["path"], dst)
+                if rs.sha256_file(dst) != m["sha256"]:
+                    _fail(f"copy drift: {m['name']}")
+                plan.append((m["name"], m["path"], dst))
+            plans.append(plan)
+        zip_a, zip_b = tmp / "a.zip", tmp / "b.zip"
+        _build_zip(zip_a, plans[0])
+        _build_zip(zip_b, plans[1])
+        sha_a, sha_b = rs.sha256_file(zip_a), rs.sha256_file(zip_b)
+        if sha_a != sha_b:
+            _fail("A/B archive SHA mismatch")
+        assertions.append({"id": "ab-equality", "status": "PASS",
+                           "detail": f"A={sha_a} B={sha_b}"})
+        members = []
+        with zipfile.ZipFile(zip_a) as zf:
+            got = _audit_infos(zf, require_fixed_meta=True,
+                               allowed_compress={zipfile.ZIP_STORED})
+            if got != names:
+                _fail(f"member order mismatch: {got}")
+            for info in zf.infolist():
+                members.append({"name": info.filename,
+                                "srcName": next(m["path"] for m in manifest
+                                                if m["name"] == info.filename),
+                                "size": info.file_size,
+                                "sha256": rs.sha256_bytes(zf.read(info)),
+                                "mode": oct(stat.S_IMODE(info.external_attr >> 16))})
+        assertions.append({"id": "archive-audit", "status": "PASS",
+                           "detail": "fixed metadata, no denial hit"})
+        os.replace(zip_a, output)
+
+    so_members = [m for m in members if m["name"].endswith(".so")]
+    receipt = {
+        "schemaVersion": rs.SCHEMA_VERSION,
+        "kind": "package",
+        "status": "PASS",
+        "createdAt": rs.now_iso(),
+        "variant": args.variant,
+        "tool": {"path": "tools/release_package.py",
+                 "sha256": rs.sha256_file(__file__)},
+        "source": {"path": str(tree), "sha256": rs.tree_sha256(tree)[0],
+                   "expectedSha256": args.expected_tree_sha256 or "",
+                   "memberManifestSha256": rs.canonical_hash(manifest),
+                   "canonicalSoSha256": so_members[0]["sha256"] if so_members else ""},
+        "package": {"path": str(output), "sha256A": sha_a, "sha256B": sha_b,
+                    "identical": True, "compression": "ZIP_STORED",
+                    "fixedTimestamp": "1980-01-01T00:00:00", "members": members},
+        "selection": {"selectedVariant": args.variant,
+                      "selectionReceiptSha256": args.selection_receipt_sha256,
+                      "testedBinarySha256": so_members[0]["sha256"] if so_members else None},
+        "assertions": assertions,
+    }
+    if args.expected_tree_sha256 and receipt["source"]["sha256"] != args.expected_tree_sha256:
+        _fail(f"sealed tree drift: {receipt['source']['sha256']}")
+    receipt_sha = rs.write_receipt(args.receipt, receipt)
+    print(json.dumps({"output": str(output), "sha256": sha_a,
+                      "receipt": args.receipt, "receiptSha256": receipt_sha}))
+
+
 def cmd_audit(args):
     archive = pathlib.Path(args.archive)
     expected_names = OUTPUT_ORDER + list(args.expect_legal or [])
@@ -365,6 +467,16 @@ def main(argv=None):
     e.add_argument("--output", required=True)
     e.add_argument("--receipt", required=True)
     e.set_defaults(func=cmd_extract)
+
+    m = sub.add_parser("package-manifest")
+    m.add_argument("--tree", required=True)
+    m.add_argument("--manifest", required=True)
+    m.add_argument("--output", required=True)
+    m.add_argument("--receipt", required=True)
+    m.add_argument("--variant", default="population")
+    m.add_argument("--expected-tree-sha256")
+    m.add_argument("--selection-receipt-sha256")
+    m.set_defaults(func=cmd_package_manifest)
 
     args = ap.parse_args(argv)
     args.func(args)
