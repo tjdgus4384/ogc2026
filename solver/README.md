@@ -1,10 +1,15 @@
-# solver/ — the engine (v5)
+# solver/ — the final engine (v6.5.2)
+
+This tree matches the final submission ZIP; see [the repository README](../README.md)
+for the package, technical report, and finalist certificate. Revision history and
+the final population guard are documented in [VERSION](VERSION).
 
 The only solver tree. Two layers: C++ kernel (`src/` → `sscore*.so`) +
 python driver. One-page control-flow map: `docs/PIPELINE.md`; deep
 history: `archive/docs-early/KERNEL_SPEC.md`, git log.
 
-v5 = v4.1 semantics with refuted production paths removed. Canonical
+The v5 simplification removed refuted production paths; subsequent revisions
+through v6.5.2 are recorded in `VERSION`. Canonical
 production controls remain `src/knobs.hpp` plus `OGC_SEED`, `OGC_DIAG`,
 and `OGC_SLICE`. Experimental `OGC_*` mechanisms are inert unless
 explicitly enabled and every Slurm treatment records their values in

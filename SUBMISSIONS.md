@@ -1,5 +1,23 @@
 # Submission ledger (server campaign era)
 
+## Final submission archive
+
+The final package is **v6.5.2**,
+[`[OGC2026_AlgorithmCode]_MSGA.zip`](submissions/%5BOGC2026_AlgorithmCode%5D_MSGA.zip)
+(432,348 bytes; SHA-256 `5380a47a6e603c1397b73168b3987c1f7ecefecd7c0385f378b5b0b259c76955`).
+All 12 members match `solver/` byte-for-byte (`build.txt` maps to `solver/BUILD.txt`).
+Final verification is recorded in `docs/CAMPAIGN_LEDGER.md` under the v6.5.2 GO
+verdict and completed `bundle-p4` gate.
+
+Team MSGA finished **26th among 958 teams from 55 countries**; see the
+[finalist certificate](OGC2026-0825.pdf), issued 2026-08-18.
+The [technical report](docs/%5BOGC2026_TechReport%5D_MSGA.pdf) is preserved alongside the code.
+
+## Historical submissions
+
+The statuses and submission instructions below describe earlier campaign stages;
+the final v6.5.2 package above supersedes their canonical/HOLD labels.
+
 June-era ledger: `archive/notes-2026-06/SUBMISSIONS.md`. Board reference
 (v82, submitted 2026-07-26/27, standing 30-40th): P1 11,280 / P2 31,368 /
 P3 98,005 / P4 3,101,595 / P5 10,568,408 / P6 32,950,799.
