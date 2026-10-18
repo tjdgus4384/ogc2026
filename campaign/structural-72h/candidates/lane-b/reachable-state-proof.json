@@ -26,14 +26,31 @@
       "destinationState": "S1 changes six assignments/orientations/coordinates and same-day operation-order topology atomically",
       "absenceInvariant": "Frozen ALNS reinserts in its source-defined sequential order using incumbent-derived finite corner candidates; rescue and compaction commits do not jointly choose assignment, orientation/coordinate, and operation-order topology. The fixture destination uses a live boundary created by an earlier tentative cohort choice and requires a non-source insertion order, so no enumerated single frozen atomic commit names S1.",
       "properSubsetBarrier": "Every strict prefix leaves an exact incomplete shell and is non-publishable; the fixture test enumerates all strict prefixes.",
-      "requiredCoupledDimensions": ["assignment", "orientation", "coordinate", "operation-order"]
+      "requiredCoupledDimensions": ["assignment", "orientation", "coordinate", "operation-order"],
+      "closureDifferentiation": {
+        "large-ruin": "sequential source-defined reinsert vocabulary cannot publish the joint topology",
+        "exact-coalition-mcts": "closed atomic actions do not jointly choose free orientation/coordinate and event topology",
+        "blocker-release": "release closure preserves non-blocker assignments and cannot name S1",
+        "whole-bay-backbone-reconstruction": "incumbent backbone is preserved, while S1 changes assignments outside it",
+        "WB-WGD": "generated destroy vocabulary has no atomic event-topology choice",
+        "NFP-contact-generation": "contact generation supplies coordinates but not the coupled assignment/order transition",
+        "bounded-event-order-search": "event order changes without assignment/orientation/coordinate publication"
+      }
     },
     "M2_TBSR": {
       "sourceState": "fifty-block large-bay separator fixture B0",
       "destinationState": "B1 changes ten blocks through an exact two-half merge",
       "absenceInvariant": "Frozen placement sites are generated from the incumbent/current insertion state. B1 uses separator-dependent coordinates exposed only after both recursively formed halves exist; neither a static vocabulary nor an incumbent-backbone action can name the merged destination.",
       "properSubsetBarrier": "Neither half is publishable and mutable growth is forbidden until an exact complete merge.",
-      "requiredCoupledDimensions": ["separator", "dynamic-coordinate-vocabulary", "recursive-half-order", "merged-placement"]
+      "requiredCoupledDimensions": ["separator", "dynamic-coordinate-vocabulary", "recursive-half-order", "merged-placement"],
+      "closureDifferentiation": {
+        "large-ruin": "source vocabulary is fixed before recursive substate formation",
+        "blocker-release": "certified backbone release cannot create post-separator coordinates",
+        "whole-bay-backbone-reconstruction": "backbone-relative sites cannot name B1",
+        "WB-WGD": "destroy vocabulary is static across the atomic commit",
+        "static-vocabulary-global-MIP": "B1 contains a coordinate absent before the two formed halves",
+        "NFP-contact-generation": "incumbent contact sites omit the post-merge separator boundary"
+      }
     }
   },
   "admission": "Implementation may proceed only against these fixed invariants; full source/F0/closure hashes are added by the campaign novelty authority before any score job."
