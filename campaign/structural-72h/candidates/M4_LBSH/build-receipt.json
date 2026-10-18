@@ -1,0 +1,12 @@
+{
+  "candidate": "M4_LBSH",
+  "compiler": "g++ (Ubuntu 11.4.0-1ubuntu1~22.04.3) 11.4.0",
+  "command": "g++ -std=c++17 -O2 -Wall -Wextra -Werror -I <candidate>/solver/src <candidate>/solver/tests/m4_shell_decomp_test.cpp -o <isolated-build>/m4_test",
+  "source_sha256": "e3f4076f8824cb0b2cee78b871e194bf96a6442bafe4a29b1770b4b13ea54f5b",
+  "test_source_sha256": "8909794d215c042149788e09ee5df1895eff91d90a4e48c61a5611328da3e574",
+  "novelty_tool_sha256": "e6574392fa013eaa4a805485d2a5a1a5adcc9a927a8f67a198f29480ec32a1c4",
+  "binary_sha256": "1526fe94b81cd5d3e48c3b81231d12f15a4a8750fe2590c96cc7e97874cc2ff5",
+  "unit_status": "PASS",
+  "sanitizer_status": "PASS",
+  "slurm_submission": "NOT_SUBMITTED_ADMISSION_REQUIRED"
+}

@@ -1,0 +1,12 @@
+{
+  "candidate": "M3_ARCN",
+  "compiler": "g++ (Ubuntu 11.4.0-1ubuntu1~22.04.3) 11.4.0",
+  "command": "g++ -std=c++17 -O2 -Wall -Wextra -Werror -I <candidate>/solver/src <candidate>/solver/tests/m3_assignment_regret_test.cpp -o <isolated-build>/m3_test",
+  "source_sha256": "69a25a3f888220ed4d1c1432de30fa693db42d596275fd55ae791f59e0bb77a4",
+  "test_source_sha256": "b52850781e8f5be98c459f0cc0bef8a087b34889065963aeb137b7ccc3ccc7c2",
+  "novelty_tool_sha256": "200498bad2a440763a300689e6db0b25b9a1a28dccab32c3dc9d0c9151eae2f1",
+  "binary_sha256": "2353b05bbf415dd3a0da7b50ee61a5f25e2011eecc19c547205a607b1a7ccad7",
+  "unit_status": "PASS",
+  "sanitizer_status": "PASS",
+  "slurm_submission": "NOT_SUBMITTED_ADMISSION_REQUIRED"
+}

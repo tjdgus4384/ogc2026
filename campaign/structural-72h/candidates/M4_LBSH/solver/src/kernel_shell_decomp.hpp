@@ -29,7 +29,7 @@ struct Master {
     std::vector<int> order;
     std::vector<std::pair<int, int>> x_before;
     std::vector<std::pair<int, int>> y_before;
-    std::int64_t lower_bound = 0;
+    std::int64_t exact_objective = 0;
 };
 
 struct Request {
@@ -160,7 +160,7 @@ inline SubproblemResult solveFreeCoordinates(const Request& request,
     };
     if (search(0)) {
         result.status = SubproblemStatus::FEASIBLE;
-        result.objective = master.lower_bound;
+        result.objective = master.exact_objective;
     } else if (result.expansions > remaining_cap) {
         result.status = SubproblemStatus::UNKNOWN;
     } else {

@@ -20,7 +20,7 @@ static Request fixture(std::uint64_t cap = 1000) {
     Master master;
     master.order = {0, 1};
     master.x_before = {{0, 1}};
-    master.lower_bound = 5;
+    master.exact_objective = 5;
     request.masters = {master};
     return request;
 }
