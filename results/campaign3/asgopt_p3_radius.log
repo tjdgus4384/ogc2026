@@ -1,8 +1,0 @@
-# HAMMING-RADIUS RESTRICTED ASSIGNMENT OPTIMA (P3)
-# tools/asgopt.py with ASGOPT_BASE=runs/p36-v53-s7/prob_3.sol.json and ASGOPT_RADIUS=r,
-# i.e. the exact Z2/Z3 optimum among assignments within r block changes of the incumbent.
-# jobs 63372 (r=2) and 63374 (r=8); these produce the r2/r8 arms priced in asgfrontier_p3.log.
-## radius 2
-{"P": "3", "status": "OPTIMAL", "z2": 3712, "z3": 316.0, "z2z3_objective": 65960, "model_z2": 3712, "z2_agrees_with_model": true, "asg_hist": [58, 71, 71], "area_benders_cuts": 0, "scale": 100000}
-## radius 8
-{"P": "3", "status": "OPTIMAL", "z2": 5307, "z3": 104.0, "z2z3_objective": 42135, "model_z2": 5307, "z2_agrees_with_model": true, "asg_hist": [64, 67, 69], "area_benders_cuts": 1, "scale": 100000}

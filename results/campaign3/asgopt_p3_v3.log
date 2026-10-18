@@ -1,8 +1,0 @@
-# tool=tools/asgopt.py sha256=1eaa905587b10ab267e08128ba0239ce50987e2b55edae478c7d50359e295dfc
-# input=data/preliminary_test/prob_3.json sha256=c4f47c17910cf7c4a8aceaff74e6a5b884f752c389383fdd95f2ae2ce9a708d4
-# assignment=runs/asgopt/p3_v3.json sha256=1561f80ea798d69bb6ca05b7a12c0d03fa1bab9e6fd4f2c81c11bc821471aa3f
-# flags=ASGOPT_FIT=1 ASGOPT_PUNCTUAL=1 ASGOPT_AREA_BENDERS=1 ASGOPT_TAG=_v3
-# job=63347 node=leonhard repo_head=95201bb dirty=4 ortools=9.15.6755 python=Python-3.12.13 date=2026-08-05T00:53:51+09:00
-# scope: RESTRICTED master. Z1=0 forced, per-layer minimum polygon area cumulative cores, bay bbox fit.
-# NOT a bound on the full problem and NOT a feasible board. z2/z3 recomputed with the official floor.
-{"P": "3", "status": "OPTIMAL", "z2": 6402, "z3": 50.0, "z2z3_objective": 39510, "model_z2": 6402, "z2_agrees_with_model": true, "asg_hist": [69, 63, 68], "area_benders_cuts": 3, "scale": 100000}

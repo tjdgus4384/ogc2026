@@ -1,3 +1,0 @@
-{"diag": "population", "best": 83640}
-{"diag": "prefpolish", "obj": 83640.0}
-{"inst": "prob_3", "solver": "solver_sl4", "tl": 240.0, "wall": 197.66, "overrun": false, "maxrss_mb": 49.0, "n": 200, "m": 3, "error": null, "feasible": true, "objective": 83640.0, "obj1": 0.0, "obj2": 2988, "obj3": 458.0}

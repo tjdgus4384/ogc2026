@@ -1,5 +1,0 @@
-=== no-ortools red-team canaries (must stay feasible; refs 1499/3690) ===
-{"inst": "prob_1", "solver": "shipcheck", "tl": 20.0, "wall": 15.77, "overrun": false, "maxrss_mb": 295.0, "n": 100, "m": 2, "error": null, "feasible": true, "objective": 1499.0, "obj1": 0.0, "obj2": 157, "obj3": 2.0}
-{"inst": "prob_2", "solver": "shipcheck", "tl": 20.0, "wall": 15.76, "overrun": false, "maxrss_mb": 294.3, "n": 100, "m": 3, "error": null, "feasible": true, "objective": 3690.0, "obj1": 0.0, "obj2": 144, "obj3": 15.0}
-{"inst": "prob_3", "solver": "shipcheck", "tl": 60.0, "wall": 50.99, "overrun": false, "maxrss_mb": 295.2, "n": 100, "m": 3, "error": null, "feasible": true, "objective": 39050.0, "obj1": 0.0, "obj2": 2330, "obj3": 105.0}
-=== noort done ===

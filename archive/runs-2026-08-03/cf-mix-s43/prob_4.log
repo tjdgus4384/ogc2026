@@ -1,5 +1,0 @@
-{"diag": "repair", "iters": 1184530, "failed": 0, "fail_pct": 0.0}
-{"diag": "ops", "used": [29, 16, 6, 6, 12, 7, 12, 6, 0, 4], "imp": [353, 96, 89, 48, 49, 54, 117, 24, 0, 8]}
-{"diag": "portfolio", "winner": 1, "iters": 1184530, "chunks": 1, "phase_us": [2006129, 55068979, 64576, 32], "thread_best": [4111643, 3234774, 3443862, 3728357]}
-{"diag": "prefpolish", "obj": 4140726.0}
-{"inst": "prob_4", "solver": "solver_ab", "tl": 480.0, "wall": 467.04, "overrun": false, "maxrss_mb": 41.2, "n": 150, "m": 3, "error": null, "feasible": true, "objective": 4140726.0, "obj1": 251.0, "obj2": 949, "obj3": 5250.0}

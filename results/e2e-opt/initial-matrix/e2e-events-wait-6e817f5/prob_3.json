@@ -1,1 +1,0 @@
-{"inst": "prob_3", "solver": "solver", "tl": 240.0, "wall": 233.69, "overrun": false, "maxrss_mb": 561.2, "n": 200, "m": 3, "error": null, "feasible": true, "objective": 85925.0, "obj1": 0.0, "obj2": 3325, "obj3": 462.0}

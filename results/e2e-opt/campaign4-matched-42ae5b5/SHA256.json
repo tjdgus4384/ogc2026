@@ -1,8 +1,0 @@
-{
-  "results/e2e-opt/campaign4-matched-42ae5b5/FINAL_AUDIT.json": "c19006b55d502793a1180b45d377599a84e8f09cf99225a25128666b4a143e15",
-  "results/e2e-opt/campaign4-matched-42ae5b5/VERDICT.json": "a1bfd65645628ab507c0d479c682eade74a3e6e7bdbe7840ccbf1910752dedca",
-  "results/matched-v53-b30d1f6.json": "8767dd29d51d1c652357e2afa689d72d39acca5a85f35a266caf424721d9eeec",
-  "results/matched-current-42ae5b5.json": "c5a1277ecc9b2bca755680a2b0cd0f94b71545675924fec32f2eb370832001d1",
-  "results/matched-exactevents-42ae5b5.json": "9b39f2c0f3e715ceeb60e514b2206c041b3db153de04ef4263ab558e9983c578",
-  "results/matched-eventtime-42ae5b5.json": "91618e00bc48a1c1bff1325afcc2e51ae4b90fa1852b4fb10f1349ba21efdcd5"
-}

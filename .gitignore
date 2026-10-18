@@ -1,41 +1,18 @@
-# local conda environment (rebuildable -- see README.md)
-.miniforge/
-
-# python bytecode
+.venv/
 __pycache__/
-*.pyc
+*.py[cod]
+.DS_Store
 
-# scratch / transient
-scratchpad/
-.claude/scheduled_tasks.lock
-slurm-*.out
-runs/
-.gjc/
+# LaTeX build products; the submitted report PDF is tracked.
+*.aux
+*.log
+*.out
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+*.toc
 
-# credentials -- never commit
+# Local credentials and environment overrides.
+.env
+.env.*
 gurobi.lic
-
-# NOTE: *.so is deliberately TRACKED. The compiled kernel is the shipped
-# artifact and is only ~700KB. Losing a kernel binary once already cost a whole
-# generation of work -- see archive/notes-2026-06/SOURCE_RECOVERY_NOTE.md.
-
-# experiment builds: source is tracked, binaries are not
-archive/exp/*/sscore*.so
-
-# isolated probe/ship builds (source is tracked as patches under results/)
-builds/
-
-# campaign outputs: keep source/contracts/tests in Git; keep generated evidence local
-campaign/*/evidence/
-campaign/*/toolchain/
-campaign/*/build/
-campaign/*/E0-ro/
-campaign/*/B0-canonical/
-campaign/*/lanes/E0-*/
-campaign/math-first-r1/corpus/model-cases.jsonl
-
-# campaign archive: 189MB tarball of the 08-07..11 trees, verdicts live in
-# docs/CAMPAIGN_LEDGER.md. Kept on disk, not in Git.
-archive/campaigns-*.tar.zst
-logs/
-data/mini/

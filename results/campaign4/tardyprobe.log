@@ -1,4 +1,0 @@
-{"prob": 4, "tag": "c4-joint-6e00256", "n": 150, "tardy": 27, "tardy_days": 183, "single_move_earlier": 0, "locked": 27, "recoverable_tardy_days_upper": 0}
-{"prob": 5, "tag": "c4-joint-6e00256", "n": 200, "tardy": 73, "tardy_days": 750, "single_move_earlier": 0, "locked": 73, "recoverable_tardy_days_upper": 0}
-{"prob": 6, "tag": "c4-joint-6e00256", "n": 250, "tardy": 126, "tardy_days": 4045, "single_move_earlier": 0, "locked": 126, "recoverable_tardy_days_upper": 0}
-done

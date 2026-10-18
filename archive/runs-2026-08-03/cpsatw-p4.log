@@ -1,7 +1,0 @@
-{"p": 4, "incumbent": 2540917.0, "z1": 160.0, "z2": 3291.0, "z3": 2564.0}
-{"window_bay": 2, "window_t0": 41, "window_tardy_days": 92}
-{"freed": 30, "tardy_total": 25}
-{"cand_secs": 0.0, "cand_min": 14, "cand_max": 121, "cand_mean": 84.3}
-{"conflict_secs": 107.1, "conflicts": 490344}
-{"status": "OPTIMAL", "solve_secs": 6.8}
-{"cpsat_obj": 2540917.0, "incumbent": 2540917.0, "delta_pct": 0.0, "vp_violations": 0, "screen_sound": true}
