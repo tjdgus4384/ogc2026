@@ -1,7 +1,9 @@
-# OGC 2026 — MSGA
+# OGC 2026: MSGA
 
 Final submission for the **Optimization Grand Challenge 2026**:
 *The Grand Shipyard Puzzle: Pack the Block, Beat the Clock*.
+
+Seonghyeon Yun competed solo under the team name MSGA.
 
 **Finalist · 26th out of 958 teams from 55 countries**
 
@@ -17,7 +19,7 @@ to bays, orientations, positions, and entry dates while minimizing tardiness,
 workload imbalance, and bay-preference penalties under geometric and crane-access
 constraints.
 
-Our solver combines a C++17 search engine with a Python driver:
+The solver combines a C++17 search engine with a Python driver:
 
 - A four-thread portfolio of adaptive large-neighborhood search (ALNS).
 - Memetic population search for the instance sizes and time budgets where it was validated.
