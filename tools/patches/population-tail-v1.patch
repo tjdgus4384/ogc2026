@@ -1,0 +1,1970 @@
+--- canonical/BUILD.txt
++++ candidate/BUILD.txt
+@@ -67,3 +67,14 @@
+ Prior-revision notes (pair_conflicts, slice refinement, SA-only
+ acceptance) are unchanged in substance; see git history for the full
+ measurement chronicle.
++
++---- population candidate addendum -------------------------------------
++This candidate adds four headers to the canonical v5.3 source set:
++  src/kernel_bandit.hpp           bandit policy library (no runtime export)
++  src/kernel_parallel_bandit.hpp  four-lane parallel population kernel
++  src/repair_scored.hpp           scored insertion repair (repairMode 1/3)
++  src/repair_nfp_contact.hpp      NFP contact insertion repair (repairMode 2/3)
++The build command is unchanged: src/api.cpp remains the single translation
++unit and includes kernel_parallel_bandit.hpp. myalgorithm.py runs the kernel
++as a fixed 15% tail of the search budget outside the Python population
++habitat; there are no environment switches.
+--- canonical/myalgorithm.py
++++ candidate/myalgorithm.py
+@@ -72,7 +72,7 @@
+ _PSEED = int(os.environ.get("OGC_SEED", "7"))
+ 
+ # ---------------------------------------------------------------- engine io
+-def _build_engine(p):
++def _build_engine(p, pref_p=-1.0):
+     if sscore is None:
+         return None
+     B = p["blocks"]; bays = p["bays"]; w = p["weights"]
+@@ -89,6 +89,7 @@
+         [float(b["width"]) for b in bays],
+         [float(b["height"]) for b in bays],
+         float(w["w1"]), float(w["w2"]), float(w["w3"]))
++    eng.set_pref_p(float(pref_p))
+     for i in range(n):
+         for oi in range(len(B[i]["shape"])):
+             L = [[list(v) for v in lay]
+@@ -99,11 +100,11 @@
+     return eng
+ 
+ 
+-def _fresh(p, hmul=1):
++def _fresh(p, hmul=1, pref_p=-1.0):
+     B = p["blocks"]; n = len(B)
+     D = [int(round(b["due_date"])) for b in B]
+     P = [max(1, int(math.ceil(b["processing_time"] - 1e-9))) for b in B]
+-    eng = _build_engine(p)
++    eng = _build_engine(p, pref_p)
+     eng.build_occ((max(D) + max(P) + 40) * hmul)
+     return eng, D, P
+ 
+@@ -169,7 +170,7 @@
+     return _saturation(p) < 1.0
+ 
+ 
+-def _seed_free(p, diversify=True, asg=None):
++def _seed_free(p, diversify=True, asg=None, pref_p=-1.0):
+     """kernel-native seeding, best-of-5 insertion orders (sec 87).
+     asg: optional partial assignment lock (-1 = free) applied to every
+     construction -- see _arm_free's partial-lock block."""
+@@ -200,7 +201,7 @@
+     # failure -> _trivial's 4.2e9). Doubling the horizon is sound (a
+     # superset of feasible times) and bounded (two retries).
+     for hmul in (1, 2, 4):
+-        eng, _, _ = _fresh(p, hmul)
++        eng, _, _ = _fresh(p, hmul, pref_p)
+         cands = []                       # (objective, flat solution)
+         best = None
+         lockv = asg if asg is not None else [-1] * n
+@@ -718,9 +719,8 @@
+     # they push locked boards over the tardiness edge (the production-
+     # only cliff: probe without PREFP was stable). Locks replace the
+     # boost where they apply; unlocked spec boards keep 0.85.
+-    if spec and asg is None:
+-        os.environ["OGC_PREFP"] = os.environ.get("OGC_PREFP", "0.85")
+-    eng, seeds = _seed_free(p, asg=asg)
++    pref_p = 0.85 if spec and asg is None else -1.0
++    eng, seeds = _seed_free(p, asg=asg, pref_p=pref_p)
+     if eng is None and asg is not None:
+         asg = None
+         eng, seeds = _seed_free(p)
+@@ -767,6 +767,14 @@
+     # population's edge is the tight regime (~1 s/block, the P3 class);
+     # absolute-time windows overfit the train boards. Gate on the ratio.
+     _pop_here = sec >= 150.0 and sec / max(1, n) <= 1.6
++    # C++ parallel-population tail (pre-registered candidate treatment):
++    # outside the Python population habitat carve a fixed 15% of the base
++    # search budget B for the four-lane C++ population kernel; the primary
++    # portfolio/slice path keeps its canonical structure inside 0.85*B.
++    _pop_tail = 0.0
++    if not _pop_here and sec > 60.0:
++        _pop_tail = 0.15 * sec
++        sec -= _pop_tail
+     # OGC_SLICE=0 is the shipped ablation switch (noslice variant measured
+     # +2.1% mean on the 40-pair harness 08-03 -- keep ON; sh45 share and
+     # k60 subset variants refuted there too).
+@@ -806,11 +814,17 @@
+         # with 1.6s left, could not fix them, and the driver fell back
+         # to _trivial (5.5e9). The refinement must never be able to do
+         # that, so it hands the reserve back untouched.
+-        _slice_refine(p, eng, seed, deadline - reserve, eng.horizon())
++        _slice_refine(p, eng, seed, deadline - reserve - _pop_tail,
++                      eng.horizon())
+     except StopIteration:
+         pass
+     except Exception:
+         pass
++    if _pop_tail > 0.0 and time.time() + 1.0 < deadline - reserve:
++        _kb = eng.run_kernel_parallel_bandit(
++            min(_pop_tail, max(1.0, deadline - reserve - time.time())),
++            seed ^ 0xA11CE)
++        _diag("cpp-parallel-bandit-tail", **_kb)
+     if r is not None:
+         _st = getattr(eng, "last_stats", lambda: None)()
+         if _st:
+--- canonical/src/alns.hpp
++++ candidate/src/alns.hpp
+@@ -7,6 +7,8 @@
+ // objective; rejected or failed iterations roll back from the backup.
+ #pragma once
+ #include "repair.hpp"
++#include "repair_scored.hpp"
++#include "repair_nfp_contact.hpp"
+ #include "knobs.hpp"
+ #include <chrono>
+ #include <cmath>
+@@ -26,7 +28,8 @@
+ // Full-state audit -- the development assertion tool. Run it (auditEvery) when
+ // a new operator misbehaves and it tells you WHERE the state broke:
+ // 0 ok; 1 byBay out of bounds; 2 stale member; 3 dup/missing; 4 vp violation.
+-inline int audit(const core::Problem& pb, core::Sol& s, int* badBlock = nullptr) {
++inline int audit(const core::Problem& pb, core::Sol& s, int* badBlock = nullptr,
++                 bool exactEvents = false) {
+     std::vector<int> cnt(pb.n, 0);
+     for (int j = 0; j < pb.m; j++)
+         for (int i : s.byBay[j]) {
+@@ -39,7 +42,8 @@
+         if (!s.placed[i] && cnt[i] != 0) { if (badBlock) *badBlock = i; return 3; }
+     }
+     for (int i = 0; i < pb.n; i++)
+-        if (s.placed[i] && !core::vpConservative(pb, s, i)) {
++        if (s.placed[i] && !(exactEvents ? core::vpExactEvents(pb, s, i)
++                                         : core::vpConservative(pb, s, i))) {
+             if (badBlock) *badBlock = i; return 4;
+         }
+     return 0;
+@@ -356,10 +360,38 @@
+     double bigQProb = 0.04;      // probability of a large removal
+     uint32_t opMask = 0x3FF;     // destroyer enable bits (10 ops)
+     long maxIters = 0;           // 0 = wall-clock only; >0 makes runs exactly
++    int repairMode = 0;              // 0 greedy, 1 scored, 2 NFP, 3 scored->NFP
+                                  // reproducible (determinism tests, A/B)
+ };
+ 
+ inline int spatialCompact(repair::Ctx& c, int passes);
++inline bool insertByMode(repair::Ctx& c, int block, int entryCap, int mode) {
++    if (mode <= 0) return repair::insertGreedy(c, block, entryCap);
++    const int* savedCap = c.entryCap;
++    thread_local std::vector<int> caps;
++    if (entryCap >= 0) {
++        caps.assign(c.pb->n, -1);
++        if (savedCap)
++            for (int i = 0; i < c.pb->n; ++i) caps[i] = savedCap[i];
++        if (caps[block] < 0 || entryCap < caps[block]) caps[block] = entryCap;
++        c.entryCap = caps.data();
++    }
++    bool ok = false;
++    if (mode == 1 || mode == 3) {
++        repair_scored::Config cfg;
++        cfg.topK = 8; cfg.maxCandidates = 160; cfg.maxTimes = 24;
++        cfg.contactAxisCap = 40;
++        ok = repair_scored::insertBest(c, block, cfg, nullptr);
++    }
++    if (!ok && (mode == 2 || mode == 3)) {
++        nfp_contact::Config cfg;
++        cfg.maxEntryTimes = 20; cfg.maxCandidates = 192;
++        cfg.maxContactsPerResident = 48; cfg.includeGeneral = true;
++        ok = nfp_contact::insert(c, block, cfg, nullptr);
++    }
++    c.entryCap = savedCap;
++    return ok;
++}
+ 
+ inline RunStats run(repair::Ctx& c, double seconds, const RunParams& rp,
+                     uint64_t seedv, int auditEvery = 0) {
+@@ -370,6 +402,14 @@
+     auto t0 = std::chrono::steady_clock::now();
+     auto now = [&]{ return std::chrono::duration<double>(
+         std::chrono::steady_clock::now() - t0).count(); };
++    const bool savedHasDeadline = c.hasDeadline;
++    const auto savedDeadline = c.deadline;
++    const auto localDeadline = t0
++        + std::chrono::duration_cast<std::chrono::steady_clock::duration>(
++            std::chrono::duration<double>(std::max(0.0, seconds)));
++    c.hasDeadline = true;
++    c.deadline = savedHasDeadline ? std::min(savedDeadline, localDeadline)
++                                  : localDeadline;
+ 
+     core::slackW() = 0.0;        // slack surrogate refuted (08-02 ablation)
+     auto obj = [&]{
+@@ -413,7 +453,8 @@
+     // cannot unwind under assignment constraints -- the K-frontier cliff).
+     // Releasing the lock at 0.6*budget keeps the early guidance and
+     // frees the tail to repair. Fires only when a lock is active.
+-    while (now() < seconds &&
++    while (!repair::deadlineExpired(c) &&
++           now() < seconds &&
+            (rp.maxIters <= 0 || st.iters < rp.maxIters)) {
+         st.iters++;
+         if (c.forcedBay &&
+@@ -484,12 +525,12 @@
+                     if (nX != oX || nY != oY) {
+                         c.oc->stamp(pb, s, A3, false);
+                         s.x[A3] = nX; s.y[A3] = nY;
+-                        bool ok4 = core::vpConservative(pb, s, A3);
++                        bool ok4 = repair::placementFeasible(c, A3);
+                         if (ok4) {
+                             c.oc->stamp(pb, s, A3, true);
+                             for (int k3 : s.byBay[j3]) {
+                                 if (k3 == A3 || !s.placed[k3]) continue;
+-                                if (!core::vpConservative(pb, s, k3)) {
++                                if (!repair::placementFeasible(c, k3)) {
+                                     ok4 = false; break; }
+                             }
+                             if (!ok4) c.oc->stamp(pb, s, A3, false);
+@@ -553,14 +594,14 @@
+                     s.rebuildIdx(pb.m);
+                     c.oc->stamp(pb, s, A, true);
+                     c.oc->stamp(pb, s, B, true);
+-                    bool ok2 = core::vpConservative(pb, s, A)
+-                            && core::vpConservative(pb, s, B);
++                    bool ok2 = repair::placementFeasible(c, A)
++                            && repair::placementFeasible(c, B);
+                     if (ok2)
+                         for (int j2 : {aB, bB}) {
+                             for (int k2 : s.byBay[j2]) {
+                                 if (k2 == A || k2 == B || !s.placed[k2])
+                                     continue;
+-                                if (!core::vpConservative(pb, s, k2)) {
++                                if (!repair::placementFeasible(c, k2)) {
+                                     ok2 = false; break; }
+                             }
+                             if (!ok2) break;
+@@ -604,7 +645,7 @@
+         }
+         long t1 = tmr ? tick() : 0;
+         if (auditEvery > 0) {
+-            int bb = -1; int code = audit(pb, s, &bb);
++            int bb = -1; int code = audit(pb, s, &bb, c.exactEvents);
+             if (code) { st.badIter = st.iters; st.badKind = kind;
+                 st.badPhase = 10000 + code * 1000 + bb; break; }
+         }
+@@ -628,20 +669,23 @@
+             fbv[c.tsBlk] = c.tsBay;
+             const int* save = c.forcedBay;
+             c.forcedBay = fbv.data();
+-            ok = repair::insertGreedy(c, c.tsBlk, c.tsECap);
++            ok = insertByMode(c, c.tsBlk, c.tsECap, rp.repairMode);
+             c.forcedBay = save;
+             if (ok)
+                 for (int A : rem) {
+                     if (A == c.tsBlk) continue;
+-                    if (!repair::insertGreedy(c, A, -1)) { ok = false; break; }
++                    if (!insertByMode(c, A, -1, rp.repairMode)) {
++                        ok = false;
++                        break;
++                    }
+                 }
+         } else {
+             for (int A : rem) {
+-                if (!repair::insertGreedy(c, A, -1)) { ok = false; break; }
++                if (!insertByMode(c, A, -1, rp.repairMode)) { ok = false; break; }
+             }
+         }
+         if (auditEvery > 0 && ok) {
+-            int bb = -1; int code = audit(pb, s, &bb);
++            int bb = -1; int code = audit(pb, s, &bb, c.exactEvents);
+             if (code) { st.badIter = st.iters; st.badKind = kind;
+                 st.badPhase = 20000 + code * 1000 + bb; break; }
+         }
+@@ -702,11 +746,13 @@
+             sinceBest = 0;
+         }
+         if (auditEvery > 0 && (st.iters % auditEvery) == 0) {
+-            int bb = -1; int code = audit(pb, s, &bb);
++            int bb = -1; int code = audit(pb, s, &bb, c.exactEvents);
+             if (code) { st.badIter = st.iters; st.badKind = kind;
+                 st.badPhase = code * 1000 + bb; break; }
+         }
+     }
++    c.hasDeadline = savedHasDeadline;
++    c.deadline = savedDeadline;
+     s = bestSol;
+     for (int k = 0; k < 10; k++) {          // per-operator contribution
+         st.opUsed[k] = ds.used[k];
+@@ -741,8 +787,10 @@
+     const Problem& pb = *c.pb; Sol& s = *c.s;
+     int moved = 0;
+     for (int pass = 0; pass < passes; pass++) {
++        if (repair::deadlineExpired(c)) break;
+         int mv = 0;
+         for (int i = 0; i < pb.n; i++) {
++            if (repair::deadlineExpired(c)) break;
+             if (!s.placed[i]) continue;
+             int j = s.bay[i], oi = s.ori[i];
+             const auto& bb = pb.geo[i].orients[oi].bb;
+@@ -762,12 +810,12 @@
+             int oldx = s.x[i], oldy = s.y[i];
+             if (nx != INT_MIN && nx < s.x[i]) s.x[i] = nx;
+             s.y[i] = ny;
+-            bool ok = core::vpConservative(pb, s, i);
++            bool ok = repair::placementFeasible(c, i);
+             if (ok)                       // neighbours' crane paths
+                 for (int k : s.byBay[j]) {
+                     if (k == i || !s.placed[k]) continue;
+                     if (s.f[k] <= s.e[i] || s.e[k] >= s.f[i]) continue;
+-                    if (!core::vpConservative(pb, s, k)) { ok = false;
++                    if (!repair::placementFeasible(c, k)) { ok = false;
+                                                            break; }
+                 }
+             if (!ok) { s.x[i] = oldx; s.y[i] = oldy; }
+@@ -784,12 +832,14 @@
+     const Problem& pb = *c.pb; Sol& s = *c.s;
+     int totalMoved = 0;
+     for (int pass = 0; pass < maxPasses; pass++) {
++        if (repair::deadlineExpired(c)) break;
+         int moved = 0;
+         std::vector<int> ids;
+         for (int i = 0; i < pb.n; i++) if (s.placed[i]) ids.push_back(i);
+         std::sort(ids.begin(), ids.end(),
+                   [&](int a, int b){ return s.e[a] < s.e[b]; });
+         for (int i : ids) {
++            if (repair::deadlineExpired(c)) break;
+             if (s.e[i] <= pb.R[i]) continue;
+             int oldE = s.e[i], oldF = s.f[i];
+             std::vector<int> cand;
+@@ -804,7 +854,7 @@
+                 if (e2 >= oldE) break;
+                 c.oc->stamp(pb, s, i, false);
+                 s.e[i] = e2; s.f[i] = e2 + pb.P[i];
+-                if (core::vpConservative(pb, s, i)) {
++                if (repair::placementFeasible(c, i)) {
+                     c.oc->stamp(pb, s, i, true);
+                     moved++; break;
+                 }
+--- canonical/src/api.cpp
++++ candidate/src/api.cpp
+@@ -6,6 +6,7 @@
+ #include <pybind11/pybind11.h>
+ #include <pybind11/stl.h>
+ #include "alns.hpp"
++#include "kernel_parallel_bandit.hpp"
+ #ifdef _OPENMP
+ #include <omp.h>
+ #endif
+@@ -18,6 +19,7 @@
+     occ::OccIndex oc;
+     repair::Ctx ctx;
+     int horizon_ = 0;
++    double prefP_ = -1.0;
+ 
+     // ------------------------------------------------------------- loading
+     void initProblem(int n, int m,
+@@ -130,6 +132,11 @@
+         for (int i = 0; i < pb.n; i++)
+             if (sol.placed[i]) oc.stamp(pb, sol, i, true);
+         ctx.pb = &pb; ctx.s = &sol; ctx.oc = &oc; ctx.horizon = horizon;
++    }
++
++    void setPrefP(double value) {
++        prefP_ = (value >= 0.0 && value <= 1.0) ? value : -1.0;
++        ctx.prefP = prefP_;
+     }
+ 
+     // ----------------------------------------------------- solution access
+@@ -427,6 +434,7 @@
+                 occ::OccIndex oc2; oc2.build(pb, horizon_);
+                 repair::Ctx c2; c2.pb = &pb; c2.s = &s2; c2.oc = &oc2;
+                 c2.horizon = horizon_;
++                c2.prefP = prefP_;
+                 c2.densMode = tid % 2;
+                 c2.forcedBay = ctx.forcedBay;   // assignment lock -> threads
+                 c2.entryCap = ctx.entryCap;     // entry lock -> threads
+@@ -479,6 +487,7 @@
+                         if (s2.placed[i]) oc2.stamp(pb, s2, i, true);
+                     repair::Ctx c3; c3.pb=&pb; c3.s=&s2; c3.oc=&oc2;
+                     c3.horizon=horizon_;
++                    c3.prefP=prefP_;
+                     alns::spatialCompact(c3, 6);
+                     alns::compactLeft(c3, 3);
+                 }
+@@ -534,6 +543,33 @@
+         return out;
+     }
+ 
++    int prepareKernelRun() {
++        int horizon = std::max(1, horizon_);
++        for (int i = 0; i < pb.n; ++i)
++            horizon = std::max(horizon, std::max(pb.D[i], pb.R[i]) + pb.P[i] + 1);
++        if (pb.n > 0 && pb.m > 0) buildOcc(horizon);
++        return horizon;
++    }
++    py::dict runKernelParallelBandit(double seconds, uint64_t seed) {
++        prepareKernelRun();
++        const auto r = kernel_parallel_bandit::run(*this, seconds, seed);
++        if (pb.n > 0 && pb.m > 0) buildOcc(horizon_);
++        py::dict out;
++        out["initial_objective"] = r.initialObjective;
++        out["best_objective"] = r.bestObjective;
++        out["improved"] = r.improved;
++        out["batches"] = r.batches;
++        out["lane_runs"] = r.laneRuns;
++        out["feasible_lanes"] = r.feasibleLanes;
++        out["exchanges"] = r.exchanges;
++        out["model_updates"] = r.modelUpdates;
++        out["diversity"] = r.diversity;
++        out["peak_diversity"] = r.peakDiversity;
++        out["population_size"] = r.populationSize;
++        out["deadline_hit"] = r.deadlineHit;
++        return out;
++    }
++
+     // ------------------------------------------------------ reconstruction
+     // rebuild from empty with a fixed bay assignment and an EXPLICIT
+     // insertion order (order-space search: construction quality dominates on
+@@ -546,6 +582,7 @@
+         core::Sol backup = sol;
+         occ::OccIndex oc2; oc2.build(pb, horizon_);
+         repair::Ctx c2; c2.pb=&pb; c2.s=&sol; c2.oc=&oc2; c2.horizon=horizon_;
++        c2.prefP = prefP_;
+         c2.forcedBay = asg.data();
+         c2.rng.seed(seed);
+         for (int i = 0; i < pb.n; i++) sol.placed[i] = 0;
+@@ -759,6 +796,9 @@
+         .def("retime_block", &Engine::retimeBlock)
+         .def("move_block", &Engine::moveBlock)
+         .def("swap_blocks", &Engine::swapBlocks)
++        .def("set_pref_p", &Engine::setPrefP)
++        .def("run_kernel_parallel_bandit", &Engine::runKernelParallelBandit,
++             py::arg("seconds"), py::arg("seed"))
+         // ---- experiment tools (probes, arm-level A/B, state I/O) ----
+         .def("run_alns", &Engine::runALNS,
+              py::arg("seconds"), py::arg("qlo"), py::arg("qhi"),
+--- canonical/src/core.hpp
++++ candidate/src/core.hpp
+@@ -6,6 +6,9 @@
+ #include <cmath>
+ #include <cstdint>
+ #include <chrono>
++#include <algorithm>
++#include <functional>
++#include <unordered_set>
+ 
+ namespace core {
+ using crane::OrientGeom; using crane::BlockGeom; using crane::Placement;
+@@ -57,6 +60,122 @@
+             if (placed[i]) byBay[bay[i]].push_back(i);
+     }
+ };
++inline bool restOverlap(const Problem& pb, const Sol& s, int a, int b);
++// Exact checker-order replay for one bay/day. Exits are monotone (removing a
++// block cannot obstruct a later exit), while same-day entries require a small
++// subset search because adding one block may obstruct another. The returned
++// orders are directly usable by the solution emitter.
++inline bool eventOrderAt(const Problem& pb, const Sol& s, int bay, int t,
++                         std::vector<int>& exitOrder,
++                         std::vector<int>& entryOrder) {
++    exitOrder.clear();
++    entryOrder.clear();
++    std::vector<int> present, exits, entries;
++    for (int i : s.byBay[bay]) {
++        if (!s.placed[i]) continue;
++        if (s.e[i] < t && t <= s.f[i]) present.push_back(i);
++        if (s.f[i] == t) exits.push_back(i);
++        if (s.e[i] == t) entries.push_back(i);
++    }
++    auto placements = [&](const std::vector<int>& ids) {
++        std::vector<Placement> out;
++        out.reserve(ids.size());
++        for (int i : ids)
++            out.push_back({&pb.geo[i].orients[s.ori[i]],
++                           (double)s.x[i], (double)s.y[i]});
++        return out;
++    };
++
++    std::sort(exits.begin(), exits.end());
++    while (!exits.empty()) {
++        bool progressed = false;
++        for (size_t q = 0; q < exits.size(); q++) {
++            const int id = exits[q];
++            auto it = std::find(present.begin(), present.end(), id);
++            if (it == present.end()) return false;
++            std::vector<Placement> ps = placements(present);
++            const size_t target = (size_t)(it - present.begin());
++            if (!crane::exitOK(ps, (int)target)) continue;
++            exitOrder.push_back(id);
++            present.erase(it);
++            exits.erase(exits.begin() + q);
++            progressed = true;
++            break;
++        }
++        if (!progressed) return false;
++    }
++
++    std::sort(entries.begin(), entries.end());
++    if (entries.size() > 63) {
++        // Pathological same-day batches avoid exponential state. Greedy is
++        // fail-closed: it may reject an order but never admits an invalid one.
++        while (!entries.empty()) {
++            bool progressed = false;
++            for (size_t q = 0; q < entries.size(); q++) {
++                const int id = entries[q];
++                std::vector<Placement> ps = placements(present);
++                const auto& g = pb.geo[id].orients[s.ori[id]];
++                if (!crane::entryOK(pb.bayW[bay], pb.bayH[bay], ps, g,
++                                    s.x[id], s.y[id])) continue;
++                entryOrder.push_back(id);
++                present.push_back(id);
++                entries.erase(entries.begin() + q);
++                progressed = true;
++                break;
++            }
++            if (!progressed) return false;
++        }
++        return true;
++    }
++
++    const std::vector<int> basePresent = present;
++    std::unordered_set<uint64_t> failed;
++    size_t searchNodes = 0;
++    std::function<bool(uint64_t)> dfs = [&](uint64_t used) {
++        if (++searchNodes > 512) return false;
++        if (used == ((entries.size() == 64) ? ~0ull
++                                             : ((1ull << entries.size()) - 1)))
++            return true;
++        if (failed.count(used)) return false;
++        std::vector<int> ids = basePresent;
++        for (size_t q = 0; q < entries.size(); q++)
++            if (used & (1ull << q)) ids.push_back(entries[q]);
++        std::vector<Placement> ps = placements(ids);
++        for (size_t q = 0; q < entries.size(); q++) {
++            if (used & (1ull << q)) continue;
++            const int id = entries[q];
++            const auto& g = pb.geo[id].orients[s.ori[id]];
++            if (!crane::entryOK(pb.bayW[bay], pb.bayH[bay], ps, g,
++                                s.x[id], s.y[id])) continue;
++            entryOrder.push_back(id);
++            if (dfs(used | (1ull << q))) return true;
++            entryOrder.pop_back();
++        }
++        failed.insert(used);
++        return false;
++    };
++    return dfs(0);
++}
++
++inline bool vpExactEvents(const Problem& pb, const Sol& s, int A) {
++    const int bay = s.bay[A], e = s.e[A], f = s.f[A];
++    for (int k : s.byBay[bay]) {
++        if (k == A || !s.placed[k]) continue;
++        if (s.e[k] < f && e < s.f[k] && restOverlap(pb, s, A, k))
++            return false;
++    }
++    std::vector<int> times{e, f}, xo, en;
++    for (int k : s.byBay[bay]) {
++        if (k == A || !s.placed[k]) continue;
++        if (e <= s.e[k] && s.e[k] < f) times.push_back(s.e[k]);
++        if (e < s.f[k] && s.f[k] <= f) times.push_back(s.f[k]);
++    }
++    std::sort(times.begin(), times.end());
++    times.erase(std::unique(times.begin(), times.end()), times.end());
++    for (int t : times)
++        if (!eventOrderAt(pb, s, bay, t, xo, en)) return false;
++    return true;
++}
+ 
+ // same-layer positive-area overlap between two placed blocks (rule 1 helper)
+ inline bool restOverlap(const Problem& pb, const Sol& s, int a, int b) {
+@@ -72,6 +191,34 @@
+         if (crane::overlapsLay(ga, l, s.x[a], s.y[a],
+                                gb, l, s.x[b], s.y[b])) return true;
+     return false;
++}
++// Whole-state exact audit without repeating every event once per resident.
++inline bool stateExactEvents(const Problem& pb, const Sol& s) {
++    std::vector<int> exits, entries;
++    for (int bay = 0; bay < pb.m; bay++) {
++        const auto& ids = s.byBay[bay];
++        for (size_t a = 0; a < ids.size(); a++) {
++            const int i = ids[a];
++            if (!s.placed[i]) continue;
++            for (size_t b = a + 1; b < ids.size(); b++) {
++                const int k = ids[b];
++                if (!s.placed[k]) continue;
++                if (s.e[i] < s.f[k] && s.e[k] < s.f[i] &&
++                    restOverlap(pb, s, i, k))
++                    return false;
++            }
++        }
++        std::vector<int> times;
++        for (int i : ids) if (s.placed[i]) {
++            times.push_back(s.e[i]);
++            times.push_back(s.f[i]);
++        }
++        std::sort(times.begin(), times.end());
++        times.erase(std::unique(times.begin(), times.end()), times.end());
++        for (int t : times)
++            if (!eventOrderAt(pb, s, bay, t, exits, entries)) return false;
++    }
++    return true;
+ }
+ 
+ // Feasibility of block A at its current (bay, ori, x, y, e, f) against every
+--- canonical/src/kernel_bandit.hpp
++++ candidate/src/kernel_bandit.hpp
+@@ -0,0 +1,269 @@
++// kernel_bandit.hpp -- contextual portfolio control over complete ALNS policies.
++#pragma once
++
++#include "alns.hpp"
++#include <algorithm>
++#include <array>
++#include <chrono>
++#include <cmath>
++#include <cstdint>
++#include <limits>
++#include <random>
++#include <vector>
++
++namespace kernel_bandit {
++
++struct Policy {
++    int construction = 0;       // 0 incumbent, 1 noisy EDD reconstruction
++    double qlo = 0.03, qhi = 0.10;
++    int repairOrder = 0;        // encoded by destroy family and construction seed
++    int assignmentPressure = 0; // 0 none, 1 preference, 2 dense-screen split
++    bool exactEvents = false;
++    double populationShare = 0.0;
++    int localPasses = 0;
++    uint32_t opMask = 0x3ff;
++};
++
++struct ArmReport {
++    Policy policy;
++    long pulls = 0;
++    long feasible = 0;
++    double reward = 0.0;
++    double seconds = 0.0;
++};
++
++struct Result {
++    long armPulls = 0;
++    long modelUpdates = 0;
++    long feasibleRuns = 0;
++    double initialObjective = std::numeric_limits<double>::infinity();
++    double bestObjective = std::numeric_limits<double>::infinity();
++    Policy chosenPolicy;
++    std::vector<ArmReport> arms;
++    bool improved = false;
++};
++
++namespace detail {
++constexpr int D = 8;
++constexpr int POP = 6;
++
++inline double objective(const core::Problem& pb, const core::Sol& s) {
++    return core::evaluatePen(pb, s).total;
++}
++
++inline bool valid(const core::Problem& pb, core::Sol& s, bool exactEvents) {
++    return std::isfinite(objective(pb, s)) && alns::audit(pb, s, nullptr, exactEvents) == 0;
++}
++
++template<class EngineT>
++inline void rebuild(EngineT& engine) {
++    engine.sol.rebuildIdx(engine.pb.m);
++    engine.oc.clearBits();
++    for (int i = 0; i < engine.pb.n; ++i)
++        if (engine.sol.placed[i]) engine.oc.stamp(engine.pb, engine.sol, i, true);
++    engine.ctx.pb = &engine.pb;
++    engine.ctx.s = &engine.sol;
++    engine.ctx.oc = &engine.oc;
++}
++
++inline std::array<double, D> features(const core::Problem& pb, const core::Sol& s,
++                                      double current) {
++    std::array<double, D> x{};
++    double tardy = 0.0, prefLoss = 0.0, placed = 0.0, duration = 0.0;
++    double horizon = 1.0;
++    for (int i = 0; i < pb.n; ++i) {
++        horizon = std::max(horizon, (double)std::max(pb.D[i], pb.R[i] + pb.P[i]));
++        duration += pb.P[i];
++        if (!s.placed[i]) continue;
++        placed += 1.0;
++        tardy += std::max(0, s.f[i] - pb.D[i]);
++        prefLoss += pb.Smax[i] - pb.pref[i][s.bay[i]];
++    }
++    const double n = std::max(1, pb.n);
++    x[0] = 1.0;
++    x[1] = std::min(1.0, placed / n);
++    x[2] = std::min(1.0, tardy / (n * horizon));
++    x[3] = std::min(1.0, std::max(0.0, prefLoss) / n);
++    x[4] = std::min(1.0, duration / (n * horizon));
++    x[5] = std::min(1.0, std::max(0.0, pb.fillRatio));
++    x[6] = std::min(1.0, (double)pb.m / n);
++    x[7] = std::min(1.0, std::log1p(std::max(0.0, current)) / 20.0);
++    return x;
++}
++
++struct LinearUcb {
++    std::array<std::array<double, D>, D> a{};
++    std::array<double, D> b{};
++    LinearUcb() { for (int i = 0; i < D; ++i) a[i][i] = 1.0; }
++
++    std::array<double, D> solve(const std::array<double, D>& rhs) const {
++        std::array<std::array<double, D + 1>, D> w{};
++        for (int i = 0; i < D; ++i) {
++            for (int j = 0; j < D; ++j) w[i][j] = a[i][j];
++            w[i][D] = rhs[i];
++        }
++        for (int col = 0; col < D; ++col) {
++            int pivot = col;
++            for (int r = col + 1; r < D; ++r)
++                if (std::fabs(w[r][col]) > std::fabs(w[pivot][col])) pivot = r;
++            if (std::fabs(w[pivot][col]) < 1e-12) continue;
++            std::swap(w[pivot], w[col]);
++            const double inv = 1.0 / w[col][col];
++            for (int j = col; j <= D; ++j) w[col][j] *= inv;
++            for (int r = 0; r < D; ++r) if (r != col) {
++                const double q = w[r][col];
++                for (int j = col; j <= D; ++j) w[r][j] -= q * w[col][j];
++            }
++        }
++        std::array<double, D> out{};
++        for (int i = 0; i < D; ++i) out[i] = w[i][D];
++        return out;
++    }
++
++    double score(const std::array<double, D>& x, double bonus) const {
++        const auto theta = solve(b);
++        const auto invx = solve(x);
++        double mean = 0.0, variance = 0.0;
++        for (int i = 0; i < D; ++i) { mean += theta[i] * x[i]; variance += x[i] * invx[i]; }
++        return mean + bonus * std::sqrt(std::max(0.0, variance));
++    }
++
++    void update(const std::array<double, D>& x, double reward) {
++        for (int i = 0; i < D; ++i) {
++            b[i] += reward * x[i];
++            for (int j = 0; j < D; ++j) a[i][j] += x[i] * x[j];
++        }
++    }
++};
++
++inline std::vector<Policy> policies() {
++    return {
++        {0,.02,.07,0,0,false,.00,0,0x01f}, {0,.03,.12,1,1,false,.35,1,0x0df},
++        {1,.04,.16,2,2,true, .50,2,0x3ff}, {0,.06,.22,2,1,true, .70,2,0x3f0},
++        {1,.02,.10,1,2,false,.25,3,0x1ff}, {0,.08,.28,0,0,true, .80,1,0x3ff},
++        {1,.05,.18,2,1,false,.60,3,0x2ff}, {0,.03,.14,1,2,true, .45,4,0x3ff},
++        // Basin-escape arms for repeatedly intensified incumbents.  These keep
++        // exact replay and transactional acceptance but destroy enough of a
++        // geometry/time critical region to cross the small-q local optimum.
++        {0,.12,.32,2,0,true, .65,3,0x3ff}, {1,.18,.40,1,2,true, .75,4,0x3ff},
++        {0,.25,.50,2,1,true, .85,5,0x3ff}, {1,.32,.58,0,0,true, .90,6,0x3ff}
++    };
++}
++
++inline int distance(const core::Sol& a, const core::Sol& b) {
++    int d = 0;
++    for (size_t i = 0; i < a.placed.size(); ++i)
++        d += a.placed[i] != b.placed[i] || a.bay[i] != b.bay[i] || a.e[i] != b.e[i];
++    return d;
++}
++} // namespace detail
++
++template<class EngineT>
++Result run(EngineT& engine, double seconds, uint64_t seed) {
++    using Clock = std::chrono::steady_clock;
++    Result out;
++    const auto started = Clock::now();
++    const auto deadline = started + std::chrono::duration_cast<Clock::duration>(
++        std::chrono::duration<double>(std::max(0.0, seconds)));
++    auto remaining = [&] { return std::chrono::duration<double>(deadline - Clock::now()).count(); };
++    if (seconds <= 0.0 || engine.pb.n <= 0) return out;
++
++    detail::rebuild(engine);
++    const bool originalExact = engine.ctx.exactEvents;
++    const int originalDens = engine.ctx.densMode;
++    const double originalPref = engine.ctx.prefP;
++    const bool originalHasDeadline = engine.ctx.hasDeadline;
++    const auto originalDeadline = engine.ctx.deadline;
++    const core::Sol entry = engine.sol;
++    if (!detail::valid(engine.pb, engine.sol, true)) { engine.sol = entry; detail::rebuild(engine); return out; }
++    out.initialObjective = detail::objective(engine.pb, engine.sol);
++    out.bestObjective = out.initialObjective;
++    core::Sol best = engine.sol;
++    std::vector<core::Sol> population{best};
++    std::vector<double> popObj{out.bestObjective};
++    const auto ps = detail::policies();
++    out.arms.resize(ps.size());
++    for (size_t i = 0; i < ps.size(); ++i) out.arms[i].policy = ps[i];
++    out.chosenPolicy = ps[0];
++    std::vector<detail::LinearUcb> models(ps.size());
++    std::mt19937_64 rng(seed);
++
++    while (remaining() > 0.002) {
++        const auto x = detail::features(engine.pb, best, out.bestObjective);
++        size_t arm = 0;
++        long least = out.arms[0].pulls;
++        for (size_t i = 1; i < ps.size(); ++i) least = std::min(least, out.arms[i].pulls);
++        if (least == 0) {
++            for (size_t i = 0; i < ps.size(); ++i) if (!out.arms[i].pulls) { arm = i; break; }
++        } else {
++            double top = -std::numeric_limits<double>::infinity();
++            const double bonus = 0.20 * std::sqrt(std::log(1.0 + out.armPulls));
++            for (size_t i = 0; i < ps.size(); ++i) {
++                const double v = models[i].score(x, bonus);
++                if (v > top) { top = v; arm = i; }
++            }
++        }
++        const Policy& p = ps[arm];
++        if (population.size() > 1 && std::uniform_real_distribution<double>(0, 1)(rng) < p.populationShare) {
++            const size_t pick = (size_t)(rng() % population.size());
++            engine.sol = population[pick];
++        } else engine.sol = best;
++        detail::rebuild(engine);
++        engine.ctx.exactEvents = p.exactEvents;
++        engine.ctx.densMode = p.assignmentPressure == 2 ? 1 : (p.assignmentPressure == 0 ? 0 : originalDens);
++        engine.ctx.prefP = p.assignmentPressure == 1 ? 0.92 : originalPref;
++        engine.ctx.hasDeadline = true;
++        engine.ctx.deadline = deadline;
++        if (p.construction == 1 && remaining() > 0.004) {
++            const core::Sol beforeConstruct = engine.sol;
++            if (!alns::constructInitial(engine.ctx, rng())) engine.sol = beforeConstruct;
++            detail::rebuild(engine);
++        }
++        const double before = detail::objective(engine.pb, engine.sol);
++        const double slice = std::min(remaining(), std::max(0.003, seconds / 24.0));
++        alns::RunParams rp;
++        rp.qloF = p.qlo; rp.qhiF = p.qhi; rp.opMask = p.opMask;
++        rp.bigQProb = p.repairOrder == 2 ? 0.12 : (p.repairOrder == 1 ? 0.06 : 0.02);
++        const auto pullStart = Clock::now();
++        alns::run(engine.ctx, slice, rp, rng(), 0);
++        if (p.localPasses && remaining() > 0.001) {
++            engine.ctx.hasDeadline = true; engine.ctx.deadline = deadline;
++            alns::spatialCompact(engine.ctx, p.localPasses);
++            alns::compactLeft(engine.ctx, std::max(1, p.localPasses / 2));
++        }
++        const double elapsed = std::max(1e-6, std::chrono::duration<double>(Clock::now() - pullStart).count());
++        detail::rebuild(engine);
++        const bool feasible = detail::valid(engine.pb, engine.sol, p.exactEvents) &&
++                              detail::valid(engine.pb, engine.sol, true);
++        const double candidate = feasible ? detail::objective(engine.pb, engine.sol) : std::numeric_limits<double>::infinity();
++        const double gain = feasible ? std::max(0.0, before - candidate) : 0.0;
++        const double reward = (feasible ? gain / elapsed : -1.0 / elapsed) / std::max(1.0, std::fabs(before));
++        models[arm].update(x, reward);
++        ++out.modelUpdates; ++out.armPulls; ++out.arms[arm].pulls;
++        out.arms[arm].reward += reward; out.arms[arm].seconds += elapsed;
++        if (feasible) { ++out.feasibleRuns; ++out.arms[arm].feasible; }
++        if (feasible && candidate < out.bestObjective - 1e-9) { best = engine.sol; out.bestObjective = candidate; out.chosenPolicy = p; }
++        if (feasible) {
++            bool distinct = true;
++            for (const auto& member : population) if (detail::distance(member, engine.sol) < std::max(2, engine.pb.n / 25)) { distinct = false; break; }
++            if (distinct && population.size() < detail::POP) { population.push_back(engine.sol); popObj.push_back(candidate); }
++            else if (distinct) {
++                const size_t worst = (size_t)(std::max_element(popObj.begin(), popObj.end()) - popObj.begin());
++                if (candidate < popObj[worst]) { population[worst] = engine.sol; popObj[worst] = candidate; }
++            }
++        }
++        engine.sol = best;
++        detail::rebuild(engine);
++    }
++    engine.ctx.exactEvents = originalExact;
++    engine.ctx.densMode = originalDens;
++    engine.ctx.prefP = originalPref;
++    engine.ctx.hasDeadline = originalHasDeadline;
++    engine.ctx.deadline = originalDeadline;
++    engine.sol = best;
++    out.improved = out.bestObjective < out.initialObjective;
++    detail::rebuild(engine);
++    return out;
++}
++
++} // namespace kernel_bandit
+--- canonical/src/kernel_parallel_bandit.hpp
++++ candidate/src/kernel_parallel_bandit.hpp
+@@ -0,0 +1,286 @@
++// kernel_parallel_bandit.hpp -- synchronized four-lane contextual ALNS portfolio.
++#pragma once
++
++#include "kernel_bandit.hpp"
++#include <algorithm>
++#include <array>
++#include <chrono>
++#include <cmath>
++#include <cstdint>
++#include <limits>
++#include <thread>
++#include <vector>
++
++namespace kernel_parallel_bandit {
++
++using Policy = kernel_bandit::Policy;
++
++struct Result {
++    long batches = 0;
++    long laneRuns = 0;
++    long feasibleLanes = 0;
++    long exchanges = 0;
++    long modelUpdates = 0;
++    double diversity = 0.0;
++    double peakDiversity = 0.0;
++    long populationSize = 0;
++    std::array<Policy, 4> selectedPolicies{};
++    double initialObjective = std::numeric_limits<double>::infinity();
++    double bestObjective = std::numeric_limits<double>::infinity();
++    bool improved = false;
++    bool deadlineHit = false;
++};
++
++namespace detail {
++constexpr size_t LANES = 4;
++constexpr size_t POPULATION = 8;
++
++inline uint64_t splitSeed(uint64_t seed, uint64_t stream) {
++    uint64_t z = seed + 0x9e3779b97f4a7c15ull * (stream + 1ull);
++    z = (z ^ (z >> 30)) * 0xbf58476d1ce4e5b9ull;
++    z = (z ^ (z >> 27)) * 0x94d049bb133111ebull;
++    return z ^ (z >> 31);
++}
++
++inline void rebuild(const core::Problem& pb, core::Sol& s, occ::OccIndex& oc,
++                    repair::Ctx& c) {
++    if (oc.T != c.horizon || (int)oc.bay.size() != pb.m)
++        oc.build(pb, c.horizon);
++    s.rebuildIdx(pb.m);
++    oc.clearBits();
++    for (int i = 0; i < pb.n; ++i)
++        if (s.placed[i]) oc.stamp(pb, s, i, true);
++    c.pb = &pb;
++    c.s = &s;
++    c.oc = &oc;
++}
++
++inline bool completeAndValid(const core::Problem& pb, core::Sol& s, int horizon) {
++    if ((int)s.placed.size() != pb.n || (int)s.byBay.size() != pb.m) return false;
++    for (int i = 0; i < pb.n; ++i) {
++        if (!s.placed[i] || s.bay[i] < 0 || s.bay[i] >= pb.m ||
++            s.ori[i] < 0 || s.ori[i] >= (int)pb.geo[i].orients.size() ||
++            s.e[i] < pb.R[i] || s.f[i] != s.e[i] + pb.P[i] || s.f[i] > horizon)
++            return false;
++    }
++    s.rebuildIdx(pb.m);
++    return alns::audit(pb, s, nullptr, true) == 0;
++}
++
++inline double objective(const core::Problem& pb, const core::Sol& s) {
++    return core::evaluatePen(pb, s).total;
++}
++
++inline double distance(const core::Problem& pb, const core::Sol& a, const core::Sol& b) {
++    if (pb.n == 0) return 0.0;
++    int different = 0;
++    for (int i = 0; i < pb.n; ++i)
++        different += a.bay[i] != b.bay[i] || a.ori[i] != b.ori[i] ||
++                     a.e[i] != b.e[i] || a.x[i] != b.x[i] || a.y[i] != b.y[i];
++    return (double)different / (double)pb.n;
++}
++
++inline double diversity(const core::Problem& pb, const std::vector<core::Sol>& pop) {
++    if (pop.size() < 2) return 0.0;
++    double sum = 0.0;
++    long pairs = 0;
++    for (size_t i = 0; i < pop.size(); ++i)
++        for (size_t j = 0; j < i; ++j) { sum += distance(pb, pop[i], pop[j]); ++pairs; }
++    return sum / (double)pairs;
++}
++
++struct Lane {
++    core::Sol sol;
++    occ::OccIndex oc;
++    repair::Ctx ctx{};
++    double before = std::numeric_limits<double>::infinity();
++    double objective = std::numeric_limits<double>::infinity();
++    double elapsed = 0.0;
++    bool feasible = false;
++};
++
++inline void configure(repair::Ctx& c, const Policy& p,
++                      std::chrono::steady_clock::time_point deadline,
++                      int originalDens, double originalPref) {
++    c.exactEvents = p.exactEvents;
++    c.densMode = p.assignmentPressure == 2 ? 1 :
++                 (p.assignmentPressure == 0 ? 0 : originalDens);
++    c.prefP = p.assignmentPressure == 1 ? 0.92 : originalPref;
++    c.hasDeadline = true;
++    c.deadline = deadline;
++}
++} // namespace detail
++
++template<class EngineT>
++Result run(EngineT& engine, double seconds, uint64_t seed) {
++    using Clock = std::chrono::steady_clock;
++    Result out;
++    if (seconds <= 0.0 || engine.pb.n <= 0 || engine.pb.m <= 0) return out;
++
++    const core::Problem& pb = engine.pb;
++    const int horizon = engine.horizon_;
++    const core::Sol entry = engine.sol;
++    core::Sol audited = entry;
++    if (horizon <= 0 || !detail::completeAndValid(pb, audited, horizon)) return out;
++
++    const auto started = Clock::now();
++    const auto deadline = started + std::chrono::duration_cast<Clock::duration>(
++        std::chrono::duration<double>(seconds));
++    out.initialObjective = detail::objective(pb, entry);
++    out.bestObjective = out.initialObjective;
++    core::Sol best = entry;
++    std::vector<core::Sol> population{entry};
++    std::vector<double> populationObjectives{out.initialObjective};
++
++    const auto policies = kernel_bandit::detail::policies();
++    std::vector<kernel_bandit::detail::LinearUcb> models(policies.size());
++    std::array<long, 4> repairModePulls{};
++    std::array<double, 4> repairModeRewards{};
++    const int originalDens = engine.ctx.densMode;
++    const double originalPref = engine.ctx.prefP;
++    const repair::Ctx baseCtx = engine.ctx;
++
++    while (Clock::now() < deadline) {
++        const double remaining = std::chrono::duration<double>(deadline - Clock::now()).count();
++        if (remaining <= 0.002) break;
++        const auto features = kernel_bandit::detail::features(pb, best, out.bestObjective);
++        std::array<size_t, detail::LANES> chosen{};
++        std::array<bool, 64> used{};
++        for (size_t lane = 0; lane < detail::LANES; ++lane) {
++            size_t pick = lane % policies.size();
++            if (out.batches >= 1) {
++                double top = -std::numeric_limits<double>::infinity();
++                const double bonus = 0.20 * std::sqrt(std::log(2.0 + out.modelUpdates));
++                for (size_t arm = 0; arm < policies.size(); ++arm) {
++                    if (used[arm]) continue;
++                    const double score = models[arm].score(features, bonus);
++                    if (score > top || (score == top && arm < pick)) { top = score; pick = arm; }
++                }
++            }
++            chosen[lane] = pick;
++            used[pick] = true;
++            out.selectedPolicies[lane] = policies[pick];
++        }
++        std::array<int, detail::LANES> repairModes{};
++        if (out.batches == 0) {
++            for (size_t lane = 0; lane < detail::LANES; ++lane)
++                repairModes[lane] = (int)lane;
++        } else {
++            int bestMode = 0;
++            double bestMean = -std::numeric_limits<double>::infinity();
++            for (int mode = 0; mode < 4; ++mode) {
++                const double mean = repairModeRewards[mode] /
++                    (double)std::max(1L, repairModePulls[mode]);
++                if (mean > bestMean) { bestMean = mean; bestMode = mode; }
++            }
++            repairModes = {bestMode, bestMode, 0, (int)(out.batches % 4)};
++        }
++
++        const double batchSeconds = std::min(remaining, std::max(0.004, seconds / 32.0));
++        std::array<detail::Lane, detail::LANES> lanes;
++        std::array<std::thread, detail::LANES> workers;
++        for (size_t lane = 0; lane < detail::LANES; ++lane) {
++            const core::Sol start = population[(out.batches + lane) % population.size()];
++            const Policy policy = policies[chosen[lane]];
++            const uint64_t laneSeed = detail::splitSeed(seed, (uint64_t)out.batches * detail::LANES + lane);
++            workers[lane] = std::thread([&, lane, start, policy, laneSeed] {
++                detail::Lane& state = lanes[lane];
++                state.sol = start;
++                state.ctx = baseCtx;
++                detail::rebuild(pb, state.sol, state.oc, state.ctx);
++                detail::configure(state.ctx, policy, deadline, originalDens, originalPref);
++                state.before = detail::objective(pb, state.sol);
++                const auto laneStarted = Clock::now();
++                alns::RunParams rp;
++                rp.repairMode = repairModes[lane];
++                rp.qloF = policy.qlo;
++                rp.qhiF = policy.qhi;
++                rp.opMask = policy.opMask;
++                rp.bigQProb = policy.repairOrder == 2 ? 0.12 :
++                              (policy.repairOrder == 1 ? 0.06 : 0.02);
++                alns::run(state.ctx, batchSeconds, rp, laneSeed, 0);
++                if (policy.localPasses && Clock::now() < deadline) {
++                    alns::spatialCompact(state.ctx, policy.localPasses);
++                    alns::compactLeft(state.ctx, std::max(1, policy.localPasses / 2));
++                }
++                state.elapsed = std::max(1e-6,
++                    std::chrono::duration<double>(Clock::now() - laneStarted).count());
++                detail::rebuild(pb, state.sol, state.oc, state.ctx);
++                state.feasible = Clock::now() <= deadline &&
++                    detail::completeAndValid(pb, state.sol, horizon);
++                if (state.feasible) state.objective = detail::objective(pb, state.sol);
++            });
++        }
++        for (size_t lane = 0; lane < detail::LANES; ++lane) workers[lane].join();
++        ++out.batches;
++
++        // This ordered coordinator is the sole owner of population and models.
++        for (size_t lane = 0; lane < detail::LANES; ++lane) {
++            ++out.laneRuns;
++            detail::Lane& state = lanes[lane];
++            const double gain = state.feasible ? std::max(0.0, state.before - state.objective) : 0.0;
++            const double reward = (state.feasible ? gain / state.elapsed : -1.0 / state.elapsed) /
++                                  std::max(1.0, std::fabs(state.before));
++            models[chosen[lane]].update(features, reward);
++            ++repairModePulls[repairModes[lane]];
++            repairModeRewards[repairModes[lane]] += reward;
++            ++out.modelUpdates;
++            if (!state.feasible) continue;
++            ++out.feasibleLanes;
++            size_t nearest = 0;
++            double nearestDistance = std::numeric_limits<double>::infinity();
++            for (size_t i = 0; i < population.size(); ++i) {
++                const double d = detail::distance(pb, population[i], state.sol);
++                if (d < nearestDistance) { nearestDistance = d; nearest = i; }
++            }
++            if (state.objective < out.bestObjective - 1e-9) {
++                best = state.sol;
++                out.bestObjective = state.objective;
++                out.selectedPolicies[lane] = policies[chosen[lane]];
++            }
++            const bool distinct = nearestDistance >= 0.04;
++            if (distinct && population.size() < detail::POPULATION) {
++                population.push_back(state.sol);
++                populationObjectives.push_back(state.objective);
++                ++out.exchanges;
++            } else if (distinct) {
++                const size_t worst = (size_t)(std::max_element(populationObjectives.begin(),
++                    populationObjectives.end()) - populationObjectives.begin());
++                if (state.objective < populationObjectives[worst]) {
++                    population[worst] = state.sol;
++                    populationObjectives[worst] = state.objective;
++                    ++out.exchanges;
++                }
++            } else if (state.objective < populationObjectives[nearest] - 1e-9) {
++                population[nearest] = state.sol;
++                populationObjectives[nearest] = state.objective;
++                ++out.exchanges;
++            }
++        }
++        out.peakDiversity = std::max(out.peakDiversity, detail::diversity(pb, population));
++    }
++
++    out.populationSize = (long)population.size();
++    out.diversity = detail::diversity(pb, population);
++    out.improved = out.bestObjective < out.initialObjective - 1e-9;
++    out.deadlineHit = Clock::now() >= deadline;
++    if (out.improved) {
++        core::Sol candidate = best;
++        if (detail::completeAndValid(pb, candidate, horizon) &&
++            detail::objective(pb, candidate) < out.initialObjective - 1e-9) {
++            engine.sol = candidate;
++            engine.sol.rebuildIdx(pb.m);
++            engine.oc.clearBits();
++            for (int i = 0; i < pb.n; ++i) engine.oc.stamp(pb, engine.sol, i, true);
++            engine.ctx.pb = &pb;
++            engine.ctx.s = &engine.sol;
++            engine.ctx.oc = &engine.oc;
++        } else {
++            out.bestObjective = out.initialObjective;
++            out.improved = false;
++        }
++    }
++    return out;
++}
++
++} // namespace kernel_parallel_bandit
+--- canonical/src/repair.hpp
++++ candidate/src/repair.hpp
+@@ -27,6 +27,7 @@
+ #include "occ.hpp"
+ #include <random>
+ #include <algorithm>
++#include <chrono>
+ 
+ namespace repair {
+ using core::Problem; using core::Sol;
+@@ -49,6 +50,8 @@
+                                       // anneal-long constraints move the
+                                       // final basin.
+     bool prefStrong = false;          // z1==0 regime: chase preferred bays hard.
++    double prefP = -1.0;                 // instance-owned override; <0 uses regime default
++    bool exactEvents = false;             // checker-order replay for same-day events
+                                       // Predicate lives in alns::run (sec 148):
+                                       // z1<=0 AND z3<n -- a measured two-order
+                                       // regime gap, not a tuned constant.
+@@ -59,7 +62,16 @@
+     // live dominance gate for op 8: is the priced preference loss the dominant
+     // objective term? Parameter-free (w3*z3 > w1*z1), set by the obj lambda.
+     bool z3dom = false;
++    bool hasDeadline = false;          // bounded ALNS repair; seeding stays unbounded
++    std::chrono::steady_clock::time_point deadline;
+ };
++inline bool deadlineExpired(const Ctx& c) {
++    return c.hasDeadline && std::chrono::steady_clock::now() >= c.deadline;
++}
++inline bool placementFeasible(const Ctx& c, int A) {
++    return c.exactEvents ? core::vpExactEvents(*c.pb, *c.s, A)
++                         : core::vpConservative(*c.pb, *c.s, A);
++}
+ 
+ // Area screen for bay j over [e,f) -- a SPEED HEURISTIC, never a verdict.
+ // It compares bbox-area sums (areaUsed) against bay area with 2% slack, and
+@@ -150,6 +162,63 @@
+     rbCollect(c, j, e, f, rbs);
+     cornerSetsRB(c, A, oi, j, rbs, xs, ys);
+ }
++// Add integer translations induced by irregular polygon vertex contacts.
++inline void shapeContactSets(const Ctx& c, int A, int oi, int j, int e, int f,
++                             std::vector<int>& xs, std::vector<int>& ys,
++                             size_t axisCap = 96) {
++    const auto& ga = c.pb->geo[A].orients[oi];
++    const int x0 = (int)std::ceil(-ga.bb.x0);
++    const int x1 = (int)std::floor(c.pb->bayW[j] - ga.bb.x1);
++    const int y0 = (int)std::ceil(-ga.bb.y0);
++    const int y1 = (int)std::floor(c.pb->bayH[j] - ga.bb.y1);
++    auto add = [](std::vector<int>& out, double v, int lo, int hi, size_t cap) {
++        if (out.size() >= cap) return;
++        for (int q : {(int)std::floor(v), (int)std::ceil(v)})
++            if (q >= lo && q <= hi &&
++                std::find(out.begin(), out.end(), q) == out.end())
++                out.push_back(q);
++    };
++    for (int k : c.s->byBay[j]) {
++        if (xs.size() >= axisCap && ys.size() >= axisCap) break;
++        if (!c.s->placed[k] || !(c.s->e[k] < f && e < c.s->f[k])) continue;
++        const auto& gk = c.pb->geo[k].orients[c.s->ori[k]];
++        for (const auto& pa : ga.layers) {
++            for (const auto& va : pa) {
++                for (const auto& pk : gk.layers) {
++                    for (const auto& vk : pk) {
++                        add(xs, vk.x + c.s->x[k] - va.x, x0, x1, axisCap);
++                        add(ys, vk.y + c.s->y[k] - va.y, y0, y1, axisCap);
++                        if (xs.size() >= axisCap && ys.size() >= axisCap) break;
++                    }
++                    if (xs.size() >= axisCap && ys.size() >= axisCap) break;
++                }
++                if (xs.size() >= axisCap && ys.size() >= axisCap) break;
++            }
++            if (xs.size() >= axisCap && ys.size() >= axisCap) break;
++        }
++    }
++    std::sort(xs.begin(), xs.end());
++    xs.erase(std::unique(xs.begin(), xs.end()), xs.end());
++    std::sort(ys.begin(), ys.end());
++    ys.erase(std::unique(ys.begin(), ys.end()), ys.end());
++}
++
++// Commit one candidate through the selected event semantics.
++inline bool tryPlacement(Ctx& c, int A, int j, int oi, int x, int y, int e) {
++    const Problem& pb = *c.pb;
++    Sol& s = *c.s;
++    s.bay[A]=j; s.ori[A]=oi; s.x[A]=x; s.y[A]=y;
++    s.e[A]=e; s.f[A]=e+pb.P[A]; s.placed[A]=1;
++    s.addIdx(A);
++    const bool ok = placementFeasible(c, A);
++    if (ok) {
++        c.oc->stamp(pb, s, A, true);
++        return true;
++    }
++    s.delIdx(A);
++    s.placed[A]=0;
++    return false;
++}
+ 
+ // Try to place A at (bay j, entry e): every corner candidate of every
+ // orientation, snapshot-prefiltered, vp-confirmed. First fit wins; on success
+@@ -157,24 +226,20 @@
+ inline bool scanBayAt(Ctx& c, int A, int j, int e, const std::vector<int>& oris,
+                       std::vector<int>& xs, std::vector<int>& ys) {
+     const Problem& pb = *c.pb; Sol& s = *c.s;
++    if (deadlineExpired(c)) return false;
+     int f = e + pb.P[A];
+     thread_local occ::OccIndex::Snap sn;
+     c.oc->buildSnap(j, e, f, sn);
+     thread_local std::vector<RB> rbs;
+     rbCollect(c, j, e, f, rbs);
+     for (int oi : oris) {
++        if (deadlineExpired(c)) return false;
+         cornerSetsRB(c, A, oi, j, rbs, xs, ys);
+         for (int y : ys) {
+             for (int x : xs) {
++                if (deadlineExpired(c)) return false;
+                 if (c.oc->hitsSnap(sn, A, oi, x, y)) continue;
+-                s.bay[A]=j; s.ori[A]=oi; s.x[A]=x; s.y[A]=y;
+-                s.e[A]=e; s.f[A]=f; s.placed[A]=1;
+-                if (core::vpConservative(pb, s, A)) {
+-                    s.addIdx(A);
+-                    c.oc->stamp(pb, s, A, true);
+-                    return true;
+-                }
+-                s.placed[A]=0;
++                if (tryPlacement(c, A, j, oi, x, y, e)) return true;
+             }
+         }
+     }
+@@ -188,6 +253,7 @@
+ // trig only.
+ inline bool scanLocal(Ctx& c, int A, int trig, int e, double areaA) {
+     const Problem& pb = *c.pb; Sol& s = *c.s;
++    if (deadlineExpired(c)) return false;
+     int f = e + pb.P[A];
+     int j = s.bay[trig];
+     if (c.forcedBay && c.forcedBay[A] >= 0 && c.forcedBay[A] != j) return false;
+@@ -204,6 +270,7 @@
+     thread_local std::vector<RB> rbs;
+     rbCollect(c, j, e, f, rbs);
+     for (size_t oo = 0; oo < pb.geo[A].orients.size(); oo++) {
++        if (deadlineExpired(c)) return false;
+         int oi = (int)oo;
+         const auto& g = pb.geo[A].orients[oi];
+         double W = pb.bayW[j], H = pb.bayH[j];
+@@ -235,15 +302,9 @@
+         std::sort(lys.begin(), lys.end());
+         lys.erase(std::unique(lys.begin(), lys.end()), lys.end());
+         for (int yv : lys) for (int xv : lxs) {
++            if (deadlineExpired(c)) return false;
+             if (c.oc->hitsSnap(sn, A, oi, xv, yv)) continue;
+-            s.bay[A]=j; s.ori[A]=oi; s.x[A]=xv; s.y[A]=yv;
+-            s.e[A]=e; s.f[A]=f; s.placed[A]=1;
+-            if (core::vpConservative(pb, s, A)) {
+-                s.addIdx(A);
+-                c.oc->stamp(pb, s, A, true);
+-                return true;
+-            }
+-            s.placed[A]=0;
++            if (tryPlacement(c, A, j, oi, xv, yv, e)) return true;
+         }
+     }
+     return false;
+@@ -254,6 +315,7 @@
+ 
+ inline bool insertGreedy(Ctx& c, int A, int eCap = -1) {
+     const Problem& pb = *c.pb; Sol& s = *c.s;
++    if (deadlineExpired(c)) return false;
+     if (c.entryCap && c.entryCap[A] >= 0 &&
+         (eCap < 0 || c.entryCap[A] < eCap))
+         eCap = c.entryCap[A];
+@@ -287,7 +349,7 @@
+     else { bays.resize(pb.m); for (int j = 0; j < pb.m; j++) bays[j] = j; }
+     std::vector<int> oris(pb.geo[A].orients.size());
+     for (size_t o = 0; o < oris.size(); o++) oris[o] = (int)o;
+-    const double PREFP = knobs::prefP();
++    const double PREFP = c.prefP;
+     if (std::uniform_real_distribution<double>(0,1)(c.rng)
+             < (PREFP >= 0 ? PREFP : (c.prefStrong ? 0.92 : 0.70)))
+         std::sort(bays.begin(), bays.end(), [&](int a, int b){
+@@ -337,6 +399,7 @@
+     {
+         int e = eBot, f = e + pb.P[A];
+         for (int j : bays) {
++            if (deadlineExpired(c)) return false;
+             if (!areaRoom(c, j, areaA, e, f)) { areaRej[j] = 1; continue; }
+             if (scanBayAt(c, A, j, e, oris, xs, ys)) return true;
+         }
+@@ -350,6 +413,7 @@
+                 fev.push_back({s.f[k], k});
+     std::sort(fev.begin(), fev.end());
+     for (auto& pr : fev) {
++        if (deadlineExpired(c)) return false;
+         int e = pr.first, jt = s.bay[pr.second], f = e + pb.P[A];
+         if (areaRej[jt]) {
+             // bay skipped while area-saturated: once area fits again, restore
+@@ -368,22 +432,19 @@
+     // its comment), NOT the same-layer snapshot the fast phases use.
+     int stride = (eTop - eBot <= 24) ? 1 : knobs::stride();
+     for (int e = eBot; e <= eTop; e += stride) {
++        if (deadlineExpired(c)) return false;
+         int f = e + pb.P[A];
+         for (int j : bays) {
++            if (deadlineExpired(c)) return false;
+             thread_local std::vector<RB> rbs;
+             rbCollect(c, j, e, f, rbs);
+             for (int oi : oris) {
++                if (deadlineExpired(c)) return false;
+                 cornerSetsRB(c, A, oi, j, rbs, xs, ys);
+                 for (int y : ys) for (int x : xs) {
++                    if (deadlineExpired(c)) return false;
+                     if (c.oc->hits(A, oi, j, x, y, e, f)) continue;
+-                    s.bay[A]=j; s.ori[A]=oi; s.x[A]=x; s.y[A]=y;
+-                    s.e[A]=e; s.f[A]=f; s.placed[A]=1;
+-                    if (core::vpConservative(pb, s, A)) {
+-                        s.addIdx(A);
+-                        c.oc->stamp(pb, s, A, true);
+-                        return true;
+-                    }
+-                    s.placed[A]=0;
++                    if (tryPlacement(c, A, j, oi, x, y, e)) return true;
+                 }
+             }
+         }
+--- canonical/src/repair_nfp_contact.hpp
++++ candidate/src/repair_nfp_contact.hpp
+@@ -0,0 +1,306 @@
++// repair_nfp_contact.hpp -- contact-driven repair for irregular layered polygons.
++//
++// Candidate translations are generated from actual layer vertices and edges, not
++// resident bounding-box corners.  Integer positions nearest every vertex/edge
++// contact locus are retained, then the normal checker-equivalent predicate is
++// the authority for feasibility.
++#pragma once
++#include "repair.hpp"
++#include <algorithm>
++#include <cmath>
++#include <cstddef>
++#include <limits>
++#include <vector>
++
++namespace nfp_contact {
++
++struct Config {
++    size_t maxEntryTimes = 48;
++    size_t maxCandidates = 768;
++    size_t maxContactsPerResident = 192;
++    bool includeGeneral = true;
++};
++
++struct Stats {
++    size_t wallCandidates = 0;
++    size_t contactCandidates = 0;
++    size_t generalCandidates = 0;
++    size_t deduplicated = 0;
++    size_t exactChecks = 0;
++    size_t exactRejections = 0;
++    size_t deadlineStops = 0;
++};
++
++struct Candidate {
++    int x = 0, y = 0;
++    unsigned source = 0; // 1 wall, 2 polygon contact, 4 general
++    int contacts = 0;
++};
++
++inline bool expired(const repair::Ctx& c, Stats* st) {
++    if (!repair::deadlineExpired(c)) return false;
++    if (st) ++st->deadlineStops;
++    return true;
++}
++
++inline void addCandidate(std::vector<Candidate>& out, int x, int y,
++                         int xmin, int xmax, int ymin, int ymax,
++                         unsigned source, size_t cap, Stats* st) {
++    if (x < xmin || x > xmax || y < ymin || y > ymax) return;
++    for (Candidate& q : out) {
++        if (q.x != x || q.y != y) continue;
++        q.source |= source;
++        if (st) ++st->deduplicated;
++        return;
++    }
++    if (out.size() >= cap) return;
++    out.push_back({x, y, source, 0});
++    if (!st) return;
++    if (source & 1) ++st->wallCandidates;
++    if (source & 2) ++st->contactCandidates;
++    if (source & 4) ++st->generalCandidates;
++}
++
++inline void nearestIntegers(double value, std::vector<int>& out) {
++    const int lo = (int)std::floor(value);
++    const int hi = (int)std::ceil(value);
++    out.push_back(lo);
++    if (hi != lo) out.push_back(hi);
++}
++
++// Add integer lattice points closest to p + translation lying on edge [a,b].
++// Both forms are used: an A vertex against a resident edge and a resident
++// vertex against an A edge.  The resulting finite set represents contact
++// loci, including sloped edges, rather than a Cartesian product of bbox axes.
++inline void addVertexEdgeLocus(const geom::Pt& p, const geom::Pt& a,
++                               const geom::Pt& b, int xmin, int xmax,
++                               int ymin, int ymax, unsigned source,
++                               size_t cap, std::vector<Candidate>& out,
++                               Stats* st) {
++    const double dx = b.x - a.x, dy = b.y - a.y;
++    const double len2 = dx * dx + dy * dy;
++    if (len2 <= geom::EPS) return;
++    std::vector<int> lattice;
++    // Intersect the contact line with integer x values around the edge's
++    // translated endpoints.  The nearest y lattice points cover the discrete
++    // placement representation without pretending the line is axis aligned.
++    if (std::abs(dx) > geom::EPS) {
++        lattice.clear();
++        nearestIntegers(a.x - p.x, lattice);
++        nearestIntegers(b.x - p.x, lattice);
++        for (int x : lattice) {
++            const double yline = a.y - p.y +
++                dy * (x - (a.x - p.x)) / dx;
++            std::vector<int> ys; nearestIntegers(yline, ys);
++            for (int y : ys) addCandidate(out, x, y, xmin, xmax, ymin, ymax,
++                                          source, cap, st);
++        }
++    }
++    if (std::abs(dy) > geom::EPS) {
++        lattice.clear();
++        nearestIntegers(a.y - p.y, lattice);
++        nearestIntegers(b.y - p.y, lattice);
++        for (int y : lattice) {
++            const double xline = a.x - p.x +
++                dx * (y - (a.y - p.y)) / dy;
++            std::vector<int> xs; nearestIntegers(xline, xs);
++            for (int x : xs) addCandidate(out, x, y, xmin, xmax, ymin, ymax,
++                                          source, cap, st);
++        }
++    }
++}
++
++inline void addWallContacts(const crane::OrientGeom& ga, double W, double H,
++                            int xmin, int xmax, int ymin, int ymax,
++                            size_t cap, std::vector<Candidate>& out, Stats* st) {
++    for (const geom::Poly& layer : ga.layers) for (const geom::Pt& v : layer) {
++        std::vector<int> q;
++        nearestIntegers(-v.x, q);
++        for (int x : q) {
++            addCandidate(out, x, ymin, xmin, xmax, ymin, ymax, 1, cap, st);
++            addCandidate(out, x, ymax, xmin, xmax, ymin, ymax, 1, cap, st);
++        }
++        q.clear(); nearestIntegers(W - v.x, q);
++        for (int x : q) {
++            addCandidate(out, x, ymin, xmin, xmax, ymin, ymax, 1, cap, st);
++            addCandidate(out, x, ymax, xmin, xmax, ymin, ymax, 1, cap, st);
++        }
++        q.clear(); nearestIntegers(-v.y, q);
++        for (int y : q) {
++            addCandidate(out, xmin, y, xmin, xmax, ymin, ymax, 1, cap, st);
++            addCandidate(out, xmax, y, xmin, xmax, ymin, ymax, 1, cap, st);
++        }
++        q.clear(); nearestIntegers(H - v.y, q);
++        for (int y : q) {
++            addCandidate(out, xmin, y, xmin, xmax, ymin, ymax, 1, cap, st);
++            addCandidate(out, xmax, y, xmin, xmax, ymin, ymax, 1, cap, st);
++        }
++    }
++}
++
++inline void addResidentContacts(const repair::Ctx& c, int A, int oi, int bay,
++                                int e, int f, const Config& cfg,
++                                int xmin, int xmax, int ymin, int ymax,
++                                std::vector<Candidate>& out, Stats* st) {
++    const auto& ga = c.pb->geo[A].orients[oi];
++    for (int k : c.s->byBay[bay]) {
++        if (expired(c, st)) return;
++        if (!c.s->placed[k] || !(c.s->e[k] < f && e < c.s->f[k])) continue;
++        const auto& gk = c.pb->geo[k].orients[c.s->ori[k]];
++        size_t used = 0;
++        std::vector<Candidate> symmetric;
++        for (const geom::Poly& pa : ga.layers) {
++            if (pa.empty()) continue;
++            for (size_t ia = 0; ia < pa.size(); ++ia) {
++                const geom::Pt& va = pa[ia];
++                const geom::Pt& va1 = pa[(ia + 1) % pa.size()];
++                for (const geom::Poly& pk : gk.layers) {
++                    if (pk.empty()) continue;
++                    for (size_t ik = 0; ik < pk.size(); ++ik) {
++                        if (used++ >= cfg.maxContactsPerResident) goto resident_done;
++                        const geom::Pt b0{pk[ik].x + c.s->x[k], pk[ik].y + c.s->y[k]};
++                        const geom::Pt b1{pk[(ik + 1) % pk.size()].x + c.s->x[k],
++                                          pk[(ik + 1) % pk.size()].y + c.s->y[k]};
++                        // A vertex against resident edge.
++                        addVertexEdgeLocus(va, b0, b1, xmin, xmax, ymin, ymax,
++                                           2, cfg.maxCandidates, out, st);
++                        // Resident vertex against A edge.  Generate in the
++                        // negated frame, then negate the translations below.
++                        addVertexEdgeLocus(b0, va, va1, -xmax, -xmin,
++                                           -ymax, -ymin, 2, cfg.maxCandidates,
++                                           symmetric, nullptr);
++                    }
++                }
++            }
++        }
++resident_done:
++        for (const Candidate& q : symmetric)
++            addCandidate(out, -q.x, -q.y, xmin, xmax, ymin, ymax, 2,
++                         cfg.maxCandidates, st);
++    }
++}
++
++inline int contactCount(const repair::Ctx& c, int A, int oi, int bay, int e, int f,
++                        int x, int y) {
++    const auto& ga = c.pb->geo[A].orients[oi];
++    int count = 0;
++    for (int k : c.s->byBay[bay]) {
++        if (repair::deadlineExpired(c)) return count;
++        if (!c.s->placed[k] || !(c.s->e[k] < f && e < c.s->f[k])) continue;
++        const auto& gk = c.pb->geo[k].orients[c.s->ori[k]];
++        for (const auto& pa : ga.layers) for (const geom::Pt& va : pa)
++            for (const auto& pk : gk.layers) for (size_t i = 0; i < pk.size(); ++i) {
++                const geom::Pt& b0 = pk[i]; const geom::Pt& b1 = pk[(i + 1) % pk.size()];
++                const double cross = (b1.x - b0.x) * (va.y + y - b0.y - c.s->y[k]) -
++                                     (b1.y - b0.y) * (va.x + x - b0.x - c.s->x[k]);
++                if (std::abs(cross) < 1e-7) ++count;
++            }
++    }
++    return count;
++}
++
++inline double score(const repair::Ctx& c, int A, int bay, int oi, int e,
++                    const Candidate& q) {
++    const auto& pb = *c.pb;
++    const auto& g = pb.geo[A].orients[oi];
++    const double tardiness = std::max(0, e + pb.P[A] - pb.D[A]);
++    double z2 = 0.0;
++    std::vector<double> load(pb.m, 0.0);
++    for (int i = 0; i < pb.n; ++i)
++        if (c.s->placed[i]) load[c.s->bay[i]] += pb.workload[i];
++    load[bay] += pb.workload[A];
++    for (int i = 0; i < pb.m; ++i) for (int j = i + 1; j < pb.m; ++j)
++        z2 = std::max(z2, std::fabs(pb.u[i] * load[i] - pb.u[j] * load[j]));
++    const double immediate = pb.w1 * tardiness + pb.w2 * std::floor(z2) +
++                             pb.w3 * (pb.Smax[A] - pb.pref[A][bay]);
++    const double l = g.bb.x0 + q.x, r = pb.bayW[bay] - g.bb.x1 - q.x;
++    const double b = g.bb.y0 + q.y, t = pb.bayH[bay] - g.bb.y1 - q.y;
++    // Preserve one large connected rectangular residual region rather than
++    // merely minimizing wall distance; exact feasibility remains authoritative.
++    const double residual = std::max(l * pb.bayH[bay], r * pb.bayH[bay]) +
++                            std::max(b * pb.bayW[bay], t * pb.bayW[bay]);
++    int future = 0;
++    for (int k : c.s->byBay[bay]) if (c.s->placed[k] &&
++        ((e < c.s->e[k] && c.s->e[k] < e + pb.P[A]) ||
++         (e < c.s->f[k] && c.s->f[k] <= e + pb.P[A]))) {
++        bool blocks = false;
++        crane::pairMemo(g, q.x, q.y, pb.geo[k].orients[c.s->ori[k]],
++                        c.s->x[k], c.s->y[k], 1, blocks);
++        if (blocks) ++future;
++    }
++    return immediate + 0.02 * future - 0.01 * q.contacts -
++           0.00001 * residual;
++}
++
++inline bool temporarilyFeasible(repair::Ctx& c, int A, int bay, int oi, int x, int y,
++                                int e, Stats* st) {
++    core::Sol& s = *c.s; const core::Problem& pb = *c.pb;
++    s.bay[A] = bay; s.ori[A] = oi; s.x[A] = x; s.y[A] = y;
++    s.e[A] = e; s.f[A] = e + pb.P[A]; s.placed[A] = 1; s.addIdx(A);
++    if (st) ++st->exactChecks;
++    const bool ok = repair::placementFeasible(c, A);
++    s.delIdx(A); s.placed[A] = 0;
++    if (!ok && st) ++st->exactRejections;
++    return ok;
++}
++
++inline bool insert(repair::Ctx& c, int A, const Config& cfg = Config(), Stats* st = nullptr) {
++    if (A < 0 || A >= c.pb->n || c.s->placed[A] || expired(c, st)) return false;
++    core::Sol& s = *c.s; const core::Problem& pb = *c.pb;
++    const int oldBay = s.bay[A], oldOri = s.ori[A], oldX = s.x[A], oldY = s.y[A];
++    const int oldE = s.e[A], oldF = s.f[A];
++    std::vector<int> entries{pb.R[A]};
++    for (int j = 0; j < pb.m; ++j) for (int k : s.byBay[j])
++        if (s.placed[k] && s.f[k] >= pb.R[A]) entries.push_back(s.f[k]);
++    std::sort(entries.begin(), entries.end());
++    entries.erase(std::unique(entries.begin(), entries.end()), entries.end());
++    if (entries.size() > cfg.maxEntryTimes) entries.resize(cfg.maxEntryTimes);
++    Candidate best; int bestBay = -1, bestOri = -1, bestE = -1;
++    double bestScore = std::numeric_limits<double>::infinity();
++    for (int e : entries) {
++        if (e + pb.P[A] > c.horizon) continue;
++        if (c.entryCap && c.entryCap[A] >= 0 && e > c.entryCap[A]) break;
++        for (int bay = 0; bay < pb.m; ++bay) {
++            if (c.forcedBay && c.forcedBay[A] >= 0 && c.forcedBay[A] != bay) continue;
++            for (int oi = 0; oi < (int)pb.geo[A].orients.size(); ++oi) {
++                if (expired(c, st)) goto restore;
++                const auto& g = pb.geo[A].orients[oi];
++                const int xmin = (int)std::ceil(-g.bb.x0), xmax = (int)std::floor(pb.bayW[bay] - g.bb.x1);
++                const int ymin = (int)std::ceil(-g.bb.y0), ymax = (int)std::floor(pb.bayH[bay] - g.bb.y1);
++                if (xmin > xmax || ymin > ymax) continue;
++                std::vector<Candidate> cs;
++                addWallContacts(g, pb.bayW[bay], pb.bayH[bay], xmin, xmax, ymin, ymax, cfg.maxCandidates, cs, st);
++                addResidentContacts(c, A, oi, bay, e, e + pb.P[A], cfg, xmin, xmax, ymin, ymax, cs, st);
++                if (cfg.includeGeneral) {
++                    addCandidate(cs, (xmin + xmax) / 2, (ymin + ymax) / 2, xmin, xmax, ymin, ymax, 4, cfg.maxCandidates, st);
++                    addCandidate(cs, xmin, ymin, xmin, xmax, ymin, ymax, 4, cfg.maxCandidates, st);
++                    addCandidate(cs, xmax, ymax, xmin, xmax, ymin, ymax, 4, cfg.maxCandidates, st);
++                }
++                for (Candidate& q : cs) {
++                    if (expired(c, st)) goto restore;
++                    q.contacts = contactCount(c, A, oi, bay, e, e + pb.P[A], q.x, q.y);
++                    if (!temporarilyFeasible(c, A, bay, oi, q.x, q.y, e, st)) continue;
++                    const double v = score(c, A, bay, oi, e, q);
++                    if (v < bestScore || (v == bestScore &&
++                        (e < bestE || (e == bestE && (bay < bestBay ||
++                         (bay == bestBay && (oi < bestOri || (oi == bestOri &&
++                          (q.y < best.y || (q.y == best.y && q.x < best.x)))))))))) {
++                        bestScore = v; best = q; bestBay = bay; bestOri = oi; bestE = e;
++                    }
++                }
++            }
++        }
++    }
++    if (bestBay >= 0) {
++        s.bay[A] = bestBay; s.ori[A] = bestOri; s.x[A] = best.x; s.y[A] = best.y;
++        s.e[A] = bestE; s.f[A] = bestE + pb.P[A]; s.placed[A] = 1; s.addIdx(A);
++        c.oc->stamp(pb, s, A, true);
++        return true;
++    }
++restore:
++    s.bay[A] = oldBay; s.ori[A] = oldOri; s.x[A] = oldX; s.y[A] = oldY;
++    s.e[A] = oldE; s.f[A] = oldF; s.placed[A] = 0;
++    return false;
++}
++
++} // namespace nfp_contact
+--- canonical/src/repair_scored.hpp
++++ candidate/src/repair_scored.hpp
+@@ -0,0 +1,261 @@
++// repair_scored.hpp -- bounded best-insertion repair, selected by full score.
++#pragma once
++
++#include "repair.hpp"
++#include <algorithm>
++#include <cmath>
++#include <limits>
++#include <vector>
++
++namespace repair_scored {
++
++struct Config {
++    // Bounded enumeration controls.  Zero/negative values use these defaults.
++    int topK = 24;
++    int maxCandidates = 640;
++    int maxTimes = 96;
++    size_t contactAxisCap = 96;
++
++    // Higher score is better.  Every non-objective term is normalized to a
++    // dimensionless quantity; objectiveDelta is the exact core objective delta.
++    double objectiveWeight = 1.0;
++    double residualWeight = 0.20;
++    double futureBlockingWeight = 0.35;
++    double compactnessWeight = 0.15;
++    double preferenceRegretWeight = 0.20;
++};
++
++struct Stats {
++    int eventTimes = 0;
++    int geometryPoints = 0;
++    int snapshotRejected = 0;
++    int checkerRejected = 0;
++    int feasible = 0;
++    int retained = 0;
++    bool candidateLimitReached = false;
++    bool deadlineExpired = false;
++    double selectedScore = -std::numeric_limits<double>::infinity();
++    bool committed = false;
++};
++
++namespace detail {
++
++struct Candidate {
++    int bay, entry, ori, x, y;
++    double score;
++};
++
++inline int positiveOr(int value, int fallback) { return value > 0 ? value : fallback; }
++
++inline void eventTimes(const repair::Ctx& c, int block, int last, int cap,
++                       std::vector<int>& out) {
++    const core::Problem& pb = *c.pb;
++    const core::Sol& s = *c.s;
++    out.clear();
++    out.push_back(pb.R[block]);
++    out.push_back(last);
++    // A feasibility state changes only at an existing resident's entry or exit.
++    for (int j = 0; j < pb.m; ++j) for (int k : s.byBay[j]) {
++        if (!s.placed[k]) continue;
++        if (s.e[k] >= pb.R[block] && s.e[k] <= last) out.push_back(s.e[k]);
++        if (s.f[k] >= pb.R[block] && s.f[k] <= last) out.push_back(s.f[k]);
++    }
++    std::sort(out.begin(), out.end());
++    out.erase(std::unique(out.begin(), out.end()), out.end());
++    if ((int)out.size() <= cap) return;
++
++    // Keep both endpoints and sample all event phases rather than truncating the
++    // early prefix (which would recreate earliest-fit behaviour under pressure).
++    std::vector<int> sampled;
++    sampled.reserve(cap);
++    for (int q = 0; q < cap; ++q) {
++        size_t pos = (size_t)q * (out.size() - 1) / (size_t)(cap - 1);
++        sampled.push_back(out[pos]);
++    }
++    out.swap(sampled);
++}
++
++inline double occupancyArea(const core::Problem& pb, int block, int ori) {
++    const auto& g = pb.geo[block].orients[ori];
++    return knobs::polyArea() && g.parea > 0.0
++         ? g.parea
++         : (g.bb.x1 - g.bb.x0) * (g.bb.y1 - g.bb.y0);
++}
++
++inline double residualCapacity(const repair::Ctx& c, int bay, int entry,
++                               int finish, double area) {
++    const core::Problem& pb = *c.pb;
++    const double capacity = std::max(1.0, pb.bayW[bay] * pb.bayH[bay]);
++    double residual = 0.0;
++    int days = 0;
++    for (int t = std::max(0, entry); t < finish && t < c.oc->T; ++t) {
++        residual += std::max(0.0, capacity - c.oc->areaUsed[bay][t] - area) / capacity;
++        ++days;
++    }
++    return days ? residual / days : 0.0;
++}
++
++inline void placementQuality(const repair::Ctx& c, int block, int bay, int ori,
++                             int x, int y, int entry, int finish,
++                             double& futureBlocking, double& compactness) {
++    const core::Problem& pb = *c.pb;
++    const core::Sol& s = *c.s;
++    const auto& bb = pb.geo[block].orients[ori].bb;
++    const double ax0 = bb.x0 + x, ax1 = bb.x1 + x;
++    const double ay0 = bb.y0 + y, ay1 = bb.y1 + y;
++    const double scale = std::max(1.0, std::hypot(pb.bayW[bay], pb.bayH[bay]));
++    const double wall = std::min(std::min(ax0, pb.bayW[bay] - ax1),
++                                 std::min(ay0, pb.bayH[bay] - ay1));
++    compactness = 1.0 - std::min(1.0, std::max(0.0, wall) / scale);
++    futureBlocking = 0.0;
++    for (int k : s.byBay[bay]) {
++        if (!s.placed[k]) continue;
++        const auto& kb = pb.geo[k].orients[s.ori[k]].bb;
++        const double kx0 = kb.x0 + s.x[k], kx1 = kb.x1 + s.x[k];
++        const double ky0 = kb.y0 + s.y[k], ky1 = kb.y1 + s.y[k];
++        const double dx = std::max({kx0 - ax1, ax0 - kx1, 0.0});
++        const double dy = std::max({ky0 - ay1, ay0 - ky1, 0.0});
++        const double gap = std::hypot(dx, dy);
++        compactness = std::max(compactness, 1.0 - std::min(1.0, gap / scale));
++        // Entries/exits during the new stay are the future crane constraints;
++        // close shapes at those events are more likely to fragment access.
++        if (entry <= s.e[k] && s.e[k] < finish) futureBlocking += 1.0 / (1.0 + gap);
++        if (entry < s.f[k] && s.f[k] <= finish) futureBlocking += 1.0 / (1.0 + gap);
++    }
++    futureBlocking /= std::max(1.0, (double)s.byBay[bay].size());
++}
++
++inline bool exactCandidate(const repair::Ctx& c, int block, int bay, int ori,
++                           int x, int y, int entry, core::Sol& trial) {
++    trial = *c.s;
++    trial.bay[block] = bay; trial.ori[block] = ori;
++    trial.x[block] = x; trial.y[block] = y;
++    trial.e[block] = entry; trial.f[block] = entry + c.pb->P[block];
++    trial.placed[block] = 1;
++    trial.addIdx(block);
++    return core::vpExactEvents(*c.pb, trial, block);
++}
++
++inline void retain(std::vector<Candidate>& best, Candidate candidate, int topK) {
++    best.push_back(candidate);
++    std::sort(best.begin(), best.end(), [](const Candidate& a, const Candidate& b) {
++        if (a.score != b.score) return a.score > b.score;
++        if (a.entry != b.entry) return a.entry < b.entry;
++        if (a.bay != b.bay) return a.bay < b.bay;
++        if (a.ori != b.ori) return a.ori < b.ori;
++        return a.y != b.y ? a.y < b.y : a.x < b.x;
++    });
++    if ((int)best.size() > topK) best.pop_back();
++}
++
++} // namespace detail
++
++// Insert an unplaced block after evaluating a bounded event/contact candidate set.
++// The live solution and occupancy index are untouched until the selected candidate
++// passes a final exact checker audit and is committed.
++inline bool insertBest(repair::Ctx& c, int block, const Config& cfg, Stats* stats = nullptr) {
++    Stats local;
++    Stats& st = stats ? *stats : local;
++    st = Stats{};
++    if (repair::deadlineExpired(c)) { st.deadlineExpired = true; return false; }
++    if (block < 0 || block >= c.pb->n || c.s->placed[block]) return false;
++
++    const core::Problem& pb = *c.pb;
++    const int maxTimes = detail::positiveOr(cfg.maxTimes, 96);
++    const int maxCandidates = detail::positiveOr(cfg.maxCandidates, 640);
++    const int topK = detail::positiveOr(cfg.topK, 24);
++    int last = c.horizon - pb.P[block] - 1;
++    if (c.entryCap && c.entryCap[block] >= 0) last = std::min(last, c.entryCap[block]);
++    if (last < pb.R[block]) return false;
++
++    std::vector<int> times;
++    detail::eventTimes(c, block, last, maxTimes, times);
++    st.eventTimes = (int)times.size();
++    std::vector<int> bays;
++    if (c.forcedBay && c.forcedBay[block] >= 0) bays.push_back(c.forcedBay[block]);
++    else for (int j = 0; j < pb.m; ++j) bays.push_back(j);
++
++    const core::Objective before = core::evaluate(pb, *c.s);
++    std::vector<detail::Candidate> best;
++    core::Sol trial;
++    std::vector<int> xs, ys;
++    occ::OccIndex::Snap snap;
++    int examined = 0;
++    for (int entry : times) {
++        const int finish = entry + pb.P[block];
++        for (int bay : bays) {
++            if (repair::deadlineExpired(c)) { st.deadlineExpired = true; return false; }
++            c.oc->buildSnap(bay, entry, finish, snap);
++            for (int ori = 0; ori < (int)pb.geo[block].orients.size(); ++ori) {
++                repair::cornerSets(c, block, ori, bay, entry, finish, xs, ys);
++                // Adds polygon vertex-contact translations beyond bbox corners.
++                repair::shapeContactSets(c, block, ori, bay, entry, finish, xs, ys,
++                                         cfg.contactAxisCap ? cfg.contactAxisCap : 96);
++                for (int y : ys) for (int x : xs) {
++                    if (repair::deadlineExpired(c)) { st.deadlineExpired = true; return false; }
++                    if (examined++ >= maxCandidates) { st.candidateLimitReached = true; goto scored_done; }
++                    ++st.geometryPoints;
++                    if (c.oc->hitsSnap(snap, block, ori, x, y)) { ++st.snapshotRejected; continue; }
++                    if (!detail::exactCandidate(c, block, bay, ori, x, y, entry, trial)) {
++                        ++st.checkerRejected;
++                        continue;
++                    }
++                    ++st.feasible;
++                    const double objectiveDelta = core::evaluate(pb, trial).total - before.total;
++                    const double residual = detail::residualCapacity(
++                        c, bay, entry, finish, detail::occupancyArea(pb, block, ori));
++                    double future, compact;
++                    detail::placementQuality(c, block, bay, ori, x, y, entry, finish,
++                                             future, compact);
++                    const double regret = (pb.Smax[block] - pb.pref[block][bay]) /
++                                          std::max(1.0, std::fabs(pb.Smax[block]));
++                    const double score = -cfg.objectiveWeight * objectiveDelta
++                                       + cfg.residualWeight * residual
++                                       - cfg.futureBlockingWeight * future
++                                       + cfg.compactnessWeight * compact
++                                       - cfg.preferenceRegretWeight * regret;
++                    detail::retain(best, {bay, entry, ori, x, y, score}, topK);
++                }
++            }
++        }
++    }
++scored_done:
++    st.retained = (int)best.size();
++    if (best.empty() || repair::deadlineExpired(c)) {
++        st.deadlineExpired = repair::deadlineExpired(c);
++        return false;
++    }
++
++    // Exact authority is repeated immediately before the only mutation.  This
++    // protects against a changed live state and leaves no partially placed block.
++    const detail::Candidate selected = best.front();
++    if (!detail::exactCandidate(c, block, selected.bay, selected.ori, selected.x,
++                                selected.y, selected.entry, trial) ||
++        repair::deadlineExpired(c)) {
++        st.deadlineExpired = repair::deadlineExpired(c);
++        return false;
++    }
++    const int oldBay = c.s->bay[block], oldOri = c.s->ori[block];
++    const int oldX = c.s->x[block], oldY = c.s->y[block];
++    const int oldE = c.s->e[block], oldF = c.s->f[block];
++    const uint8_t oldPlaced = c.s->placed[block];
++    c.s->bay[block] = selected.bay; c.s->ori[block] = selected.ori;
++    c.s->x[block] = selected.x; c.s->y[block] = selected.y;
++    c.s->e[block] = selected.entry; c.s->f[block] = selected.entry + pb.P[block];
++    c.s->placed[block] = 1;
++    c.s->addIdx(block);
++    if (!core::vpExactEvents(pb, *c.s, block)) {
++        c.s->delIdx(block);
++        c.s->bay[block] = oldBay; c.s->ori[block] = oldOri;
++        c.s->x[block] = oldX; c.s->y[block] = oldY;
++        c.s->e[block] = oldE; c.s->f[block] = oldF;
++        c.s->placed[block] = oldPlaced;
++        return false;
++    }
++    c.oc->stamp(pb, *c.s, block, true);
++    st.selectedScore = selected.score;
++    st.committed = true;
++    return true;
++}
++
++} // namespace repair_scored
